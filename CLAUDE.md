@@ -1,3 +1,43 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project Overview
+
+Netplay Tournament Management System is a Laravel capstone project. The codebase currently consists of Laravel's official Livewire starter kit (authentication, dashboard, and user settings scaffolding) — no tournament/bracket/match domain models, controllers, or migrations have been built yet.
+
+## Commands
+
+### Setup & Dev Server
+
+- `composer install && npm install` — install dependencies
+- `composer run dev` — runs the PHP dev server, queue listener, and Vite dev server concurrently in one command
+- `npm run dev` — Vite dev server only
+- `npm run build` — build frontend assets for production
+
+### Testing
+
+- `php artisan test --compact` — run the full suite
+- `php artisan test --compact --filter=testName` — run a single test
+- `./vendor/bin/pest` — run Pest directly (used in CI)
+- Feature tests auto-extend `Tests\TestCase` and use `RefreshDatabase` (configured in `tests/Pest.php`); DB is SQLite.
+
+### Formatting
+
+- `vendor/bin/pint --dirty --format agent` — format only changed PHP files (run before finalizing any PHP change)
+- `vendor/bin/pint` — format entire codebase (used in the CI lint workflow)
+
+## Architecture
+
+- **Laravel 12 streamlined structure**: no `app/Http/Kernel.php`; middleware and exception handling are registered in `bootstrap/app.php`. No `app/Console/Kernel.php`; console commands auto-register from `app/Console/Commands/`.
+- **Auth scaffolding** is implemented as Livewire Volt functional single-file components in `resources/views/livewire/auth/*`, routed through `routes/auth.php`.
+- **Settings pages** (profile, password, appearance) are also Volt components in `resources/views/livewire/settings/*`, routed in `routes/web.php` via `Volt::route()`.
+- **UI**: Flux UI Free (v2) components + Tailwind v4 via the `@tailwindcss/vite` plugin (v4 uses CSS-based config, not `tailwind.config.js`).
+- **Layouts**: `resources/views/components/layouts/app.blade.php` is the authenticated shell (sidebar + header); `resources/views/components/layouts/auth.blade.php` provides simple/split/card variants for guest pages.
+- **Database**: SQLite by default (`database/database.sqlite`), migrations under `database/migrations`.
+- **Laravel Boost MCP server** is registered in `.mcp.json` (runs via `php artisan boost:mcp`). Its tools (`search-docs`, `database-query`, `database-schema`, `browser-logs`, etc.) are preferred over manual equivalents — see the Boost guidelines embedded below.
+- **Active skills** (declared in `boost.json`, defined in `.claude/skills/`): `laravel-best-practices`, `fluxui-development`, `volt-development`, `pest-testing`, `tailwindcss-development`. Activate the relevant one per its trigger rules whenever working in that domain.
+
 <laravel-boost-guidelines>
 === foundation rules ===
 

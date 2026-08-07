@@ -4,22 +4,10 @@
         @include('partials.head', ['title' => 'NetPlay — Play. Compete. Excel'])
     </head>
     <body class="bg-white font-sans antialiased">
-        {{-- ============================================================
-             NetPlay Landing Page
-             Adapted from Figma (node 138-115).
-             - Repeated cards are driven by @php arrays below — swap for
-               real Eloquent queries (Tournament::upcoming(), Player::featured())
-               once those models exist.
-             - Icons are inline SVG since the Figma export only had
-               placeholder shapes behind the calendar/clock glyphs.
-             - The "Check Application Progress" search is a plain GET
-               form for now; say the word and I'll turn it into a Volt
-               component (`resources/views/livewire/application-lookup.blade.php`)
-               so it can validate/search live, matching the rest of the app.
-        ============================================================ --}}
+        
 
         @php
-            // TODO: replace with Tournament::upcoming()->take(2)->get()
+           
             $featuredTournaments = [
                 [
                     'name' => 'Inato Tournament',
@@ -39,14 +27,14 @@
                 ],
             ];
 
-            // TODO: replace with Tournament::annual()->get()
+            
             $annualTournaments = array_fill(0, 4, [
                 'name' => 'Inato Tournament',
                 'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
                 'image' => 'https://placehold.co/240x147',
             ]);
 
-            // TODO: replace with Player::featured()->take(3)->get()
+           
             $featuredPlayers = array_fill(0, 3, [
                 'name' => 'Juan Dela Cruz',
                 'photo' => 'https://placehold.co/272x336',
@@ -54,7 +42,7 @@
             ]);
         @endphp
 
-        {{-- ============ HERO ============ --}}
+        
         <section class="relative w-full overflow-hidden bg-gradient-to-b from-green-950 from-[22%] via-emerald-900 via-[66%] to-teal-700">
 
             {{-- Navbar --}}
@@ -63,12 +51,20 @@
 
                 <ul class="hidden items-center gap-10 text-sm text-white md:flex">
                     <li><a href="{{ route('home') }}" wire:navigate class="transition hover:text-lime-300">Home Page</a></li>
-                    @if (Route::has('tournaments.index'))
-                        <li><a href="{{ route('tournaments.index') }}" wire:navigate class="transition hover:text-lime-300">Tournaments</a></li>
-                    @endif
-                    @if (Route::has('players.index'))
-                        <li><a href="{{ route('players.index') }}" wire:navigate class="transition hover:text-lime-300">Featured Players</a></li>
-                    @endif
+                    <li>
+                        <a href="{{ Route::has('tournaments.index') ? route('tournaments.index') : '#' }}"
+                           @if (Route::has('tournaments.index')) wire:navigate @endif
+                           class="transition hover:text-lime-300">
+                            Tournaments
+                        </a>
+                    </li>
+                    <li>
+                        <a href="{{ Route::has('players.index') ? route('players.index') : '#' }}"
+                           @if (Route::has('players.index')) wire:navigate @endif
+                           class="transition hover:text-lime-300">
+                            Featured Players
+                        </a>
+                    </li>
                 </ul>
 
                 <div class="flex items-center gap-3 sm:gap-5">
@@ -83,11 +79,9 @@
                 </div>
             </nav>
 
-            {{-- Hero copy --}}
+   
             <div class="mx-auto flex max-w-[760px] flex-col items-center gap-3.5 px-6 pt-24 pb-40 text-center">
-                <h1 class="text-5xl leading-tight font-bold text-slate-500 sm:text-7xl sm:leading-[72px]">
-                    Play. Compete. Excel
-                </h1>
+                <h1 class="text-5xl leading-tight font-bold sm:text-7xl sm:leading-[72px]"><span class="text-slate-400">Play.</span><span class="text-white">Compete.</span><span class="text-lime-400">Excel</span></h1>
                 <p class="mx-auto max-w-[607px] text-lg leading-9 text-white">
                     Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
                 </p>
@@ -97,12 +91,11 @@
                 </a>
             </div>
 
-            {{-- Umpire / referee recruitment card --}}
+          
             <div class="relative mx-auto mb-[-96px] flex w-[calc(100%-3rem)] max-w-6xl flex-col items-center gap-6 rounded-[38px] bg-white
                         px-8 py-8 shadow-[0px_10px_4.7px_0px_rgba(0,0,0,0.25)] sm:flex-row sm:gap-16 sm:px-20 sm:py-4 lg:w-[calc(100%-181px)]">
-                <div class="relative h-32 w-40 shrink-0">
-                    <div class="absolute top-[93px] left-[166px] h-14 w-24 origin-top-left rotate-[159deg] bg-lime-300"></div>
-                    <div class="absolute top-0 left-[25px] h-20 w-20 origin-top-left rotate-[19.41deg] bg-emerald-600"></div>
+                <div class="flex h-32 w-40 shrink-0 items-center justify-center">
+                    <flux:icon.flag class="size-16 text-emerald-600" />
                 </div>
 
                 <div class="flex-1 text-center sm:text-left">
@@ -121,14 +114,16 @@
             <div class="h-24"></div>
         </section>
 
-        {{-- ============ TOURNAMENTS ============ --}}
+        
         <section class="w-full bg-teal-700 px-6 pt-24 pb-16 sm:px-24">
             <div class="mx-auto flex max-w-5xl flex-col items-center gap-12">
-                <div class="w-96 border-t-2 border-white"></div>
-
-                <h2 class="rounded-2xl bg-white px-11 py-3 text-3xl font-bold text-emerald-600">
-                    TOURNAMENTS
-                </h2>
+                <div class="flex w-full items-center gap-6">
+                    <div class="h-px flex-1 bg-white"></div>
+                    <h2 class="shrink-0 rounded-2xl bg-white px-11 py-3 text-3xl font-bold text-emerald-600">
+                        TOURNAMENTS
+                    </h2>
+                    <div class="h-px flex-1 bg-white"></div>
+                </div>
 
                 <div class="flex w-full flex-col gap-9">
                     @foreach ($featuredTournaments as $tournament)
@@ -137,31 +132,27 @@
                                  alt="{{ $tournament['name'] }}"
                                  class="h-52 w-full object-cover sm:w-96 sm:rounded-tl-2xl sm:rounded-bl-2xl">
 
-                            <div class="flex flex-1 flex-col gap-1.5 p-4">
-                                <h3 class="text-lg font-bold text-black">{{ $tournament['name'] }}</h3>
-                                <p class="max-w-96 text-xs leading-5 text-black">{{ $tournament['blurb'] }}</p>
+                            <div class="flex flex-1 flex-wrap items-center justify-between gap-4 p-4">
+                                <div class="flex flex-col gap-1.5">
+                                    <h3 class="text-lg font-bold text-black">{{ $tournament['name'] }}</h3>
+                                    <p class="max-w-96 text-xs leading-5 text-black">{{ $tournament['blurb'] }}</p>
 
-                                <div class="flex flex-wrap items-center gap-2.5 text-xs font-bold text-black">
-                                    <span class="inline-flex items-center gap-2">
-                                        <svg class="size-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                            <rect x="2.5" y="3.5" width="15" height="14" rx="2"/>
-                                            <path d="M2.5 7.5h15M6.5 2v3M13.5 2v3"/>
-                                        </svg>
-                                        {{ $tournament['dates'] }}
-                                    </span>
-                                    <span>{{ $tournament['days'] }}</span>
-                                </div>
+                                    <div class="flex flex-wrap items-center gap-2.5 text-xs font-bold text-black">
+                                        <span class="inline-flex items-center gap-2">
+                                            <flux:icon.calendar class="size-5" />
+                                            {{ $tournament['dates'] }}
+                                        </span>
+                                        <span>{{ $tournament['days'] }}</span>
+                                    </div>
 
-                                <div class="flex items-end gap-2.5 pb-1.5 text-xs font-bold text-black">
-                                    <svg class="size-5" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5">
-                                        <circle cx="10" cy="10" r="7.5"/>
-                                        <path d="M10 6v4l2.5 2.5"/>
-                                    </svg>
-                                    {{ $tournament['time'] }}
+                                    <div class="flex items-center gap-2.5 text-xs font-bold text-black">
+                                        <flux:icon.clock class="size-5" />
+                                        {{ $tournament['time'] }}
+                                    </div>
                                 </div>
 
                                 <a href="{{ Route::has('tournaments.register') ? route('tournaments.register') : route('register') }}" wire:navigate
-                                   class="mt-2 inline-block self-start rounded-[20px] bg-emerald-900 px-16 py-3.5 text-base font-bold text-white transition hover:bg-emerald-800">
+                                   class="shrink-0 rounded-[20px] bg-emerald-900 px-16 py-3.5 text-base font-bold text-white transition hover:bg-emerald-800">
                                     Register
                                 </a>
                             </div>
@@ -171,7 +162,7 @@
             </div>
         </section>
 
-        {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
+      
         <section class="w-full bg-teal-700 px-6 py-12 sm:px-44">
             <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
                 <div class="flex max-w-sm flex-col gap-5 text-center lg:text-left">
@@ -183,27 +174,29 @@
                     </p>
                 </div>
 
-                {{-- TODO: convert to a Volt component (livewire/application-lookup) for live validation --}}
+                
                 <form action="{{ Route::has('applications.lookup') ? route('applications.lookup') : '#' }}" method="GET" class="flex flex-col gap-1.5">
                     <label for="match_id" class="text-sm text-white">Enter Match ID</label>
-                    <input id="match_id" name="match_id" type="text" placeholder="Match ID"
-                           class="h-11 w-60 rounded-[10px] bg-white px-2.5 text-sm text-black placeholder:text-black/30 focus:ring-2 focus:ring-emerald-600 focus:outline-none">
-                    <button type="submit"
-                            class="mt-2 self-start rounded-[36px] bg-white px-9 py-1.5 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
-                        Search
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <input id="match_id" name="match_id" type="text" placeholder="Match ID"
+                               class="h-11 w-60 rounded-[10px] bg-white px-2.5 text-sm text-black placeholder:text-black/30 focus:ring-2 focus:ring-emerald-600 focus:outline-none">
+                        <button type="submit"
+                                class="h-9 shrink-0 rounded-[36px] bg-white px-9 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
+                            Search
+                        </button>
+                    </div>
                 </form>
             </div>
         </section>
 
-        {{-- ============ ANNUAL TOURNAMENTS ============ --}}
+
         <section class="w-full bg-gradient-to-b from-teal-700 via-slate-400 via-[68%] to-white px-6 pt-16 pb-20 sm:px-24">
             <div class="mx-auto flex max-w-5xl flex-col items-center gap-14">
                 <div class="flex h-16 w-full items-center rounded-lg bg-white pl-8 sm:pl-20">
                     <h2 class="text-2xl font-bold text-emerald-600">Annual Tournaments</h2>
                 </div>
 
-                <div class="flex w-full flex-col gap-4">
+                <div class="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
                     @foreach ($annualTournaments as $tournament)
                         <article class="flex flex-col items-start gap-4 rounded-[10px] bg-teal-950/20 p-5 outline outline-1 outline-white sm:flex-row">
                             <img src="{{ $tournament['image'] }}"
@@ -217,9 +210,10 @@
                     @endforeach
                 </div>
 
-                {{-- Pagination dots — wire to real pagination state --}}
+
                 <div class="flex items-center gap-2">
-                    <span class="h-1.5 w-11 rounded-full bg-slate-500"></span>
+                    <span class="h-1.5 w-11 rounded-full bg-emerald-600"></span>
+                    <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
                     <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
                     <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
                     <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
@@ -227,7 +221,7 @@
             </div>
         </section>
 
-        {{-- ============ FEATURED PLAYERS ============ --}}
+
         <section class="w-full bg-white px-6 pt-14 pb-24 sm:px-44">
             <div class="text-center">
                 <h2 class="text-3xl font-bold text-emerald-600">FEATURED PLAYERS</h2>
@@ -248,11 +242,11 @@
                                 <img src="{{ $player['photo'] }}"
                                      alt="{{ $player['name'] }}"
                                      class="h-80 w-full rounded-2xl border-2 border-teal-700 object-cover">
-                                <div class="text-center text-xs leading-8 text-black">
+                                <ul class="w-full list-disc space-y-1 pr-4 pl-10 text-xs leading-5 text-black">
                                     @foreach ($player['awards'] as $award)
-                                        {{ $award }}<br>
+                                        <li>{{ $award }}</li>
                                     @endforeach
-                                </div>
+                                </ul>
                             </div>
                         </div>
                     </article>
@@ -260,7 +254,7 @@
             </div>
         </section>
 
-        {{-- ============ FOOTER ============ --}}
+
         <footer class="w-full bg-teal-950 px-6 py-16 sm:px-40">
             <div class="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-16">
                 <div class="flex max-w-sm flex-col gap-1.5">
