@@ -1,284 +1,260 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
-    <head>
-        @include('partials.head', ['title' => 'NetPlay — Play. Compete. Excel'])
-    </head>
-    <body class="bg-white font-sans antialiased">
-        
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NetPlay — Play. Compete. Excel</title>
+    <link rel="preconnect" href="https://fonts.bunny.net">
+    <link href="https://fonts.bunny.net/css?family=inter:400,500,700,800" rel="stylesheet" />
+    @vite(['resources/css/app.css', 'resources/js/app.js'])
+</head>
+<body class="font-['Inter'] antialiased">
 
-        @php
-           
-            $featuredTournaments = [
-                [
-                    'name' => 'Inato Tournament',
-                    'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-                    'dates' => 'June 7 - 10, 2026',
-                    'days' => 'SUN, MON, SAT',
-                    'time' => '10:00 AM - 5:00 PM',
-                    'image' => 'https://placehold.co/364x203',
-                ],
-                [
-                    'name' => 'Inato Tournament',
-                    'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-                    'dates' => 'June 7 - 10, 2026',
-                    'days' => 'SUN, MON, SAT',
-                    'time' => '10:00 AM - 5:00 PM',
-                    'image' => 'https://placehold.co/364x203',
-                ],
-            ];
+@php
+    $tournaments = [
+        [
+            'name' => 'Inato Tournament',
+            'description' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+            'dates' => 'June 7- 10, 2026',
+            'days' => 'SUN, MON, SAT',
+            'time' => '10:00 AM - 5:00 PM',
+            'image' => 'https://placehold.co/364x203',
+        ],
+        [
+            'name' => 'Inato Tournament',
+            'description' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+            'dates' => 'June 7- 10, 2026',
+            'days' => 'SUN, MON, SAT',
+            'time' => '10:00 AM - 5:00 PM',
+            'image' => 'https://placehold.co/364x203',
+        ],
+    ];
 
-            
-            $annualTournaments = array_fill(0, 4, [
-                'name' => 'Inato Tournament',
-                'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-                'image' => 'https://placehold.co/240x147',
-            ]);
+    $annualTournaments = collect(range(1, 4))->map(fn () => [
+        'name' => 'Inato Tournament',
+        'description' => 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
+        'image' => 'https://placehold.co/240x147',
+    ]);
 
-           
-            $featuredPlayers = array_fill(0, 3, [
-                'name' => 'Juan Dela Cruz',
-                'photo' => 'https://placehold.co/272x336',
-                'awards' => ['Award 1', 'Award 2', 'Award 3'],
-            ]);
-        @endphp
+    $featuredPlayers = collect(range(1, 3))->map(fn () => [
+        'name' => 'Juan Dela Cruz',
+        'awards' => ['Award 1', 'Award 2', 'Award 3'],
+        'image' => 'https://placehold.co/272x336',
+    ]);
+@endphp
 
-        
-        <section class="relative w-full overflow-hidden bg-gradient-to-b from-green-950 from-[22%] via-emerald-900 via-[66%] to-teal-700">
+<div class="w-[1440px] mx-auto flex flex-col justify-start items-start overflow-hidden">
 
-            {{-- Navbar --}}
-            <nav class="flex w-full items-center justify-between px-6 py-3 sm:px-16 lg:px-40">
-                <a href="{{ route('home') }}" wire:navigate class="text-3xl font-bold text-white">NetPlay</a>
+    <div class="self-stretch h-[973px] relative bg-linear-to-b from-green-950 from-22% via-emerald-900 via-66% to-teal-700">
+        <div class="w-[1603.35px] h-[686.63px] left-[-101.08px] top-[-0.84px] absolute border border-green-950"></div>
 
-                <ul class="hidden items-center gap-10 text-sm text-white md:flex">
-                    <li><a href="{{ route('home') }}" wire:navigate class="transition hover:text-lime-300">Home Page</a></li>
-                    <li>
-                        <a href="{{ Route::has('tournaments.index') ? route('tournaments.index') : '#' }}"
-                           @if (Route::has('tournaments.index')) wire:navigate @endif
-                           class="transition hover:text-lime-300">
-                            Tournaments
-                        </a>
-                    </li>
-                    <li>
-                        <a href="{{ Route::has('players.index') ? route('players.index') : '#' }}"
-                           @if (Route::has('players.index')) wire:navigate @endif
-                           class="transition hover:text-lime-300">
-                            Featured Players
-                        </a>
-                    </li>
-                </ul>
+        <div class="w-[760px] left-[166px] top-[301.73px] absolute flex flex-col justify-start items-start gap-3.5">
+            <div class="self-stretch flex justify-center items-center gap-2.5">
+                <div class="flex-1 h-24 text-center text-slate-500 text-7xl font-bold leading-[72px]">Play.Compete.Excel</div>
+            </div>
+            <div class="flex justify-center items-center gap-2.5">
+                <div class="w-[606.82px] text-white text-lg font-normal leading-9">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</div>
+            </div>
+            <div class="flex justify-start items-start">
+                <a href="#" class="w-56 h-14 px-9 bg-white rounded-3xl flex justify-center items-center gap-2.5 overflow-hidden">
+                    <span class="text-center text-teal-700 text-lg font-bold leading-4">REGISTER NOW!</span>
+                </a>
+            </div>
+        </div>
 
-                <div class="flex items-center gap-3 sm:gap-5">
-                    <a href="{{ route('login') }}" wire:navigate
-                       class="flex h-9 items-center justify-center rounded-[36px] px-5 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
-                        Sign In
-                    </a>
-                    <a href="{{ route('register') }}" wire:navigate
-                       class="flex h-9 items-center justify-center rounded-[36px] bg-white px-5 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
-                        Sign Up
-                    </a>
+        <div class="w-[1440px] px-40 py-3 left-0 top-0 absolute flex flex-col justify-start items-start">
+            <div class="w-32 p-2.5 flex flex-col justify-start items-start gap-2.5">
+                <div class="self-stretch h-9 relative">
+                    <a href="#" class="left-0 top-0 absolute text-center text-white text-3xl font-bold leading-9">NetPlay</a>
                 </div>
+            </div>
+
+            <nav class="w-96 h-14 relative">
+                <a href="#" class="w-24 h-14 left-0 top-0 absolute">
+                    <span class="w-24 left-0 top-0 absolute text-center text-white text-sm font-normal leading-[55px]">Home Page</span>
+                </a>
+                <a href="#" class="w-28 h-14 left-[121.20px] top-0 absolute">
+                    <span class="w-28 left-0 top-0 absolute text-center text-white text-sm font-normal leading-[55px]">Tournaments</span>
+                </a>
+                <a href="#" class="w-32 h-14 left-[250.81px] top-0 absolute">
+                    <span class="w-32 left-0 top-0 absolute text-center text-white text-sm font-normal leading-[55px]">Featured Players</span>
+                </a>
             </nav>
 
-   
-            <div class="mx-auto flex max-w-[760px] flex-col items-center gap-3.5 px-6 pt-24 pb-40 text-center">
-                <h1 class="text-5xl leading-tight font-bold sm:text-7xl sm:leading-[72px]"><span class="text-slate-400">Play.</span><span class="text-white">Compete.</span><span class="text-lime-400">Excel</span></h1>
-                <p class="mx-auto max-w-[607px] text-lg leading-9 text-white">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-                </p>
-                <a href="{{ route('register') }}" wire:navigate
-                   class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
-                    REGISTER NOW!
-                </a>
-            </div>
-
-          
-            <div class="relative mx-auto mb-[-96px] flex w-[calc(100%-3rem)] max-w-6xl flex-col items-center gap-6 rounded-[38px] bg-white
-                        px-8 py-8 shadow-[0px_10px_4.7px_0px_rgba(0,0,0,0.25)] sm:flex-row sm:gap-16 sm:px-20 sm:py-4 lg:w-[calc(100%-181px)]">
-                <div class="flex h-32 w-40 shrink-0 items-center justify-center">
-                    <flux:icon.flag class="size-16 text-emerald-600" />
-                </div>
-
-                <div class="flex-1 text-center sm:text-left">
-                    <h2 class="text-xl font-bold text-black">Umpire / Referee</h2>
-                    <p class="mt-2 max-w-md text-base leading-5 text-black">
-                        Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-                    </p>
-                </div>
-
-                <a href="{{ Route::has('officials.apply') ? route('officials.apply') : route('register') }}" wire:navigate
-                   class="shrink-0 rounded-[20px] bg-emerald-900 px-16 py-3.5 text-base font-bold text-white transition hover:bg-emerald-800">
-                    Apply Now!
-                </a>
-            </div>
-
-            <div class="h-24"></div>
-        </section>
-
-        
-        <section class="w-full bg-teal-700 px-6 pt-24 pb-16 sm:px-24">
-            <div class="mx-auto flex max-w-5xl flex-col items-center gap-12">
-                <div class="flex w-full items-center gap-6">
-                    <div class="h-px flex-1 bg-white"></div>
-                    <h2 class="shrink-0 rounded-2xl bg-white px-11 py-3 text-3xl font-bold text-emerald-600">
-                        TOURNAMENTS
-                    </h2>
-                    <div class="h-px flex-1 bg-white"></div>
-                </div>
-
-                <div class="flex w-full flex-col gap-9">
-                    @foreach ($featuredTournaments as $tournament)
-                        <article class="flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-white sm:flex-row">
-                            <img src="{{ $tournament['image'] }}"
-                                 alt="{{ $tournament['name'] }}"
-                                 class="h-52 w-full object-cover sm:w-96 sm:rounded-tl-2xl sm:rounded-bl-2xl">
-
-                            <div class="flex flex-1 flex-wrap items-center justify-between gap-4 p-4">
-                                <div class="flex flex-col gap-1.5">
-                                    <h3 class="text-lg font-bold text-black">{{ $tournament['name'] }}</h3>
-                                    <p class="max-w-96 text-xs leading-5 text-black">{{ $tournament['blurb'] }}</p>
-
-                                    <div class="flex flex-wrap items-center gap-2.5 text-xs font-bold text-black">
-                                        <span class="inline-flex items-center gap-2">
-                                            <flux:icon.calendar class="size-5" />
-                                            {{ $tournament['dates'] }}
-                                        </span>
-                                        <span>{{ $tournament['days'] }}</span>
-                                    </div>
-
-                                    <div class="flex items-center gap-2.5 text-xs font-bold text-black">
-                                        <flux:icon.clock class="size-5" />
-                                        {{ $tournament['time'] }}
-                                    </div>
-                                </div>
-
-                                <a href="{{ Route::has('tournaments.register') ? route('tournaments.register') : route('register') }}" wire:navigate
-                                   class="shrink-0 rounded-[20px] bg-emerald-900 px-16 py-3.5 text-base font-bold text-white transition hover:bg-emerald-800">
-                                    Register
-                                </a>
-                            </div>
-                        </article>
-                    @endforeach
+            <div class="w-72 p-2.5 flex flex-col justify-start items-start gap-2.5">
+                <div class="self-stretch flex justify-start items-center gap-5">
+                    <a href="#" class="flex justify-start items-start">
+                        <span class="h-9 px-9 bg-white/0 rounded-[36px] flex justify-center items-center gap-2.5 overflow-hidden text-center text-white text-sm font-bold leading-4">Sign In</span>
+                    </a>
+                    <a href="#" class="flex justify-start items-start">
+                        <span class="h-9 px-9 bg-white rounded-[36px] flex justify-center items-center gap-2.5 overflow-hidden text-center text-emerald-600 text-sm font-bold leading-4">Sign Up</span>
+                    </a>
                 </div>
             </div>
-        </section>
+        </div>
 
-      
-        <section class="w-full bg-teal-700 px-6 py-12 sm:px-44">
-            <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
-                <div class="flex max-w-sm flex-col gap-5 text-center lg:text-left">
-                    <h2 class="text-4xl leading-tight font-bold text-white [text-shadow:0px_4px_4px_rgba(0,0,0,0.25)] sm:text-5xl">
-                        Check Tournament Application Progress
-                    </h2>
-                    <p class="max-w-60 text-xs leading-4 text-white">
-                        Check your application progress through entering your match ID
-                    </p>
-                </div>
-
-                
-                <form action="{{ Route::has('applications.lookup') ? route('applications.lookup') : '#' }}" method="GET" class="flex flex-col gap-1.5">
-                    <label for="match_id" class="text-sm text-white">Enter Match ID</label>
-                    <div class="flex items-center gap-3">
-                        <input id="match_id" name="match_id" type="text" placeholder="Match ID"
-                               class="h-11 w-60 rounded-[10px] bg-white px-2.5 text-sm text-black placeholder:text-black/30 focus:ring-2 focus:ring-emerald-600 focus:outline-none">
-                        <button type="submit"
-                                class="h-9 shrink-0 rounded-[36px] bg-white px-9 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
-                            Search
-                        </button>
+        <div class="h-48 px-20 py-4 left-[90.50px] top-[761px] absolute bg-white rounded-[38px] shadow-[0px_10px_4.699999809265137px_0px_rgba(0,0,0,0.25)] flex justify-start items-center gap-40">
+            <div class="w-48 p-2.5 flex flex-col justify-start items-start gap-2.5">
+                <div class="w-40 h-32 relative">
+                    <div class="w-24 h-14 left-[166px] top-[93.22px] absolute origin-top-left rotate-[159deg]">
+                        <div class="w-28 h-20 left-0 top-0 absolute bg-lime-300"></div>
                     </div>
-                </form>
-            </div>
-        </section>
-
-
-        <section class="w-full bg-gradient-to-b from-teal-700 via-slate-400 via-[68%] to-white px-6 pt-16 pb-20 sm:px-24">
-            <div class="mx-auto flex max-w-5xl flex-col items-center gap-14">
-                <div class="flex h-16 w-full items-center rounded-lg bg-white pl-8 sm:pl-20">
-                    <h2 class="text-2xl font-bold text-emerald-600">Annual Tournaments</h2>
+                    <div class="size-20 left-[24.98px] top-0 absolute origin-top-left rotate-[19.41deg] bg-emerald-600"></div>
                 </div>
+            </div>
+            <div class="w-96 flex flex-col justify-start items-start">
+                <div class="h-8 p-2.5 flex justify-center items-center gap-2.5">
+                    <span class="text-black text-xl font-bold leading-[72px]">Umpire/ Referee</span>
+                </div>
+                <div class="w-96 p-2.5 flex justify-center items-center gap-2.5">
+                    <span class="w-80 text-black text-base font-normal leading-5">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</span>
+                </div>
+            </div>
+            <div class="w-56 p-2.5 flex flex-col justify-start items-start gap-2.5">
+                <a href="#" class="flex justify-start items-start">
+                    <span class="px-16 py-3.5 bg-emerald-900 rounded-[20px] flex justify-center items-center gap-2.5 text-center text-white text-base font-bold leading-4">Apply Now!</span>
+                </a>
+            </div>
+        </div>
+    </div>
 
-                <div class="grid w-full grid-cols-1 gap-4 sm:grid-cols-2">
-                    @foreach ($annualTournaments as $tournament)
-                        <article class="flex flex-col items-start gap-4 rounded-[10px] bg-teal-950/20 p-5 outline outline-1 outline-white sm:flex-row">
-                            <img src="{{ $tournament['image'] }}"
-                                 alt="{{ $tournament['name'] }}"
-                                 class="h-36 w-full rounded object-cover sm:w-60">
-                            <div class="flex flex-1 flex-col gap-2.5 py-2.5">
-                                <h3 class="text-lg font-bold text-white">{{ $tournament['name'] }}</h3>
-                                <p class="text-xs leading-5 text-white">{{ $tournament['blurb'] }}</p>
+    <div class="self-stretch h-[822px] relative bg-teal-700 overflow-hidden">
+        <div class="w-[1440px] px-24 left-0 top-[50px] absolute flex flex-col justify-start items-center gap-12">
+            <div class="w-96 h-0 outline outline-2 outline-offset-[-1px] outline-white"></div>
+            <div class="w-96 h-0 outline outline-2 outline-offset-[-1px] outline-white"></div>
+
+            <div class="px-11 bg-white rounded-2xl flex justify-center items-center gap-2.5">
+                <span class="text-center text-emerald-600 text-3xl font-bold leading-[60px]">TOURNAMENTS</span>
+            </div>
+
+            <div class="self-stretch flex flex-col justify-start items-start gap-9">
+                @foreach ($tournaments as $tournament)
+                    <div class="self-stretch bg-white rounded-[20px] shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-offset-[-1px] outline-white flex items-stretch">
+                        <img class="w-96 h-auto object-cover rounded-tl-2xl rounded-bl-2xl" src="{{ $tournament['image'] }}" alt="{{ $tournament['name'] }}">
+                        <div class="flex-1 p-6 flex flex-col justify-center items-start gap-[5px]">
+                            <div class="text-black text-lg font-bold leading-[72px]">{{ $tournament['name'] }}</div>
+                            <div class="text-black text-xs font-normal leading-5">{{ $tournament['description'] }}</div>
+                            <div class="flex justify-start items-center gap-6">
+                                <div class="flex justify-start items-center gap-2.5">
+                                    <div class="size-6 relative overflow-hidden">
+                                        <div class="size-5 left-[3.13px] top-[2px] absolute bg-black"></div>
+                                    </div>
+                                    <div class="text-justify text-black text-xs font-bold leading-10">{{ $tournament['dates'] }}</div>
+                                </div>
+                                <div class="text-justify text-black text-xs font-bold leading-10">{{ $tournament['days'] }}</div>
                             </div>
-                        </article>
-                    @endforeach
-                </div>
-
-
-                <div class="flex items-center gap-2">
-                    <span class="h-1.5 w-11 rounded-full bg-emerald-600"></span>
-                    <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
-                    <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
-                    <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
-                    <span class="h-1.5 w-2.5 rounded-full bg-zinc-300"></span>
-                </div>
-            </div>
-        </section>
-
-
-        <section class="w-full bg-white px-6 pt-14 pb-24 sm:px-44">
-            <div class="text-center">
-                <h2 class="text-3xl font-bold text-emerald-600">FEATURED PLAYERS</h2>
-                <p class="text-3xl text-emerald-600">Badminton</p>
-            </div>
-
-            <div class="mt-12 flex flex-wrap justify-center gap-12 lg:gap-24">
-                @foreach ($featuredPlayers as $player)
-                    <article class="relative flex w-80 flex-col items-center gap-2.5">
-                        <div class="flex h-12 items-center justify-center rounded-[35px] bg-white">
-                            <h3 class="text-2xl font-bold text-emerald-900">{{ $player['name'] }}</h3>
-                        </div>
-
-                        <div class="relative w-full">
-                            <div class="h-[527px] w-full rounded-[20px] border border-teal-700 bg-white shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)]"></div>
-
-                            <div class="absolute inset-x-0 top-[15px] flex flex-col items-center gap-4 px-4">
-                                <img src="{{ $player['photo'] }}"
-                                     alt="{{ $player['name'] }}"
-                                     class="h-80 w-full rounded-2xl border-2 border-teal-700 object-cover">
-                                <ul class="w-full list-disc space-y-1 pr-4 pl-10 text-xs leading-5 text-black">
-                                    @foreach ($player['awards'] as $award)
-                                        <li>{{ $award }}</li>
-                                    @endforeach
-                                </ul>
+                            <div class="pb-1.5 flex justify-start items-end gap-2.5">
+                                <div class="size-5 relative">
+                                    <div class="size-5 left-0 top-0 absolute bg-black"></div>
+                                </div>
+                                <div class="text-justify text-black text-xs font-bold leading-10">{{ $tournament['time'] }}</div>
                             </div>
+                            <a href="#" class="mt-2 px-16 py-3.5 bg-emerald-900 rounded-[20px] flex justify-center items-center gap-2.5 text-center text-white text-base font-bold leading-4">Register</a>
                         </div>
-                    </article>
+                    </div>
                 @endforeach
             </div>
-        </section>
+        </div>
+    </div>
 
-
-        <footer class="w-full bg-teal-950 px-6 py-16 sm:px-40">
-            <div class="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-16">
-                <div class="flex max-w-sm flex-col gap-1.5">
-                    <p class="text-5xl font-bold text-white">NetPlay</p>
-                    <p class="mt-2 text-base leading-6 text-white">
-                        Badminton tournament management, simplified. From registration to real-time scoring.
-                    </p>
+    <div class="self-stretch h-72 relative bg-teal-700 overflow-hidden">
+        <div class="px-44 py-12 left-[2px] top-[2px] absolute flex justify-start items-center gap-40">
+            <div class="w-80 flex flex-col justify-start items-start gap-5">
+                <div class="w-96 h-32 text-white text-5xl font-bold leading-10 [text-shadow:_0px_4px_4px_rgb(0_0_0_/_0.25)]">Check Tournament Application Progress</div>
+                <div class="w-60 h-6 text-white text-xs font-normal leading-4">Check your application progress through entering your match ID</div>
+            </div>
+            <form action="#" method="GET" class="h-16 px-24 flex flex-col justify-start items-start">
+                <div class="w-60 flex flex-col justify-start items-start gap-1.5">
+                    <label for="match_id" class="self-stretch h-3 text-white text-sm font-normal leading-4">Enter Match ID</label>
+                    <input type="text" name="match_id" id="match_id" placeholder="Match ID" class="self-stretch h-7 p-2.5 bg-white rounded-[10px] flex justify-center items-center gap-2.5 text-black text-sm font-normal leading-4 placeholder:opacity-30">
                 </div>
+                <button type="submit" class="h-7 px-9 bg-white rounded-[36px] flex justify-center items-center gap-2.5 overflow-hidden text-center text-teal-700 text-sm font-bold leading-4">Search</button>
+            </form>
+        </div>
+    </div>
 
-                <div class="flex flex-col gap-6">
-                    <h4 class="text-3xl font-bold text-white">Contact</h4>
-                    <address class="text-base leading-6 text-white not-italic">
-                        Ozamiz City, Philippines<br>
-                        netplay@gmail.com
-                    </address>
-                </div>
+    <div class="self-stretch h-[693px] relative bg-linear-to-b from-teal-700 via-slate-400 via-68% to-white overflow-hidden">
+        <div class="w-[1440px] left-0 top-[73.22px] absolute flex flex-col justify-start items-center gap-14">
+            <div class="w-[1220px] h-16 pl-20 pr-96 bg-white rounded-lg flex flex-col justify-start items-start">
+                <div class="w-72 h-16 text-emerald-600 text-2xl font-bold leading-[72px]">Annual Tournaments</div>
             </div>
 
-            <div class="mx-auto mt-16 max-w-5xl border-t border-white/70 pt-8">
-                <p class="text-center text-base text-white">
-                    &copy;2026 NETPLAY. Capstone Project by Gwen D. Aninao, Romeo S. Jagonia Jr., and Jhon Rico C. Tolosa.
-                    Adviser: Mr. Honimar C. Panganiban, MSIT.
-                </p>
+            <div class="w-[1209.03px] flex flex-col justify-start items-start">
+                @foreach ($annualTournaments as $tournament)
+                    <div class="self-stretch p-5 bg-teal-950/20 rounded-[10px] outline outline-1 outline-offset-[-1px] outline-white flex justify-start items-start gap-4">
+                        <img class="w-60 h-36" src="{{ $tournament['image'] }}" alt="{{ $tournament['name'] }}">
+                        <div class="w-72 self-stretch py-2.5 flex flex-col justify-start items-start gap-2.5">
+                            <div class="self-stretch text-white text-lg font-bold leading-10">{{ $tournament['name'] }}</div>
+                            <div class="self-stretch text-white text-xs font-normal leading-5">{{ $tournament['description'] }}</div>
+                        </div>
+                    </div>
+                @endforeach
             </div>
-        </footer>
-    </body>
+
+            <div class="w-36 h-1.5 relative">
+                <div class="w-11 h-1.5 left-0 top-0 absolute bg-slate-500"></div>
+                <div class="w-2.5 h-1.5 left-[59.70px] top-0 absolute bg-zinc-300"></div>
+                <div class="w-2.5 h-1.5 left-[86.22px] top-0 absolute bg-zinc-300"></div>
+                <div class="w-2.5 h-1.5 left-[112.73px] top-0 absolute bg-zinc-300"></div>
+                <div class="w-2.5 h-1.5 left-[139.25px] top-0 absolute bg-zinc-300"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="self-stretch h-[900px] relative bg-white overflow-hidden">
+        <div class="w-[1519.09px] h-[686.63px] left-[-23.62px] top-[215.48px] absolute border border-teal-700/0"></div>
+        <div class="w-96 h-12 left-[500.65px] top-[56.19px] absolute text-center text-emerald-600 text-3xl font-bold leading-[72px]">FEATURED PLAYERS</div>
+        <div class="w-96 h-12 left-[500.65px] top-[108.19px] absolute text-center text-emerald-600 text-3xl font-normal leading-[72px]">Badminton</div>
+
+        <div class="px-44 left-0 top-[192px] absolute flex justify-start items-center gap-24">
+            @foreach ($featuredPlayers as $player)
+                <div class="w-80 relative flex flex-col justify-start items-start gap-2.5">
+                    <div class="self-stretch h-12 py-2.5 bg-white rounded-[35px] flex flex-col justify-start items-start">
+                        <div class="w-64 h-10 text-center text-emerald-900 text-2xl font-bold leading-[72px]">{{ $player['name'] }}</div>
+                    </div>
+                    <div class="self-stretch h-[526.95px] bg-white rounded-[20px] shadow-[0px_4px_4px_0px_rgba(0,0,0,0.25)] border border-teal-700"></div>
+                    <div class="w-64 left-[17px] top-[82.80px] absolute flex flex-col justify-start items-end gap-4">
+                        <img class="self-stretch h-80 rounded-2xl border-2 border-teal-700" src="{{ $player['image'] }}" alt="{{ $player['name'] }}">
+                        <div class="self-stretch p-2.5 flex flex-col justify-center items-center gap-2.5">
+                            <div class="self-stretch text-black text-xs font-normal leading-8">
+                                @foreach ($player['awards'] as $award)
+                                    {{ $award }}@if (!$loop->last)<br>@endif
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    </div>
+
+    <footer class="self-stretch h-[468px] relative bg-teal-950 overflow-hidden">
+        <div class="w-[1444px] px-40 py-11 left-[-20px] top-[324px] absolute flex flex-col justify-start items-start">
+            <div class="p-2.5 flex flex-col justify-end items-center gap-2.5">
+                <div class="self-stretch h-0 outline outline-1 outline-offset-[-0.50px] outline-white"></div>
+            </div>
+            <div class="text-white text-base font-normal leading-6">©{{ now()->year }} NETPLAY. Capstone Project by Gwen D. Aninao, Romeo S. Jagonia Jr., and Jhon Rico C. Tolosa. Adviser: Mr. Honimar C. Panganiban, MSIT.</div>
+        </div>
+
+        <div class="w-[1079px] left-[163px] top-[101px] absolute flex justify-start items-center gap-96">
+            <div class="w-96 flex flex-col justify-start items-start gap-1.5">
+                <div class="w-48 p-2.5 shadow-[0px_2px_4px_0px_rgba(0,0,0,0.25)] flex flex-col justify-start items-start gap-2.5">
+                    <div class="self-stretch h-9 relative">
+                        <span class="left-[2px] top-0 absolute text-center text-white text-5xl font-bold leading-9">NetPlay</span>
+                    </div>
+                </div>
+                <div class="p-2.5 flex justify-center items-center gap-2.5">
+                    <div class="w-96 text-white text-base font-normal leading-6">Badminton tournament management, simplified. From registration to real-time scoring.</div>
+                </div>
+            </div>
+            <div class="w-48 flex flex-col justify-start items-start gap-6">
+                <div class="text-white text-3xl font-bold leading-6">Contact</div>
+                <div class="h-14 text-white text-base font-normal leading-6">Ozamiz City, Philippines <br> netplay@gmail.com</div>
+            </div>
+        </div>
+    </footer>
+
+</div>
+
+</body>
 </html>
