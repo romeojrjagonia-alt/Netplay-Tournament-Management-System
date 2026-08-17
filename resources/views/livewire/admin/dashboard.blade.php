@@ -6,6 +6,11 @@ use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extends Component {
+    public function mount(): void
+    {
+        abort_unless(auth()->user()->isAdmin(), 403);
+    }
+
     public string $activeTab = 'approvals';
 
     public string $search = '';

@@ -9,8 +9,8 @@ test('login screen can be rendered', function () {
     $response->assertStatus(200);
 });
 
-test('users can authenticate using the login screen', function () {
-    $user = User::factory()->create();
+test('players are redirected to the player dashboard after login', function () {
+    $user = User::factory()->create(['role' => 'player']);
 
     $response = LivewireVolt::test('auth.login')
         ->set('email', $user->email)
@@ -19,7 +19,22 @@ test('users can authenticate using the login screen', function () {
 
     $response
         ->assertHasNoErrors()
-        ->assertRedirect(route('dashboard', absolute: false));
+        ->assertRedirect(route('player.dashboard', absolute: false));
+
+    $this->assertAuthenticated();
+});
+
+test('admins are redirected to the admin dashboard after login', function () {
+    $user = User::factory()->create(['role' => 'admin']);
+
+    $response = LivewireVolt::test('auth.login')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login');
+
+    $response
+        ->assertHasNoErrors()
+        ->assertRedirect(route('admin.dashboard', absolute: false));
 
     $this->assertAuthenticated();
 });
