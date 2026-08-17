@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Netplay Tournament Management System is a Laravel capstone project. The codebase currently consists of Laravel's official Livewire starter kit (authentication, dashboard, and user settings scaffolding) plus a custom landing page and multi-step signup flow — no tournament/bracket/match domain models, controllers, or migrations have been built yet (only the default `users`, `cache`, and `jobs` tables exist).
 
+## Domain Context
+
+@NETPLAY.md — read before working on tournaments, registration, or brackets.
+
 ## Commands
 
 ### Setup & Dev Server
@@ -238,5 +242,6 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - The `{name}` argument should not include the test suite directory. Use `php artisan make:test --pest SomeFeatureTest` instead of `php artisan make:test --pest Feature/SomeFeatureTest`.
 - Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
 - Do NOT delete tests without approval.
+
 
 </laravel-boost-guidelines>

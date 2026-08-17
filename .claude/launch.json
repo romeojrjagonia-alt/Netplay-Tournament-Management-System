@@ -6,6 +6,12 @@
       "runtimeExecutable": "C:\\xampp\\php\\php.exe",
       "runtimeArgs": ["artisan", "serve", "--port=8000"],
       "port": 8000
+    },
+    {
+      "name": "netplay-dev",
+      "runtimeExecutable": "composer",
+      "runtimeArgs": ["run", "dev"],
+      "port": 8000
     }
   ]
 }
