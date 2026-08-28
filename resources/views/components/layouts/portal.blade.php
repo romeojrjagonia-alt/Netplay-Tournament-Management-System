@@ -5,6 +5,7 @@
     'roleLabel' => '',
     'suffix' => 'NetPlay',
     'nav' => null,
+    'profilePhotoUrl' => null,
 ])
 
 {{--
@@ -46,14 +47,28 @@
                 <header class="flex items-center justify-between border-b border-white/50 px-7 py-4">
                     <h1 class="text-2xl font-bold text-white">{{ $title }}</h1>
 
-                    <div class="flex h-[38px] items-center gap-1.5 rounded-full bg-white py-0.5 pr-5 pl-0.5">
-                        <span class="flex size-[34px] shrink-0 items-center justify-center rounded-full bg-[#e5f1f0] text-[10px] font-bold text-[#138177]">
-                            {{ auth()->user()->initials() }}
-                        </span>
-                        <span class="flex flex-col justify-center">
-                            <span class="text-[10px] font-bold text-black">{{ $roleName }}</span>
-                            <span class="text-[6px] tracking-wide text-black">{{ $roleLabel }}</span>
-                        </span>
+                    <div>
+                        @isset($profileModal)
+                            <flux:modal.trigger name="player-profile">
+                                <button type="button" class="flex h-[38px] cursor-pointer items-center gap-1.5 rounded-full bg-white py-0.5 pr-5 pl-0.5" aria-label="Open your profile">
+                                    <x-portal.avatar :photo-url="$profilePhotoUrl" :initials="auth()->user()->initials()" class="size-[34px] text-[10px]" />
+                                    <span class="flex flex-col justify-center text-left" x-data="{ roleName: @js($roleName) }" x-on:profile-updated.window="roleName = $event.detail.name">
+                                        <span class="text-[10px] font-bold text-black" x-text="roleName"></span>
+                                        <span class="text-[6px] tracking-wide text-black">{{ $roleLabel }}</span>
+                                    </span>
+                                </button>
+                            </flux:modal.trigger>
+
+                            {{ $profileModal }}
+                        @else
+                            <div class="flex h-[38px] items-center gap-1.5 rounded-full bg-white py-0.5 pr-5 pl-0.5">
+                                <x-portal.avatar :photo-url="$profilePhotoUrl" :initials="auth()->user()->initials()" class="size-[34px] text-[10px]" />
+                                <span class="flex flex-col justify-center">
+                                    <span class="text-[10px] font-bold text-black">{{ $roleName }}</span>
+                                    <span class="text-[6px] tracking-wide text-black">{{ $roleLabel }}</span>
+                                </span>
+                            </div>
+                        @endisset
                     </div>
                 </header>
 

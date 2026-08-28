@@ -19,6 +19,10 @@ Volt::route('player/dashboard', 'player.dashboard')
     ->middleware(['auth', 'verified'])
     ->name('player.dashboard');
 
+Volt::route('player/events', 'player.events')
+    ->middleware(['auth', 'verified'])
+    ->name('player.events');
+
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 

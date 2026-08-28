@@ -1,9 +1,19 @@
 <?php
 
+use App\Models\Player;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Session;
+use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.auth.signup')] class extends Component {
+    use WithFileUploads;
+
     public int $step = 1;
 
     public ?string $userType = null;
@@ -16,11 +26,21 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public string $password_confirmation = '';
 
     public string $birthDate = '';
-    public string $age = '';
     public string $gender = '';
     public string $purok = '';
     public string $city = '';
     public string $province = '';
+    public string $club = '';
+    public $profilePhoto = null;
+
+    /**
+     * Live-computed age preview, derived from the entered birth date.
+     */
+    #[Computed]
+    public function age(): ?int
+    {
+        return $this->birthDate !== '' ? Carbon::parse($this->birthDate)->age : null;
+    }
 
     /**
      * Mark the account type the visitor is registering as.
@@ -48,7 +68,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'firstName' => ['required', 'string', 'max:255'],
                 'lastName' => ['required', 'string', 'max:255'],
                 'middleInitial' => ['nullable', 'string', 'max:5'],
-                'email' => ['required', 'string', 'email', 'max:255'],
+                'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
                 'password' => ['required', 'string', 'min:8', 'confirmed'],
             ]);
         }
@@ -62,6 +82,63 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public function previousStep(): void
     {
         $this->step = max($this->step - 1, 1);
+    }
+
+    /**
+     * Validate the full wizard and create the user + player records.
+     */
+    public function register(): void
+    {
+        $this->validate([
+            'userType' => ['required', 'in:player,umpire'],
+            'firstName' => ['required', 'string', 'max:255'],
+            'lastName' => ['required', 'string', 'max:255'],
+            'middleInitial' => ['nullable', 'string', 'max:5'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'birthDate' => ['required', 'date', 'before:today'],
+            'gender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'purok' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'province' => ['required', 'string', 'max:255'],
+            'club' => ['nullable', 'string', 'max:255'],
+            'profilePhoto' => ['nullable', 'image', 'max:2048'],
+        ]);
+
+        $fullName = collect([
+            $this->firstName,
+            $this->middleInitial !== '' ? $this->middleInitial.'.' : null,
+            $this->lastName,
+        ])->filter()->implode(' ');
+
+        $photoPath = $this->profilePhoto?->store('player-photos', 'public');
+
+        $user = DB::transaction(function () use ($fullName, $photoPath) {
+            $user = User::create([
+                'name' => $fullName,
+                'email' => $this->email,
+                'password' => $this->password,
+                'role' => $this->userType,
+                'email_verified_at' => now(),
+            ]);
+
+            Player::create([
+                'user_id' => $user->id,
+                'name' => $fullName,
+                'birth_date' => $this->birthDate,
+                'gender' => $this->gender,
+                'address' => "{$this->purok}, {$this->city}, {$this->province}",
+                'club' => $this->club !== '' ? $this->club : null,
+                'photo_path' => $photoPath,
+            ]);
+
+            return $user;
+        });
+
+        Auth::login($user);
+        Session::regenerate();
+
+        $this->redirect(route($user->homeRouteName(), absolute: false), navigate: true);
     }
 }; ?>
 
@@ -188,7 +265,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 <label for="password" class="text-xs text-black">Password</label>
                                 <div class="flex items-center gap-2 rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5">
                                     <input id="password" wire:model="password" :type="show ? 'text' : 'password'"
-                                           placeholder="Enter your Password"
+                                           placeholder="Enter your Password" required
                                            class="w-full bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none">
                                     <button type="button" @click="show = !show" class="shrink-0 text-black/50">
                                         <flux:icon.eye class="size-4" x-show="!show" />
@@ -204,7 +281,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 <label for="password_confirmation" class="text-xs text-black">Confirm Password</label>
                                 <div class="flex items-center gap-2 rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5">
                                     <input id="password_confirmation" wire:model="password_confirmation" :type="show ? 'text' : 'password'"
-                                           placeholder="Confirm your Password"
+                                           placeholder="Confirm your Password" required
                                            class="w-full bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none">
                                     <button type="button" @click="show = !show" class="shrink-0 text-black/50">
                                         <flux:icon.eye class="size-4" x-show="!show" />
@@ -227,7 +304,13 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                     <div class="flex w-full flex-col items-center gap-3.5">
                         <div class="flex w-full gap-3">
                             <x-auth.field label="Birth Date" model="birthDate" type="date" class="flex-[2]" />
-                            <x-auth.field label="Age" model="age" type="number" placeholder="e.g. 25" class="w-20 shrink-0" />
+
+                            <div class="flex w-20 shrink-0 flex-col gap-0.5">
+                                <label class="text-xs text-black">Age</label>
+                                <div class="flex items-center rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5 text-xs text-black/70">
+                                    {{ $this->age ?? '—' }}
+                                </div>
+                            </div>
 
                             <div class="flex w-28 shrink-0 flex-col gap-0.5">
                                 <label for="gender" class="text-xs text-black">Gender</label>
@@ -240,6 +323,12 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 </select>
                             </div>
                         </div>
+                        @error('birthDate')
+                            <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
+                        @enderror
+                        @error('gender')
+                            <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
+                        @enderror
 
                         <div class="flex w-full gap-2">
                             <x-auth.field label="Purok/ Street" model="purok" placeholder="e.g. Purok 5" class="flex-1" />
@@ -247,14 +336,19 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             <x-auth.field label="Province" model="province" placeholder="e.g. Misamis Occidental" class="flex-[1.5]" />
                         </div>
 
+                        <x-auth.field label="Club" model="club" placeholder="e.g. OBC Badminton Club" class="w-full" />
+
                         <div x-data="{ fileName: '' }" class="flex w-full flex-col gap-0.5 px-8">
                             <label for="profilePhoto" class="text-xs text-black">Upload Profile Photo</label>
                             <label for="profilePhoto"
                                    class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#138177] bg-[#11776e]/15 px-2.5 py-8 text-center text-xs text-black/50">
                                 <span x-text="fileName || 'Upload Image'"></span>
                             </label>
-                            <input id="profilePhoto" type="file" accept="image/*" class="hidden"
+                            <input id="profilePhoto" type="file" wire:model="profilePhoto" accept="image/*" class="hidden"
                                    x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                            @error('profilePhoto')
+                                <p class="text-[11px] text-red-600">{{ $message }}</p>
+                            @enderror
                         </div>
                     </div>
                 </div>
@@ -279,9 +373,10 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                         Next
                     </button>
                 @else
-                    <button type="button"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-16 text-sm font-bold text-white transition hover:bg-[#0d5750]">
-                        Confirm
+                    <button type="button" wire:click="register" wire:loading.attr="disabled" wire:target="register"
+                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-16 text-sm font-bold text-white transition hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-60">
+                        <span wire:loading.remove wire:target="register">Confirm</span>
+                        <span wire:loading wire:target="register">Creating account…</span>
                     </button>
                 @endif
             </div>

@@ -19,39 +19,22 @@
         ============================================================ --}}
 
         @php
-            // TODO: replace with Tournament::upcoming()->take(2)->get()
-            $featuredTournaments = [
-                [
-                    'name' => 'Inato Tournament',
-                    'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-                    'dates' => 'June 7 - 10, 2026',
-                    'days' => 'SUN, MON, SAT',
-                    'time' => '10:00 AM - 5:00 PM',
-                    'image' => 'https://placehold.co/364x203',
-                ],
-                [
-                    'name' => 'Inato Tournament',
-                    'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
-                    'dates' => 'June 7 - 10, 2026',
-                    'days' => 'SUN, MON, SAT',
-                    'time' => '10:00 AM - 5:00 PM',
-                    'image' => 'https://placehold.co/364x203',
-                ],
-            ];
+            $featuredTournaments = \App\Models\Tournament::query()
+                ->where('status', 'registration_open')
+                ->orderBy('registration_end')
+                ->take(3)
+                ->get();
 
-            // TODO: replace with Tournament::annual()->get()
+            // Annual tournaments are a fixed, client-curated list (held every year by OBC),
+            // not driven by tournament records.
             $annualTournaments = array_fill(0, 4, [
                 'name' => 'Inato Tournament',
                 'blurb' => 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.',
                 'image' => 'https://placehold.co/240x147',
             ]);
 
-            // TODO: replace with Player::featured()->take(3)->get()
-            $featuredPlayers = array_fill(0, 3, [
-                'name' => 'Juan Dela Cruz',
-                'photo' => 'https://placehold.co/272x336',
-                'awards' => ['Award 1', 'Award 2', 'Award 3'],
-            ]);
+            // Featured players are recent tournament champions; no tournament has finished yet.
+            $featuredPlayers = collect();
         @endphp
 
         {{-- ============ HERO ============ --}}
@@ -137,28 +120,31 @@
                 </div>
 
                 <div class="flex w-full flex-col gap-9">
-                    @foreach ($featuredTournaments as $tournament)
+                    @forelse ($featuredTournaments as $tournament)
                         <article class="flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)] outline outline-1 outline-white sm:flex-row">
-                            <img src="{{ $tournament['image'] }}"
-                                 alt="{{ $tournament['name'] }}"
+                            <img src="https://placehold.co/364x203"
+                                 alt="{{ $tournament->name }}"
                                  class="h-52 w-full object-cover sm:w-96 sm:rounded-tl-2xl sm:rounded-bl-2xl">
 
                             <div class="flex flex-1 flex-col gap-1.5 p-4">
-                                <h3 class="text-lg font-bold text-black">{{ $tournament['name'] }}</h3>
-                                <p class="max-w-96 text-xs leading-5 text-black">{{ $tournament['blurb'] }}</p>
+                                <h3 class="text-lg font-bold text-black">{{ $tournament->name }}</h3>
 
                                 <div class="flex flex-wrap items-center gap-2.5 text-xs font-bold text-black">
                                     <span class="inline-flex items-center gap-2">
                                         <img src="{{ asset('images/welcome/calendar-icon.svg') }}" alt="" class="size-5">
-                                        {{ $tournament['dates'] }}
+                                        {{ $tournament->date_start->format('M j, Y') }} - {{ $tournament->date_end->format('M j, Y') }}
                                     </span>
-                                    <span>{{ $tournament['days'] }}</span>
+                                    @if ($tournament->specific_days)
+                                        <span>{{ $tournament->specific_days }}</span>
+                                    @endif
                                 </div>
 
-                                <div class="flex items-end gap-2.5 pb-1.5 text-xs font-bold text-black">
-                                    <img src="{{ asset('images/welcome/clock-icon.svg') }}" alt="" class="size-5">
-                                    {{ $tournament['time'] }}
-                                </div>
+                                @if ($tournament->time)
+                                    <div class="flex items-end gap-2.5 pb-1.5 text-xs font-bold text-black">
+                                        <img src="{{ asset('images/welcome/clock-icon.svg') }}" alt="" class="size-5">
+                                        {{ $tournament->time }}
+                                    </div>
+                                @endif
 
                                 <a href="{{ Route::has('tournaments.register') ? route('tournaments.register') : route('register') }}" wire:navigate
                                    class="mt-2 inline-block self-start rounded-[20px] bg-emerald-900 px-16 py-3.5 text-base font-bold text-white transition hover:bg-emerald-800">
@@ -166,7 +152,9 @@
                                 </a>
                             </div>
                         </article>
-                    @endforeach
+                    @empty
+                        <p class="w-full text-center text-lg font-bold text-white">Coming Soon! Stay Tuned!</p>
+                    @endforelse
                 </div>
             </div>
         </section>
@@ -239,7 +227,7 @@
             </div>
 
             <div class="mt-12 flex flex-wrap justify-center gap-12 lg:gap-24">
-                @foreach ($featuredPlayers as $player)
+                @forelse ($featuredPlayers as $player)
                     <article class="relative flex w-80 flex-col items-center gap-2.5">
                         <div class="flex h-12 items-center justify-center rounded-[35px] bg-white">
                             <h3 class="text-2xl font-bold text-emerald-900">{{ $player['name'] }}</h3>
@@ -260,7 +248,9 @@
                             </div>
                         </div>
                     </article>
-                @endforeach
+                @empty
+                    <p class="text-lg font-bold text-emerald-700">No Players Featured Yet, Stay Tuned!</p>
+                @endforelse
             </div>
         </section>
 
