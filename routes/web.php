@@ -23,6 +23,10 @@ Volt::route('player/events', 'player.events')
     ->middleware(['auth', 'verified'])
     ->name('player.events');
 
+Volt::route('player/matches', 'player.matches')
+    ->middleware(['auth', 'verified'])
+    ->name('player.matches');
+
 Route::middleware(['auth'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 

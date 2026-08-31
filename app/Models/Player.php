@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Storage;
 
 class Player extends Model
 {
@@ -55,7 +56,7 @@ class Player extends Model
      */
     protected function photoUrl(): Attribute
     {
-        return Attribute::get(fn (): ?string => $this->photo_path ? asset('storage/'.$this->photo_path) : null);
+        return Attribute::get(fn (): ?string => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
     }
 
     public function user(): BelongsTo

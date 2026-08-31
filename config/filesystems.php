@@ -39,7 +39,10 @@ return [
 
         'public' => [
             'driver' => 'local',
-            'root' => storage_path('app/public'),
+            // Defaults to the app's own (ephemeral) storage dir for local dev.
+            // In production, point this at a persistent volume's mount path
+            // (e.g. a Railway volume) so uploads survive redeploys.
+            'root' => env('PUBLIC_STORAGE_PATH', storage_path('app/public')),
             'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,
@@ -71,7 +74,7 @@ return [
     */
 
     'links' => [
-        public_path('storage') => storage_path('app/public'),
+        public_path('storage') => env('PUBLIC_STORAGE_PATH', storage_path('app/public')),
     ],
 
 ];
