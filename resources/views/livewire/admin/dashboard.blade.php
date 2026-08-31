@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\PaymentDetail;
+use App\Models\Player;
+use App\Models\PlayerApplication;
+use App\Models\Tournament;
 use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -19,6 +23,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
     public string $categoryFilter = 'All Categories';
 
+    public ?int $viewingApplicationId = null;
+
+    public ?int $viewingPaymentId = null;
+
     public function selectTab(string $tab): void
     {
         $this->activeTab = $tab;
@@ -26,43 +34,105 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         $this->reset(['search', 'eventFilter', 'categoryFilter']);
     }
 
-    /**
-     * Mock applications awaiting admin review, until the applications table exists.
-     *
-     * @return array<int, array<string, string>>
-     */
-    protected function approvals(): array
+    public function viewApplication(int $applicationId): void
     {
-        return [
-            ['id' => '#0001', 'player' => 'Gwen D. Aninao', 'event' => 'OBC Summer Open', 'category' => "Women's Singles", 'date' => 'June 3, 2026', 'contact' => '09203920697', 'status' => 'Verified'],
-            ['id' => '#0002', 'player' => 'Marcus T. Okoye', 'event' => 'Ozamiz City Open', 'category' => "Men's Doubles", 'date' => 'June 5, 2026', 'contact' => '09778890011', 'status' => 'Pending'],
-            ['id' => '#0003', 'player' => 'Lina M. Santos', 'event' => 'Barangay Cup', 'category' => 'Mixed Doubles Level B', 'date' => 'June 6, 2026', 'contact' => '06655443322', 'status' => 'Rejected'],
-            ['id' => '#0004', 'player' => 'Javier R. Mendes', 'event' => 'OBC Summer Open', 'category' => "Men's Singles", 'date' => 'June 6, 2026', 'contact' => '07788990011', 'status' => 'Rejected'],
-            ['id' => '#0005', 'player' => 'Aisha T. Patel', 'event' => 'Provincial Meet', 'category' => "Women's Doubles", 'date' => 'June 7, 2026', 'contact' => '05566778899', 'status' => 'Pending'],
-            ['id' => '#0006', 'player' => 'Marco L. Rivera', 'event' => 'Barangay Cup', 'category' => "Men's Singles Level A", 'date' => 'June 8, 2026', 'contact' => '04455667788', 'status' => 'Verified'],
-            ['id' => '#0007', 'player' => 'Aisha T. Nguyen', 'event' => 'Provincial Meet', 'category' => 'Mixed Doubles Level A', 'date' => 'June 9, 2026', 'contact' => '03334445566', 'status' => 'Pending'],
-            ['id' => '#0008', 'player' => 'Carlos M. Dominguez', 'event' => 'OBC Summer Open', 'category' => "Men's Doubles", 'date' => 'June 10, 2026', 'contact' => '02223334455', 'status' => 'Pending'],
-            ['id' => '#0009', 'player' => 'Emily R. Stone', 'event' => 'Ozamiz City Open', 'category' => "Women's Singles", 'date' => 'June 11, 2026', 'contact' => '01112223344', 'status' => 'Verified'],
-            ['id' => '#0010', 'player' => 'Jamal K. Patel', 'event' => 'Barangay Cup', 'category' => "Men's Doubles Level B", 'date' => 'June 12, 2026', 'contact' => '05566778899', 'status' => 'Verified'],
-        ];
+        $this->viewingApplicationId = $applicationId;
+    }
+
+    public function viewPayment(int $paymentId): void
+    {
+        $this->viewingPaymentId = $paymentId;
     }
 
     /**
-     * Mock applications awaiting payment verification, until the payments table exists.
-     *
-     * @return array<int, array<string, string>>
+     * Admin verified the applicant's eligibility; the applicant now needs to pay.
      */
-    protected function payments(): array
+    public function approveApplication(int $applicationId): void
     {
-        return [
-            ['id' => '#0011', 'player' => 'Sophia L. Bennett', 'event' => 'OBC Summer Open', 'category' => "Women's Doubles", 'date' => 'June 13, 2026', 'contact' => '06677889900', 'status' => 'Receipt #67948'],
-            ['id' => '#0012', 'player' => "Liam G. O'Connor", 'event' => 'Provincial Meet', 'category' => "Men's Singles", 'date' => 'June 14, 2026', 'contact' => '07788990011', 'status' => 'Receipt #67959'],
-            ['id' => '#0013', 'player' => 'Nina S. Kovac', 'event' => 'Barangay Cup', 'category' => 'Mixed Doubles Level B', 'date' => 'June 15, 2026', 'contact' => '08899001122', 'status' => 'Receipt #67960'],
-            ['id' => '#0014', 'player' => 'Omar D. El-Sayed', 'event' => 'Ozamiz City Open', 'category' => "Men's Doubles", 'date' => 'June 16, 2026', 'contact' => '09900112233', 'status' => 'Receipt #67971'],
-            ['id' => '#0015', 'player' => 'Isabel K. Romero', 'event' => 'OBC Summer Open', 'category' => "Women's Singles", 'date' => 'June 17, 2026', 'contact' => '01011223344', 'status' => 'Receipt #67982'],
-            ['id' => '#0016', 'player' => 'Nathan D. Cruz', 'event' => 'Provincial Meet', 'category' => "Men's Doubles", 'date' => 'June 18, 2026', 'contact' => '02122334455', 'status' => 'Pending'],
-            ['id' => '#0017', 'player' => 'Priya S. Kapoor', 'event' => 'Barangay Cup', 'category' => "Women's Doubles", 'date' => 'June 19, 2026', 'contact' => '03233445566', 'status' => 'Verified'],
-        ];
+        PlayerApplication::where('status', 'pending_verification')
+            ->findOrFail($applicationId)
+            ->update(['status' => 'payment_pending']);
+
+        $this->viewingApplicationId = null;
+
+        $this->closeModalAndNotify('application-details', 'Application approved. The applicant can now proceed to payment.');
+    }
+
+    public function rejectApplication(int $applicationId): void
+    {
+        PlayerApplication::where('status', 'pending_verification')
+            ->findOrFail($applicationId)
+            ->update(['status' => 'rejected']);
+
+        $this->viewingApplicationId = null;
+
+        $this->closeModalAndNotify('application-details', 'Application rejected.', 'danger');
+    }
+
+    /**
+     * Admin verified the payment proof; the application is now fully approved.
+     */
+    public function approvePayment(int $paymentId): void
+    {
+        $payment = PaymentDetail::where('payment_status', 'pending')->findOrFail($paymentId);
+
+        $payment->update(['payment_status' => 'verified']);
+        $payment->application->update(['status' => 'approved']);
+
+        $this->viewingPaymentId = null;
+
+        $this->closeModalAndNotify('payment-details', 'Payment verified. The application is now fully approved.');
+    }
+
+    /**
+     * Payment proof rejected; the application stays payment_pending so the
+     * player can resubmit, per the audit-trail design in NETPLAY.md 4.8.
+     */
+    public function rejectPayment(int $paymentId): void
+    {
+        PaymentDetail::where('payment_status', 'pending')
+            ->findOrFail($paymentId)
+            ->update(['payment_status' => 'rejected']);
+
+        $this->viewingPaymentId = null;
+
+        $this->closeModalAndNotify('payment-details', 'Payment rejected. The applicant can resubmit proof of payment.', 'danger');
+    }
+
+    private function closeModalAndNotify(string $modal, string $message, string $variant = 'success'): void
+    {
+        $this->dispatch('modal-close', name: $modal);
+        $this->dispatch('admin-toast', message: $message, variant: $variant);
+    }
+
+    /**
+     * Applications awaiting admin verification of eligibility.
+     *
+     * @return Collection<int, PlayerApplication>
+     */
+    #[Computed]
+    public function applications(): Collection
+    {
+        return PlayerApplication::query()
+            ->where('status', 'pending_verification')
+            ->with(['tournamentCategory.tournament', 'tournamentCategory.category', 'applicationPlayers.player'])
+            ->latest()
+            ->get();
+    }
+
+    /**
+     * Payment proofs awaiting admin verification.
+     *
+     * @return Collection<int, PaymentDetail>
+     */
+    #[Computed]
+    public function pendingPayments(): Collection
+    {
+        return PaymentDetail::query()
+            ->where('payment_status', 'pending')
+            ->with(['application.tournamentCategory.tournament', 'application.tournamentCategory.category', 'application.applicationPlayers.player'])
+            ->latest()
+            ->get();
     }
 
     /**
@@ -71,25 +141,52 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     #[Computed]
     public function totals(): array
     {
-        $applications = collect($this->approvals())->merge($this->payments());
+        return [
+            'events' => Tournament::count(),
+            'players' => Player::count(),
+            'pendingApprovals' => $this->applications->count(),
+            'pendingPayments' => $this->pendingPayments->count(),
+        ];
+    }
+
+    /**
+     * Table rows for the active tab, before search/filter are applied.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function baseRows(): Collection
+    {
+        return $this->activeTab === 'approvals'
+            ? $this->applications->map(fn (PlayerApplication $application) => $this->mapRow($application))
+            : $this->pendingPayments->map(fn (PaymentDetail $payment) => $this->mapRow($payment->application, $payment));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapRow(PlayerApplication $application, ?PaymentDetail $payment = null): array
+    {
+        $players = $application->applicationPlayers;
 
         return [
-            'events' => $applications->pluck('event')->unique()->count(),
-            'players' => $applications->pluck('player')->unique()->count(),
-            'pendingApprovals' => collect($this->approvals())->where('status', 'Pending')->count(),
-            'pendingPayments' => collect($this->payments())->reject(fn (array $row) => $row['status'] === 'Verified')->count(),
+            'application_id' => $application->id,
+            'payment_id' => $payment?->id,
+            'player' => $players->pluck('player.name')->implode(', '),
+            'contact' => $players->pluck('player.phone_number')->filter()->implode(', '),
+            'event' => $application->tournamentCategory->tournament->name,
+            'category' => $application->tournamentCategory->category_label,
+            'date' => $application->created_at->format('F j, Y'),
+            'status' => 'Pending',
         ];
     }
 
     #[Computed]
     public function rows(): Collection
     {
-        $rows = collect($this->activeTab === 'approvals' ? $this->approvals() : $this->payments());
-
-        return $rows
+        return $this->baseRows()
             ->when($this->search !== '', fn (Collection $rows) => $rows->filter(
                 fn (array $row) => str_contains(strtolower($row['player']), strtolower($this->search))
-                    || str_contains(strtolower($row['id']), strtolower($this->search))
+                    || str_contains((string) $row['application_id'], $this->search)
             ))
             ->when($this->eventFilter !== 'All Events', fn (Collection $rows) => $rows->where('event', $this->eventFilter))
             ->when($this->categoryFilter !== 'All Categories', fn (Collection $rows) => $rows->where('category', $this->categoryFilter))
@@ -102,9 +199,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     #[Computed]
     public function events(): array
     {
-        $rows = $this->activeTab === 'approvals' ? $this->approvals() : $this->payments();
-
-        return collect($rows)->pluck('event')->unique()->sort()->values()->all();
+        return $this->baseRows()->pluck('event')->unique()->sort()->values()->all();
     }
 
     /**
@@ -113,9 +208,33 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     #[Computed]
     public function categories(): array
     {
-        $rows = $this->activeTab === 'approvals' ? $this->approvals() : $this->payments();
+        return $this->baseRows()->pluck('category')->unique()->sort()->values()->all();
+    }
 
-        return collect($rows)->pluck('category')->unique()->sort()->values()->all();
+    #[Computed]
+    public function viewingApplication(): ?PlayerApplication
+    {
+        if (! $this->viewingApplicationId) {
+            return null;
+        }
+
+        return PlayerApplication::query()
+            ->where('status', 'pending_verification')
+            ->with(['tournamentCategory.tournament', 'tournamentCategory.category', 'applicationPlayers.player'])
+            ->find($this->viewingApplicationId);
+    }
+
+    #[Computed]
+    public function viewingPayment(): ?PaymentDetail
+    {
+        if (! $this->viewingPaymentId) {
+            return null;
+        }
+
+        return PaymentDetail::query()
+            ->where('payment_status', 'pending')
+            ->with(['application.tournamentCategory.tournament', 'application.tournamentCategory.category', 'application.applicationPlayers.player'])
+            ->find($this->viewingPaymentId);
     }
 }; ?>
 
@@ -185,18 +304,160 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
         <div class="max-h-[450px] min-w-[900px] overflow-y-auto">
             @forelse ($this->rows as $row)
-                <div wire:key="{{ $activeTab }}-{{ $row['id'] }}" class="grid grid-cols-[0.4fr_0.6fr_0.5fr_0.5fr_0.5fr_0.4fr_0.4fr] items-center gap-x-[15px] border-b border-[#8cc7c1] bg-white px-2.5 py-2">
-                    <span class="text-xs text-black">{{ $row['id'] }}</span>
-                    <span class="text-xs text-black">{{ $row['player'] }}</span>
-                    <span class="text-xs font-medium text-black">{{ $row['event'] }}</span>
-                    <span class="text-xs text-black">{{ $row['category'] }}</span>
-                    <span class="text-xs text-black">{{ $row['date'] }}</span>
-                    <span class="text-xs text-black">{{ $row['contact'] }}</span>
-                    <span class="text-xs text-black">{{ $row['status'] }}</span>
-                </div>
+                <flux:modal.trigger :name="$activeTab === 'approvals' ? 'application-details' : 'payment-details'" wire:key="{{ $activeTab }}-{{ $row['application_id'] }}-{{ $row['payment_id'] }}">
+                    <div
+                        wire:click="{{ $activeTab === 'approvals' ? 'viewApplication('.$row['application_id'].')' : 'viewPayment('.$row['payment_id'].')' }}"
+                        class="grid cursor-pointer grid-cols-[0.4fr_0.6fr_0.5fr_0.5fr_0.5fr_0.4fr_0.4fr] items-center gap-x-[15px] border-b border-[#8cc7c1] bg-white px-2.5 py-2 hover:bg-black/2.5"
+                    >
+                        <span class="text-xs text-black">#{{ str_pad($row['application_id'], 4, '0', STR_PAD_LEFT) }}</span>
+                        <span class="text-xs text-black">{{ $row['player'] }}</span>
+                        <span class="text-xs font-medium text-black">{{ $row['event'] }}</span>
+                        <span class="text-xs text-black">{{ $row['category'] }}</span>
+                        <span class="text-xs text-black">{{ $row['date'] }}</span>
+                        <span class="text-xs text-black">{{ $row['contact'] }}</span>
+                        <span class="text-xs text-black">{{ $row['status'] }}</span>
+                    </div>
+                </flux:modal.trigger>
             @empty
                 <p class="px-2.5 py-6 text-center text-xs text-black/50">No applications match your filters.</p>
             @endforelse
         </div>
     </div>
+
+    <flux:modal name="application-details" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
+        <div wire:loading wire:target="viewApplication" class="flex items-center justify-center py-24">
+            <flux:icon name="arrow-path" class="size-6 animate-spin text-black/40" />
+        </div>
+
+        <div wire:loading.remove wire:target="viewApplication">
+            @if ($this->viewingApplication)
+                <div class="flex flex-col gap-[25px]">
+                    <h2 class="text-xl font-bold text-black">Tournament Application</h2>
+
+                    <div class="flex flex-col gap-[16px]">
+                        <div class="flex h-[25px] items-center justify-between rounded-[5px] bg-[#ffe48b] px-[15px]">
+                            <span class="text-[11px] text-[#d7b135]">Pending Approval</span>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-[10px] px-[5px] text-[11px]">
+                            <div class="flex w-[139px] flex-col gap-1">
+                                <span class="text-[#646464]">Event Applied</span>
+                                <span class="font-bold text-black">{{ $this->viewingApplication->tournamentCategory->tournament->name }}</span>
+                            </div>
+                            <div class="flex w-[139px] flex-col gap-1">
+                                <span class="text-[#646464]">Category</span>
+                                <span class="font-bold text-black">{{ $this->viewingApplication->tournamentCategory->category_label }}</span>
+                            </div>
+                            <div class="flex w-[140px] flex-col gap-1">
+                                <span class="text-[#646464]">Team</span>
+                                <span class="font-bold text-black">{{ $this->viewingApplication->applicationPlayers->pluck('player.name')->implode(' & ') }}</span>
+                            </div>
+                            <div class="flex w-[140px] flex-col gap-1">
+                                <span class="text-[#646464]">Date Applied</span>
+                                <span class="font-bold text-black">{{ $this->viewingApplication->created_at->format('F j, Y') }}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-start gap-5">
+                            @foreach ($this->viewingApplication->applicationPlayers as $index => $applicationPlayer)
+                                <x-admin.application-player-card :application-player="$applicationPlayer" :index="$index + 1" />
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-[22px]">
+                        <button type="button" wire:click="rejectApplication({{ $this->viewingApplication->id }})" class="w-[126px] cursor-pointer rounded-[5px] border border-[#bd6b6c] bg-white px-[30px] py-[10px] text-xs font-medium text-[#bd6b6c]">
+                            Reject
+                        </button>
+                        <button type="button" wire:click="approveApplication({{ $this->viewingApplication->id }})" class="w-[131px] cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
+                            Approve
+                        </button>
+                    </div>
+                </div>
+            @endif
+        </div>
+    </flux:modal>
+
+    <flux:modal name="payment-details" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
+        <div wire:loading wire:target="viewPayment" class="flex items-center justify-center py-24">
+            <flux:icon name="arrow-path" class="size-6 animate-spin text-black/40" />
+        </div>
+
+        <div wire:loading.remove wire:target="viewPayment">
+            @if ($this->viewingPayment)
+                @php $application = $this->viewingPayment->application; @endphp
+                <div class="flex flex-col gap-[25px]">
+                    <h2 class="text-xl font-bold text-black">Tournament Application</h2>
+
+                    <div class="flex flex-col gap-[16px]">
+                        <div class="flex h-[25px] items-center justify-between rounded-[5px] bg-[#ffe48b] px-[15px]">
+                            <span class="text-[11px] text-[#d7b135]">Pending Approval - Payment Registration</span>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-[10px] px-[5px] text-[11px]">
+                            <div class="flex w-[139px] flex-col gap-1">
+                                <span class="text-[#646464]">Event Applied</span>
+                                <span class="font-bold text-black">{{ $application->tournamentCategory->tournament->name }}</span>
+                            </div>
+                            <div class="flex w-[139px] flex-col gap-1">
+                                <span class="text-[#646464]">Category</span>
+                                <span class="font-bold text-black">{{ $application->tournamentCategory->category_label }}</span>
+                            </div>
+                            <div class="flex w-[140px] flex-col gap-1">
+                                <span class="text-[#646464]">Team</span>
+                                <span class="font-bold text-black">{{ $application->applicationPlayers->pluck('player.name')->implode(' & ') }}</span>
+                            </div>
+                            <div class="flex w-[140px] flex-col gap-1">
+                                <span class="text-[#646464]">Date Applied</span>
+                                <span class="font-bold text-black">{{ $application->created_at->format('F j, Y') }}</span>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-start gap-5">
+                            @foreach ($application->applicationPlayers as $index => $applicationPlayer)
+                                <x-admin.application-player-card :application-player="$applicationPlayer" :index="$index + 1" />
+                            @endforeach
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col gap-[15px] text-[11px] text-black">
+                        <div class="flex flex-wrap gap-x-[29px] gap-y-[10px] px-[5px]">
+                            <div class="flex items-center gap-[29px]">
+                                <span>Date Paid</span>
+                                <span class="font-bold">{{ $this->viewingPayment->date_of_payment_made->format('F j, Y') }}</span>
+                            </div>
+                            <div class="flex items-center gap-[29px]">
+                                <span>Payment ID</span>
+                                <span class="font-bold">{{ $this->viewingPayment->reference_number ?? '—' }}</span>
+                            </div>
+                        </div>
+
+                        <a href="{{ $this->viewingPayment->proof_url }}" target="_blank" rel="noopener" class="flex items-start gap-[29px] rounded-[8px] border-[0.5px] border-[#a9a9a9] px-5 py-[10px]">
+                            <span class="flex-1 text-black">Payment Receipt Attachment</span>
+                            <span class="text-right text-[#a9a9a9] italic">View Attachment</span>
+                        </a>
+                    </div>
+
+                    <div class="flex items-center justify-end gap-[22px]">
+                        <button type="button" wire:click="rejectPayment({{ $this->viewingPayment->id }})" class="w-[126px] cursor-pointer rounded-[5px] border border-[#bd6b6c] bg-white px-[30px] py-[10px] text-xs font-medium text-[#bd6b6c]">
+                            Reject
+                        </button>
+                        <button type="button" wire:click="approvePayment({{ $this->viewingPayment->id }})" class="w-[131px] cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
+                            Approve
+                        </button>
+                    </div>
+                </div>
+            @endif
+        </div>
+    </flux:modal>
+
+    <flux:toast />
+
+    @script
+    <script>
+        this.$on('admin-toast', (event) => {
+            window.Flux.toast({ text: event.detail.message, variant: event.detail.variant });
+        });
+    </script>
+    @endscript
 </div>

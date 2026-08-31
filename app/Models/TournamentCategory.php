@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -31,6 +32,16 @@ class TournamentCategory extends Model
         return [
             'registration_fee' => 'decimal:2',
         ];
+    }
+
+    /**
+     * The category's name, prefixed with its level when set, e.g. "Level G (Mixed Doubles)".
+     */
+    protected function categoryLabel(): Attribute
+    {
+        return Attribute::get(fn (): string => $this->category->level
+            ? "{$this->category->level} ({$this->category->name})"
+            : $this->category->name);
     }
 
     public function tournament(): BelongsTo

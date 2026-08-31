@@ -7,11 +7,14 @@ use App\Models\Category;
 use App\Models\MatchApplication;
 use App\Models\Matches;
 use App\Models\MatchGame;
+use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Storage;
 
 class TournamentSeeder extends Seeder
 {
@@ -128,6 +131,8 @@ class TournamentSeeder extends Seeder
 
             $this->seedDemoMatches($player, $inatoMixedDoubles);
         }
+
+        $this->seedDemoAdminQueue($inatoSingles, $inatoMixedDoubles, $barangayCup);
     }
 
     /**
@@ -236,5 +241,124 @@ class TournamentSeeder extends Seeder
 
         MatchApplication::create(['match_id' => $upcomingMatch->id, 'application_id' => $playerTeamApplication->id]);
         MatchApplication::create(['match_id' => $upcomingMatch->id, 'application_id' => $opponentTeamApplication->id]);
+    }
+
+    /**
+     * Seed a handful of applications sitting in the admin's review queue —
+     * two awaiting eligibility verification, two awaiting payment
+     * verification (with a demo receipt) — so the admin dashboard has
+     * something real to show before staff start processing live entries.
+     */
+    private function seedDemoAdminQueue(
+        TournamentCategory $inatoSingles,
+        TournamentCategory $inatoMixedDoubles,
+        Tournament $barangayCup
+    ): void {
+        $mensDoubles = Category::firstOrCreate(
+            ['name' => "Men's Doubles", 'gender' => 'male', 'team_size' => 2],
+            ['level' => 'Level B']
+        );
+
+        $barangayMensDoubles = TournamentCategory::firstOrCreate(
+            ['tournament_id' => $barangayCup->id, 'category_id' => $mensDoubles->id],
+            ['registration_fee' => 300, 'max_slots' => 16, 'status' => 'open']
+        );
+
+        $marcus = $this->demoPlayer('Marcus Villanueva', '1998-03-22', 'male', '09171234567', 'Aguada, Ozamiz City', 'Intermediate');
+        $ella = $this->demoPlayer('Ella Bautista', '2001-07-09', 'female', '09228765432', 'Tinago, Ozamiz City', 'Beginner');
+        $ramon = $this->demoPlayer('Ramon Dela Cruz', '1995-11-02', 'male', '09051234567', 'Manuel S. Enverga, Ozamiz City', 'Advanced');
+        $cristina = $this->demoPlayer('Cristina Reyes', '1997-05-18', 'female', '09981234567', 'Aguada, Ozamiz City', 'Advanced');
+        $paolo = $this->demoPlayer('Paolo Santos', '1996-02-14', 'male', '09161234567', 'Aguada, Ozamiz City', 'Intermediate');
+        $miguel = $this->demoPlayer('Miguel Torres', '1994-08-30', 'male', '09051112233', 'Tinago, Ozamiz City', 'Intermediate');
+
+        // Pending Approvals: awaiting eligibility verification, no payment yet.
+        $this->createDemoApplication($inatoSingles, [$marcus], 'pending_verification');
+        $this->createDemoApplication($inatoMixedDoubles, [$ramon, $cristina], 'pending_verification');
+
+        // Pending Payments: verification already confirmed, receipt uploaded and awaiting staff review.
+        $barangayWomensDoubles = $this->createDemoApplication(
+            TournamentCategory::firstOrCreate(
+                ['tournament_id' => $barangayCup->id, 'category_id' => Category::firstOrCreate(
+                    ['name' => "Women's Singles", 'gender' => 'female', 'team_size' => 1]
+                )->id],
+                ['registration_fee' => 200, 'max_slots' => 24, 'status' => 'open']
+            ),
+            [$ella],
+            'payment_pending'
+        );
+        $this->createDemoPayment($barangayWomensDoubles, now()->subDays(2), '0987654321');
+
+        $mensDoublesApplication = $this->createDemoApplication($barangayMensDoubles, [$paolo, $miguel], 'payment_pending');
+        $this->createDemoPayment($mensDoublesApplication, now()->subDay(), '1122334455');
+    }
+
+    private function demoPlayer(string $name, string $birthDate, string $gender, string $phone, string $address, string $level): Player
+    {
+        return Player::firstOrCreate(['name' => $name], [
+            'birth_date' => $birthDate,
+            'gender' => $gender,
+            'phone_number' => $phone,
+            'address' => $address,
+            'level' => $level,
+        ]);
+    }
+
+    /**
+     * Idempotent per player group: re-running the seeder reuses the
+     * existing application for the same first player instead of duplicating it.
+     *
+     * @param  array<int, Player>  $players
+     */
+    private function createDemoApplication(TournamentCategory $tournamentCategory, array $players, string $status): PlayerApplication
+    {
+        $existing = PlayerApplication::where('tournament_category_id', $tournamentCategory->id)
+            ->whereHas('applicationPlayers', fn ($query) => $query->where('player_id', $players[0]->id))
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        $application = PlayerApplication::create([
+            'tournament_category_id' => $tournamentCategory->id,
+            'status' => $status,
+        ]);
+
+        foreach ($players as $player) {
+            ApplicationPlayer::create([
+                'application_id' => $application->id,
+                'player_id' => $player->id,
+                'level_at_apply' => $player->level,
+            ]);
+        }
+
+        return $application;
+    }
+
+    /**
+     * A tiny transparent PNG stands in for the uploaded GCash screenshot,
+     * so "View Attachment" resolves to a real, viewable file.
+     */
+    private function createDemoPayment(PlayerApplication $application, Carbon $paidAt, string $referenceNumber): void
+    {
+        if ($application->paymentDetails()->exists()) {
+            return;
+        }
+
+        $proofPath = 'payment-proofs/demo-receipt-'.$application->id.'.png';
+
+        if (! Storage::disk('public')->exists($proofPath)) {
+            Storage::disk('public')->put($proofPath, base64_decode(
+                'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+            ));
+        }
+
+        PaymentDetail::create([
+            'application_id' => $application->id,
+            'date_of_payment_made' => $paidAt,
+            'reference_number' => $referenceNumber,
+            'payment_status' => 'pending',
+            'proof_of_payment' => $proofPath,
+        ]);
     }
 }
