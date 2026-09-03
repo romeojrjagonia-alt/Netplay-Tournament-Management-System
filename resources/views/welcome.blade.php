@@ -20,7 +20,7 @@
 
         @php
             $featuredTournaments = \App\Models\Tournament::query()
-                ->where('status', 'registration_open')
+                ->acceptingRegistrations()
                 ->orderBy('registration_end')
                 ->take(3)
                 ->get();

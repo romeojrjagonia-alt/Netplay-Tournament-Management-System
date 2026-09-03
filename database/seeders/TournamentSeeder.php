@@ -45,13 +45,13 @@ class TournamentSeeder extends Seeder
                 'format' => 'single_elimination',
                 'sport' => 'Badminton',
                 'scoring_system' => 'Best of 3 to 21',
-                'date_start' => '2026-07-01',
-                'date_end' => '2026-07-31',
+                'date_start' => '2026-09-01',
+                'date_end' => '2026-09-30',
                 'time' => '9:00 AM - 5:00 PM',
                 'specific_days' => 'SAT, SUN',
                 'registration_start' => '2026-06-01',
-                'registration_end' => '2026-08-12',
-                'status' => 'registration_open',
+                'registration_end' => '2026-09-20',
+                'status' => 'published',
             ]
         );
 
@@ -66,8 +66,8 @@ class TournamentSeeder extends Seeder
                 'time' => '1:00 PM - 6:00 PM',
                 'specific_days' => 'SAT, SUN',
                 'registration_start' => '2026-07-01',
-                'registration_end' => '2026-09-01',
-                'status' => 'registration_open',
+                'registration_end' => '2026-09-15',
+                'status' => 'published',
             ]
         );
 
@@ -83,7 +83,7 @@ class TournamentSeeder extends Seeder
                 'specific_days' => 'SAT, SUN',
                 'registration_start' => '2026-11-01',
                 'registration_end' => '2026-11-25',
-                'status' => 'upcoming',
+                'status' => 'draft',
             ]
         );
 

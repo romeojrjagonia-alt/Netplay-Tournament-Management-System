@@ -19,6 +19,7 @@ class Tournament extends Model
         'poster_path',
         'format',
         'sport',
+        'location',
         'scoring_system',
         'date_start',
         'date_end',
@@ -52,9 +53,47 @@ class Tournament extends Model
         return Attribute::get(fn (): ?string => $this->poster_path ? asset('storage/'.$this->poster_path) : null);
     }
 
+    /**
+     * Published tournaments currently within their registration window.
+     */
     public function scopeAcceptingRegistrations(Builder $query): void
     {
-        $query->where('status', 'registration_open');
+        $query->where('status', 'published')
+            ->whereDate('registration_start', '<=', now())
+            ->whereDate('registration_end', '>=', now());
+    }
+
+    public function scopePublished(Builder $query): void
+    {
+        $query->where('status', 'published');
+    }
+
+    protected function isPublished(): Attribute
+    {
+        return Attribute::get(fn (): bool => $this->status === 'published');
+    }
+
+    /**
+     * A published tournament whose date range has already passed.
+     */
+    protected function isConcluded(): Attribute
+    {
+        return Attribute::get(fn (): bool => $this->isPublished && $this->date_end->isPast());
+    }
+
+    /**
+     * The lifecycle label shown on the admin events list — Draft, Published,
+     * or Concluded — distinct from whether registration is currently open.
+     */
+    protected function lifecycleLabel(): Attribute
+    {
+        return Attribute::get(function (): string {
+            if (! $this->isPublished) {
+                return 'Draft';
+            }
+
+            return $this->isConcluded ? 'Concluded' : 'Published';
+        });
     }
 
     public function tournamentCategories(): HasMany

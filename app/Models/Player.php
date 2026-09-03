@@ -25,6 +25,7 @@ class Player extends Model
         'age',
         'gender',
         'phone_number',
+        'email',
         'address',
         'club',
         'photo_path',

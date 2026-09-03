@@ -38,8 +38,8 @@ function eventsTournament(array $overrides = []): Tournament
         'time' => '9:00 AM - 5:00 PM',
         'specific_days' => 'SAT, SUN',
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-08-12',
-        'status' => 'registration_open',
+        'registration_end' => '2026-12-31',
+        'status' => 'published',
     ], $overrides));
 }
 
@@ -47,9 +47,9 @@ test('events page only lists tournaments accepting registrations', function () {
     $user = User::factory()->create(['role' => 'player']);
     Player::create(['user_id' => $user->id, 'name' => $user->name]);
 
-    eventsTournament(['name' => 'Open Tournament', 'status' => 'registration_open']);
-    eventsTournament(['name' => 'Upcoming Tournament', 'status' => 'upcoming']);
-    eventsTournament(['name' => 'Closed Tournament', 'status' => 'registration_closed']);
+    eventsTournament(['name' => 'Open Tournament', 'status' => 'published']);
+    eventsTournament(['name' => 'Upcoming Tournament', 'status' => 'draft']);
+    eventsTournament(['name' => 'Closed Tournament', 'status' => 'published', 'registration_end' => '2026-01-01']);
 
     $this->actingAs($user);
 

@@ -20,8 +20,8 @@ function dashboardTournament(array $overrides = []): Tournament
         'date_start' => '2026-07-01',
         'date_end' => '2026-07-31',
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-08-12',
-        'status' => 'registration_open',
+        'registration_end' => '2026-12-31',
+        'status' => 'published',
     ], $overrides));
 }
 

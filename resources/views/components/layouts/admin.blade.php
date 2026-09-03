@@ -13,8 +13,12 @@
         </x-portal.sidebar-link>
 
         <p class="px-2.5 pt-4 pb-1 text-xs text-black">Tournament</p>
-        <x-portal.sidebar-link icon="flag" href="#">Events</x-portal.sidebar-link>
-        <x-portal.sidebar-link icon="plus-circle" href="#">Create New Event</x-portal.sidebar-link>
+        <x-portal.sidebar-link icon="flag" :href="route('admin.events.index')" :active="request()->routeIs('admin.events.index', 'admin.events.show')" wire:navigate>
+            Events
+        </x-portal.sidebar-link>
+        <x-portal.sidebar-link icon="plus-circle" :href="route('admin.events.create')" :active="request()->routeIs('admin.events.create', 'admin.events.wizard.*')" wire:navigate>
+            Create New Event
+        </x-portal.sidebar-link>
 
         <p class="px-2.5 pt-4 pb-1 text-xs text-black">System</p>
         <x-portal.sidebar-link icon="users" href="#">Users</x-portal.sidebar-link>

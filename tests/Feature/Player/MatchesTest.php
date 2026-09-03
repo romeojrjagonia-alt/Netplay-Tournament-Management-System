@@ -24,8 +24,8 @@ function matchesTournamentCategory(array $categoryOverrides = []): TournamentCat
         'time' => '9:00 AM - 5:00 PM',
         'specific_days' => 'SAT, SUN',
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-08-12',
-        'status' => 'registration_open',
+        'registration_end' => '2026-12-31',
+        'status' => 'published',
     ]);
 
     $category = Category::create(array_merge([
