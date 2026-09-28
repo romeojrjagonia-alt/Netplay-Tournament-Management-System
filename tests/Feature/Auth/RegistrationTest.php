@@ -29,7 +29,8 @@ test('selecting a user type advances to step two', function () {
         ->assertSet('userType', 'player')
         ->call('nextStep')
         ->assertHasNoErrors()
-        ->assertSet('step', 2);
+        ->assertSet('step', 2)
+        ->assertDontSee('Sign Up with Google');
 });
 
 test('step two requires valid account details before advancing', function () {

@@ -11,6 +11,8 @@ use Livewire\Volt\Component;
 new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] class extends Component {
     public Tournament $tournament;
 
+    public ?string $publishError = null;
+
     public function mount(Tournament $tournament): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -18,8 +20,21 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         $this->tournament = $tournament;
     }
 
+    /**
+     * Publishing requires at least one category — categories can no longer
+     * be added once published, so an admin must add them before publishing
+     * (they may leave a draft empty and add categories later).
+     */
     public function togglePublish(): void
     {
+        if (! $this->tournament->is_published && $this->tournament->tournamentCategories()->doesntExist()) {
+            $this->publishError = 'Add at least one category before publishing this event.';
+
+            return;
+        }
+
+        $this->publishError = null;
+
         $this->tournament->update(['status' => $this->tournament->is_published ? 'draft' : 'published']);
     }
 
@@ -69,14 +84,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         <div class="flex items-center gap-5">
             <h2 class="flex-1 text-2xl font-bold text-white">{{ $tournament->name }}</h2>
 
-            <button type="button" disabled title="Editing a tournament isn't available yet" class="cursor-not-allowed rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black/40">
-                Edit Event
-            </button>
+            @unless ($tournament->is_published)
+                <a href="{{ route('admin.events.edit', $tournament) }}" wire:navigate class="rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    Edit Event
+                </a>
+            @endunless
 
             <button type="button" wire:click="togglePublish" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
                 {{ $tournament->is_published ? 'Unpublish Event' : 'Publish Event' }}
             </button>
         </div>
+
+        @if ($publishError)
+            <p class="text-right text-xs font-medium text-red-300">{{ $publishError }}</p>
+        @endif
 
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex flex-wrap items-center gap-8">
@@ -188,7 +209,16 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 </div>
             </div>
         @empty
-            <p class="py-10 text-center text-sm text-white">This event has no categories yet.</p>
+            <div class="flex h-[481px] flex-col items-center justify-center gap-6 rounded-[10px] bg-white">
+                <p class="text-[22px] text-black/70 italic">No Categories Added Yet</p>
+
+                @unless ($tournament->is_published)
+                    <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate class="flex items-center gap-1.5 rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
+                        <flux:icon.plus class="size-4" />
+                        Add Category
+                    </a>
+                @endunless
+            </div>
         @endforelse
     </div>
 </div>

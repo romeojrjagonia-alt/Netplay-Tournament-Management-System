@@ -5,6 +5,7 @@ use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
 
 function wizardAdmin(): User
@@ -96,6 +97,71 @@ test('step 1 in edit mode updates the existing draft instead of creating a new o
     expect($tournament->fresh()->name)->toBe('Renamed Tournament');
 });
 
+test('completing step 1 with a time range stores it as a formatted string', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('name', 'Inato Tournament')
+        ->set('format', 'round_robin')
+        ->set('dateStart', '2026-09-01')
+        ->set('dateEnd', '2026-09-30')
+        ->set('timeStart', '08:00')
+        ->set('timeEnd', '11:00')
+        ->set('registrationStart', '2026-06-01')
+        ->set('registrationEnd', '2026-08-31')
+        ->set('selectedDays', ['Sat'])
+        ->call('next')
+        ->assertRedirect();
+
+    $tournament = Tournament::firstWhere('name', 'Inato Tournament');
+
+    expect($tournament->time)->toBe('8:00 AM - 11:00 AM');
+});
+
+test('an end time before the start time is rejected', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('name', 'Inato Tournament')
+        ->set('format', 'round_robin')
+        ->set('dateStart', '2026-09-01')
+        ->set('dateEnd', '2026-09-30')
+        ->set('timeStart', '11:00')
+        ->set('timeEnd', '08:00')
+        ->set('registrationStart', '2026-06-01')
+        ->set('registrationEnd', '2026-08-31')
+        ->set('selectedDays', ['Sat'])
+        ->call('next')
+        ->assertHasErrors(['timeEnd' => 'after']);
+});
+
+test('editing a draft with an existing time range prefills the start and end inputs', function () {
+    $tournament = wizardDraftTournament(['time' => '8:00 AM - 11:00 AM']);
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details', ['tournament' => $tournament])
+        ->assertSet('timeStart', '08:00')
+        ->assertSet('timeEnd', '11:00');
+});
+
+test('replacing the cover image deletes the old file from disk', function () {
+    Storage::fake('public');
+
+    $tournament = wizardDraftTournament(['poster_path' => 'tournament-posters/old.jpg']);
+    Storage::disk('public')->put('tournament-posters/old.jpg', 'fake-image-contents');
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details', ['tournament' => $tournament])
+        ->set('poster', UploadedFile::fake()->create('new-cover.jpg', 10, 'image/jpeg'))
+        ->call('next')
+        ->assertRedirect();
+
+    Storage::disk('public')->assertMissing('tournament-posters/old.jpg');
+    expect($tournament->fresh()->poster_path)->not->toBe('tournament-posters/old.jpg');
+});
+
 test('step 1 requires a cover image to actually be an image', function () {
     $this->actingAs(wizardAdmin());
 
@@ -156,6 +222,18 @@ test('adding the same category twice to the same tournament is rejected', functi
     expect($tournament->tournamentCategories()->count())->toBe(1);
 });
 
+test('the pointing system is a dropdown restricted to the supported list', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
+        ->set('scoringSystem', 'Best of 3 to 21')
+        ->assertHasNoErrors('scoringSystem');
+
+    expect($tournament->fresh()->scoring_system)->toBe('Best of 3 to 21');
+});
+
 test('removing a category deletes it from the event', function () {
     $tournament = wizardDraftTournament();
     $tournamentCategory = wizardAddCategory($tournament);
@@ -168,14 +246,15 @@ test('removing a category deletes it from the event', function () {
     expect($tournament->tournamentCategories()->count())->toBe(0);
 });
 
-test('step 2 requires at least one category before continuing', function () {
+test('step 2 shows "Add Categories Later" and still advances when no category has been added', function () {
     $tournament = wizardDraftTournament();
 
     $this->actingAs(wizardAdmin());
 
     Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
+        ->assertSee('Add Categories Later')
         ->call('next')
-        ->assertHasErrors('categoryPreset');
+        ->assertRedirect(route('admin.events.wizard.review', $tournament));
 });
 
 test('step 2 advances to step 3 once a category exists', function () {
@@ -185,6 +264,8 @@ test('step 2 advances to step 3 once a category exists', function () {
     $this->actingAs(wizardAdmin());
 
     Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
+        ->assertSee('Next')
+        ->assertDontSee('Add Categories Later')
         ->call('next')
         ->assertRedirect(route('admin.events.wizard.review', $tournament));
 });
@@ -202,6 +283,40 @@ test('the review step shows the event and category recap', function () {
         ->assertSeeHtml(route('admin.events.show', $tournament));
 });
 
+test('the edit page saves changes and redirects back to the event page', function () {
+    $tournament = wizardDraftTournament(['name' => 'Old Name']);
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.edit', ['tournament' => $tournament])
+        ->assertSee('Save Changes')
+        ->assertSee('Edit Categories')
+        ->set('name', 'Renamed via Edit')
+        ->call('save')
+        ->assertRedirect(route('admin.events.show', $tournament));
+
+    expect($tournament->fresh()->name)->toBe('Renamed via Edit');
+});
+
+test('a non-admin cannot access the edit page', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(User::factory()->create(['role' => 'player']));
+
+    Volt::test('admin.events.edit', ['tournament' => $tournament])->assertForbidden();
+});
+
+test('a published event cannot be reached through the details, edit, or categories routes', function () {
+    $tournament = wizardDraftTournament(['status' => 'published']);
+    wizardAddCategory($tournament);
+
+    $admin = wizardAdmin();
+
+    $this->actingAs($admin)->get(route('admin.events.wizard.details', $tournament))->assertForbidden();
+    $this->actingAs($admin)->get(route('admin.events.edit', $tournament))->assertForbidden();
+    $this->actingAs($admin)->get(route('admin.events.wizard.categories', $tournament))->assertForbidden();
+});
+
 test('the create-event route resolves the details wizard without a tournament', function () {
     $this->actingAs(wizardAdmin())
         ->get(route('admin.events.create'))
@@ -217,4 +332,5 @@ test('the wizard step routes resolve the tournament via route model binding', fu
     $this->actingAs($admin)->get(route('admin.events.wizard.details', $tournament))->assertOk();
     $this->actingAs($admin)->get(route('admin.events.wizard.categories', $tournament))->assertOk();
     $this->actingAs($admin)->get(route('admin.events.wizard.review', $tournament))->assertOk();
+    $this->actingAs($admin)->get(route('admin.events.edit', $tournament))->assertOk();
 });

@@ -77,6 +77,11 @@ class User extends Authenticatable // implements MustVerifyEmail
         return $this->role === 'player';
     }
 
+    public function isUmpire(): bool
+    {
+        return $this->role === 'umpire';
+    }
+
     /**
      * The route name for this user's home dashboard, based on role.
      */
@@ -85,6 +90,7 @@ class User extends Authenticatable // implements MustVerifyEmail
         return match ($this->role) {
             'admin' => 'admin.dashboard',
             'player' => 'player.dashboard',
+            'umpire' => 'umpire.dashboard',
             default => 'dashboard',
         };
     }

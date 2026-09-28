@@ -119,6 +119,7 @@ test('stats only count pending and approved records for this tournament', functi
 
 test('publish toggle flips the tournament status', function () {
     $tournament = eventsShowTournament(['status' => 'draft']);
+    eventsShowCategory($tournament);
 
     $this->actingAs(eventsShowAdmin());
 
@@ -127,4 +128,45 @@ test('publish toggle flips the tournament status', function () {
         ->assertSee('Unpublish Event');
 
     expect($tournament->fresh()->status)->toBe('published');
+});
+
+test('publishing a draft with no categories is rejected', function () {
+    $tournament = eventsShowTournament(['status' => 'draft']);
+
+    $this->actingAs(eventsShowAdmin());
+
+    Volt::test('admin.events.show', ['tournament' => $tournament])
+        ->call('togglePublish')
+        ->assertSee('Add at least one category before publishing this event.')
+        ->assertSee('Publish Event');
+
+    expect($tournament->fresh()->status)->toBe('draft');
+});
+
+test('a draft with no categories shows an Add Category button, a published event does not', function () {
+    $draft = eventsShowTournament(['name' => 'Draft Event', 'status' => 'draft']);
+    $published = eventsShowTournament(['name' => 'Published Event', 'status' => 'published']);
+
+    $this->actingAs(eventsShowAdmin());
+
+    Volt::test('admin.events.show', ['tournament' => $draft])
+        ->assertSee('No Categories Added Yet')
+        ->assertSeeHtml(route('admin.events.wizard.categories', $draft));
+
+    Volt::test('admin.events.show', ['tournament' => $published])
+        ->assertSee('No Categories Added Yet')
+        ->assertDontSeeHtml(route('admin.events.wizard.categories', $published));
+});
+
+test('the Edit Event button only shows for a draft event', function () {
+    $draft = eventsShowTournament(['name' => 'Draft Event', 'status' => 'draft']);
+    $published = eventsShowTournament(['name' => 'Published Event', 'status' => 'published']);
+
+    $this->actingAs(eventsShowAdmin());
+
+    Volt::test('admin.events.show', ['tournament' => $draft])
+        ->assertSeeHtml(route('admin.events.edit', $draft));
+
+    Volt::test('admin.events.show', ['tournament' => $published])
+        ->assertDontSeeHtml(route('admin.events.edit', $published));
 });

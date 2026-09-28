@@ -20,12 +20,22 @@
         @include('partials.head', ['title' => $title.' — '.$suffix])
     </head>
     <body class="min-h-screen bg-white font-sans antialiased">
-        <div class="flex min-h-screen">
-            <aside class="flex w-[222px] shrink-0 flex-col bg-white">
-                <div class="flex items-center justify-center py-8">
+        <div class="flex min-h-screen" x-data="{ sidebarOpen: false }">
+            <div x-show="sidebarOpen" x-transition.opacity x-on:click="sidebarOpen = false"
+                 class="fixed inset-0 z-30 bg-black/40 lg:hidden" style="display: none;"></div>
+
+            <aside
+                class="fixed inset-y-0 left-0 z-40 flex w-[222px] shrink-0 -translate-x-full flex-col bg-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
+                :class="sidebarOpen && 'translate-x-0'"
+            >
+                <div class="flex items-center justify-between py-8 pr-4 pl-6 lg:justify-center lg:px-0">
                     <a href="{{ $brandRoute }}" wire:navigate class="bg-gradient-to-b from-[#051c1a] to-[#178279] bg-clip-text text-3xl font-bold text-transparent">
                         NetPlay
                     </a>
+
+                    <button type="button" class="cursor-pointer text-black lg:hidden" x-on:click="sidebarOpen = false" aria-label="Close menu">
+                        <flux:icon.x-mark class="size-6" />
+                    </button>
                 </div>
 
                 <nav class="flex flex-1 flex-col gap-1.5 px-2.5">
@@ -44,8 +54,14 @@
             </aside>
 
             <div class="flex flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
-                <header class="flex items-center justify-between border-b border-white/50 px-7 py-4">
-                    <h1 class="text-2xl font-bold text-white">{{ $title }}</h1>
+                <header class="flex items-center justify-between gap-3 border-b border-white/50 px-4 py-4 sm:px-7">
+                    <div class="flex items-center gap-3">
+                        <button type="button" class="cursor-pointer text-white lg:hidden" x-on:click="sidebarOpen = true" aria-label="Open menu">
+                            <flux:icon.bars-3 class="size-6" />
+                        </button>
+
+                        <h1 class="text-lg font-bold text-white sm:text-2xl">{{ $title }}</h1>
+                    </div>
 
                     <div>
                         @isset($profileModal)
@@ -72,7 +88,7 @@
                     </div>
                 </header>
 
-                <main class="flex-1 overflow-auto p-7">
+                <main class="flex-1 overflow-auto p-4 sm:p-7">
                     {{ $slot }}
                 </main>
             </div>

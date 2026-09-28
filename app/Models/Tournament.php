@@ -54,6 +54,24 @@ class Tournament extends Model
     }
 
     /**
+     * The date range as printed on score sheets, e.g. "December 5-7, 2025".
+     */
+    protected function dateRangeLabel(): Attribute
+    {
+        return Attribute::get(function (): string {
+            if ($this->date_start->isSameDay($this->date_end)) {
+                return $this->date_start->format('F j, Y');
+            }
+
+            if ($this->date_start->isSameMonth($this->date_end)) {
+                return $this->date_start->format('F j').'-'.$this->date_end->format('j, Y');
+            }
+
+            return $this->date_start->format('F j, Y').' - '.$this->date_end->format('F j, Y');
+        });
+    }
+
+    /**
      * Published tournaments currently within their registration window.
      */
     public function scopeAcceptingRegistrations(Builder $query): void

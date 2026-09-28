@@ -6,7 +6,8 @@ use Livewire\Volt\Volt as LivewireVolt;
 test('login screen can be rendered', function () {
     $response = $this->get('/login');
 
-    $response->assertStatus(200);
+    $response->assertStatus(200)
+        ->assertDontSee('Sign In with Google');
 });
 
 test('players are redirected to the player dashboard after login', function () {

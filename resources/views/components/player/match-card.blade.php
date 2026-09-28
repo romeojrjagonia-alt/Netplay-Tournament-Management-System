@@ -9,6 +9,7 @@
     'teamBPlayers' => [],
     'footerNote' => null,
     'result' => null,
+    'winner' => null,
 ])
 
 <div {{ $attributes->class(['flex flex-col gap-[11px] rounded-[5px] border border-[#d3d3d3] bg-white px-5 pt-2.5 pb-5']) }}>
@@ -44,7 +45,7 @@
             @endif
         </div>
 
-        <div class="flex items-center gap-[15px]">
+        <div class="flex flex-col gap-[15px] sm:flex-row sm:items-center">
             <x-player.team-panel :name="$teamAName" :players="$teamAPlayers" />
             <x-player.team-panel :name="$teamBName" :players="$teamBPlayers" />
         </div>
@@ -59,6 +60,10 @@
             @endif
 
             <p class="text-[13px] text-black">{{ $result['note'] }}</p>
+        </div>
+    @elseif ($winner)
+        <div class="flex items-center border-t border-[#d3d3d3] px-2.5 pt-[5px]">
+            <p class="text-[13px] text-black">Winner <span class="font-bold">{{ $winner }}</span></p>
         </div>
     @elseif ($footerNote)
         <div class="flex items-center border-t border-[#d3d3d3] px-2.5 pt-[5px]">

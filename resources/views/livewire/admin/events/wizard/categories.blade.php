@@ -40,9 +40,24 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         'mixed_doubles' => ['name' => 'Mixed Doubles', 'gender' => 'mixed', 'team_size' => 2],
     ];
 
+    /**
+     * The only pointing system currently supported — a dropdown rather than
+     * free text so every event scores the same way GameRules implements
+     * (best of 3 to 21). Extend this list when other systems are supported.
+     *
+     * @var array<string, string>
+     */
+    public array $scoringSystems = [
+        'Best of 3 to 21' => '21-Point Rally',
+    ];
+
     public function mount(Tournament $tournament): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
+
+        // Published events are frozen — categories can no longer be added,
+        // removed, or repriced (NETPLAY.md admin workflow).
+        abort_if($tournament->is_published, 403);
 
         $this->tournament = $tournament;
         $this->scoringSystem = $tournament->scoring_system;
@@ -50,11 +65,19 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
     public function updatedScoringSystem(string $value): void
     {
+        abort_if($this->tournament->is_published, 403);
+
+        $this->validateOnly('scoringSystem', [
+            'scoringSystem' => ['required', 'in:'.implode(',', array_keys($this->scoringSystems))],
+        ]);
+
         $this->tournament->update(['scoring_system' => $value]);
     }
 
     public function addCategory(): void
     {
+        abort_if($this->tournament->is_published, 403);
+
         $data = $this->validate([
             'categoryPreset' => ['required', 'in:'.implode(',', array_keys($this->presets))],
             'level' => ['required', 'string', 'max:255'],
@@ -95,6 +118,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
     public function removeCategory(int $tournamentCategoryId): void
     {
+        abort_if($this->tournament->is_published, 403);
+
         $this->tournament->tournamentCategories()
             ->whereDoesntHave('playerApplications')
             ->where('id', $tournamentCategoryId)
@@ -117,14 +142,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         $this->redirect(route('admin.events.wizard.details', $this->tournament), navigate: true);
     }
 
+    /**
+     * Categories can be added later from the event page (NETPLAY.md admin
+     * workflow) — this step never blocks continuing. Having at least one
+     * category is only enforced when the admin attempts to publish.
+     */
     public function next(): void
     {
-        if ($this->categories->isEmpty()) {
-            $this->addError('categoryPreset', 'Add at least one category before continuing.');
-
-            return;
-        }
-
         $this->redirect(route('admin.events.wizard.review', $this->tournament), navigate: true);
     }
 }; ?>
@@ -134,7 +158,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
     <div class="flex w-[814px] flex-col gap-5 rounded-[10px] bg-white px-[35px] py-[23px]">
         <div class="border-b border-[#138177] pb-4">
-            <x-player.registration-field label="Pointing System" model="scoringSystem" placeholder="e.g. Best of 3 to 21" />
+            <x-player.registration-select label="Pointing System" model="scoringSystem" :options="$this->scoringSystems" />
         </div>
 
         <div class="flex items-end gap-3">
@@ -190,8 +214,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         <button type="button" wire:click="back" class="w-[126px] cursor-pointer rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Back
         </button>
-        <button type="button" wire:click="next" class="w-[126px] cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
-            Next
+        <button type="button" wire:click="next" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium whitespace-nowrap text-white">
+            {{ $this->categories->isEmpty() ? 'Add Categories Later' : 'Next' }}
         </button>
     </div>
 </div>
