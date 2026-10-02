@@ -133,27 +133,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             @endif
         </div>
 
-        <div class="flex items-center justify-center gap-5">
-            <div class="flex h-10 items-center gap-2 overflow-hidden rounded-[3px] bg-white/50 px-2.5 text-sm text-[#9cee69] mix-blend-soft-light">
-                <flux:icon.squares-2x2 class="size-5 shrink-0" />
-                Dashboard
-            </div>
-
-            <span title="Bracket management is coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
-                <flux:icon.share class="size-5 shrink-0" />
-                Bracket
-            </span>
-
-            <span title="Per-event applications are coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
-                <flux:icon.folder class="size-5 shrink-0" />
-                Applications
-            </span>
-
-            <span title="Officials management is coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
-                <flux:icon.users class="size-5 shrink-0" />
-                Officials
-            </span>
-        </div>
+        <x-admin.event-tabs :tournament="$tournament" active="dashboard" />
     </div>
 
     <div class="flex flex-wrap items-center gap-[30px]">

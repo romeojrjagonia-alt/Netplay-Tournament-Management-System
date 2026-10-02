@@ -5,6 +5,7 @@ namespace App\Support\Admin;
 use App\Models\Tournament;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\WithFileUploads;
 
@@ -39,6 +40,10 @@ trait ManagesEventDetailsForm
 
     public string $registrationEnd = '';
 
+    public string $tiebreakerFirst = '';
+
+    public string $tiebreakerSecond = '';
+
     /** @var array<int, string> */
     public array $selectedDays = [];
 
@@ -61,6 +66,8 @@ trait ManagesEventDetailsForm
         $this->dateEnd = $tournament->date_end->format('Y-m-d');
         $this->registrationStart = $tournament->registration_start->format('Y-m-d');
         $this->registrationEnd = $tournament->registration_end->format('Y-m-d');
+        $this->tiebreakerFirst = $tournament->tiebreaker_rules[0] ?? '';
+        $this->tiebreakerSecond = $tournament->tiebreaker_rules[1] ?? '';
         $this->selectedDays = $tournament->specific_days
             ? array_map('trim', explode(',', $tournament->specific_days))
             : [];
@@ -105,6 +112,8 @@ trait ManagesEventDetailsForm
             'registrationStart' => ['required', 'date'],
             'registrationEnd' => ['required', 'date', 'after_or_equal:registrationStart'],
             'selectedDays' => ['required', 'array', 'min:1'],
+            'tiebreakerFirst' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES))],
+            'tiebreakerSecond' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES)), 'different:tiebreakerFirst'],
             'poster' => ['nullable', 'image', 'max:5120'],
         ]);
     }
@@ -132,6 +141,10 @@ trait ManagesEventDetailsForm
             'specific_days' => collect($this->weekOrder)->filter(fn ($day) => in_array($day, $data['selectedDays'], true))->implode(', '),
             'registration_start' => $data['registrationStart'],
             'registration_end' => $data['registrationEnd'],
+            // Only round robin uses tiebreakers; the second is meaningless without the first.
+            'tiebreaker_rules' => $data['format'] === 'round_robin'
+                ? (array_values(array_filter([$data['tiebreakerFirst'] ?? null, $data['tiebreakerSecond'] ?? null])) ?: null)
+                : null,
         ];
 
         if ($this->poster) {

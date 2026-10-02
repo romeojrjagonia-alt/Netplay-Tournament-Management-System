@@ -3,7 +3,9 @@
 namespace App\Observers;
 
 use App\Models\Matches;
+use App\Models\PlayerApplication;
 use App\Models\PlayerStatistic;
+use App\Support\Standings\RoundRobinStandings;
 
 class MatchObserver
 {
@@ -112,6 +114,16 @@ class MatchObserver
      */
     private function promoteChampionshipWinners(Matches $matches, int $winnerApplicationId): void
     {
+        $matches->loadMissing('tournamentCategory.tournament');
+
+        // A round robin has no single final match; its champion is decided
+        // from the standings once every match is done.
+        if ($matches->tournamentCategory->tournament->format === 'round_robin') {
+            $this->promoteRoundRobinChampion($matches);
+
+            return;
+        }
+
         $finalRound = Matches::where('tournament_category_id', $matches->tournament_category_id)->max('round');
 
         if ((int) $finalRound !== $matches->round) {
@@ -127,6 +139,34 @@ class MatchObserver
         if (! $winningApplication) {
             return;
         }
+
+        $this->promotePlayers($winningApplication);
+    }
+
+    /**
+     * Once every match in a round-robin category is completed, promote the
+     * standings leader. An unresolved tie for first promotes no one.
+     */
+    private function promoteRoundRobinChampion(Matches $matches): void
+    {
+        $hasUnfinishedMatches = Matches::where('tournament_category_id', $matches->tournament_category_id)
+            ->where('status', '!=', 'completed')
+            ->exists();
+
+        if ($hasUnfinishedMatches) {
+            return;
+        }
+
+        $champion = app(RoundRobinStandings::class)->champion($matches->tournamentCategory);
+
+        if ($champion) {
+            $this->promotePlayers($champion);
+        }
+    }
+
+    private function promotePlayers(PlayerApplication $winningApplication): void
+    {
+        $winningApplication->loadMissing('applicationPlayers.player');
 
         foreach ($winningApplication->applicationPlayers as $applicationPlayer) {
             $player = $applicationPlayer->player;

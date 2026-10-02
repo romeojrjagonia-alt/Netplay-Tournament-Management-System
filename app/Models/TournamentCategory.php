@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class TournamentCategory extends Model
 {
@@ -65,6 +66,46 @@ class TournamentCategory extends Model
                     ->where(fn (Builder $q) => $q->whereNull('age_max')->orWhere('age_max', '>=', $age));
             }
         });
+    }
+
+    /**
+     * Whether this category's matches have already been generated.
+     */
+    public function hasGeneratedDraw(): bool
+    {
+        return $this->matches()->exists();
+    }
+
+    /**
+     * Whether `$application` could be moved into this category.
+     *
+     * `team_size_mismatch` is a hard block; `ineligible_players` (players
+     * whose gender or age falls outside this category) is only a warning an
+     * admin may override.
+     *
+     * @return array{team_size_mismatch: bool, ineligible_players: Collection<int, Player>}
+     */
+    public function eligibilityIssuesFor(PlayerApplication $application): array
+    {
+        $application->loadMissing('applicationPlayers.player');
+        $this->loadMissing('category');
+
+        $players = $application->applicationPlayers->map->player->filter();
+        $category = $this->category;
+
+        $ineligiblePlayers = $players->reject(function (Player $player) use ($category): bool {
+            $genderOk = $category->gender === 'mixed' || $player->gender === $category->gender;
+            $ageOk = $player->age === null
+                || (($category->age_min === null || $player->age >= $category->age_min)
+                    && ($category->age_max === null || $player->age <= $category->age_max));
+
+            return $genderOk && $ageOk;
+        })->values();
+
+        return [
+            'team_size_mismatch' => $application->applicationPlayers->count() !== (int) $category->team_size,
+            'ineligible_players' => $ineligiblePlayers,
+        ];
     }
 
     public function tournament(): BelongsTo

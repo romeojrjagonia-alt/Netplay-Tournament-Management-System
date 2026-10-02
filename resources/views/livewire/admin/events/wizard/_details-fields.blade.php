@@ -69,8 +69,24 @@
         <x-player.registration-select
             label="Tournament Format"
             model="format"
+            :live="true"
             :options="['single_elimination' => 'Single Elimination', 'round_robin' => 'Round Robin', 'double_elimination' => 'Double Elimination']"
         />
+
+        @if ($format === 'round_robin')
+            <x-player.registration-select
+                label="1st Tiebreaker"
+                model="tiebreakerFirst"
+                placeholder="None"
+                :options="\App\Models\Tournament::TIEBREAKER_RULES"
+            />
+            <x-player.registration-select
+                label="2nd Tiebreaker (optional)"
+                model="tiebreakerSecond"
+                placeholder="None"
+                :options="\App\Models\Tournament::TIEBREAKER_RULES"
+            />
+        @endif
     </div>
 
     <div class="flex flex-col gap-3">

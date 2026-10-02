@@ -49,6 +49,14 @@ Volt::route('admin/events/{tournament}/review', 'admin.events.wizard.review')
     ->middleware(['auth', 'verified'])
     ->name('admin.events.wizard.review');
 
+Volt::route('admin/events/{tournament}/schedule', 'admin.events.schedule.index')
+    ->middleware(['auth', 'verified'])
+    ->name('admin.events.schedule.index');
+
+Volt::route('admin/events/{tournament}/categories/{tournamentCategory}/schedule', 'admin.events.schedule.show')
+    ->middleware(['auth', 'verified'])
+    ->name('admin.events.schedule.show');
+
 Volt::route('admin/events/{tournament}', 'admin.events.show')
     ->middleware(['auth', 'verified'])
     ->name('admin.events.show');

@@ -28,6 +28,18 @@ class Tournament extends Model
         'registration_start',
         'registration_end',
         'status',
+        'tiebreaker_rules',
+    ];
+
+    /**
+     * Round-robin tiebreakers an admin can chain, keyed by the value stored
+     * in `tiebreaker_rules`.
+     *
+     * @var array<string, string>
+     */
+    public const TIEBREAKER_RULES = [
+        'head_to_head' => 'Head-to-Head',
+        'point_differential' => 'Point Differential',
     ];
 
     /**
@@ -42,6 +54,7 @@ class Tournament extends Model
             'date_end' => 'date',
             'registration_start' => 'date',
             'registration_end' => 'date',
+            'tiebreaker_rules' => 'array',
         ];
     }
 
