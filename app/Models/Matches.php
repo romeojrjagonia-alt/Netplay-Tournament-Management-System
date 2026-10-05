@@ -3,7 +3,6 @@
 namespace App\Models;
 
 use App\Observers\MatchObserver;
-use App\Support\Badminton\GameRules;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +11,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[ObservedBy([MatchObserver::class])]
 class Matches extends Model
 {
+    /** Rally columns on the printed score sheet. */
+    public const SCORESHEET_RALLIES = 31;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -109,56 +111,53 @@ class Matches extends Model
     }
 
     /**
-     * The sets to lay out on the score sheet: each side's final point total
-     * and the side that won it. Always at least $minimumSets entries, so the
-     * printed form keeps blank sets to fill in by hand.
+     * The players on the given side, in entry order, one score sheet row each.
      *
-     * @return list<array{number: int, scores: array{A: int, B: int}, winner: 'A'|'B'|null}>
+     * @return list<array{id: int, name: string}>
      */
-    public function scoresheetSets(int $minimumSets = 2): array
+    public function sidePlayers(string $side): array
+    {
+        $this->loadMissing('matchApplications.application.applicationPlayers.player');
+
+        return $this->applicationForSide($side)
+            ?->applicationPlayers
+            ->map(fn ($applicationPlayer) => ['id' => $applicationPlayer->player_id, 'name' => $applicationPlayer->player?->name ?? ''])
+            ->values()
+            ->all() ?? [];
+    }
+
+    /**
+     * One entry per set to print on the score sheet, each its own sheet.
+     * `scorers` maps rally number => the player who won that rally, which is
+     * what the black cells show. The form only has 31 rally columns, so a set
+     * that runs longer prints its first 31 rallies. Always at least one set,
+     * so an unplayed match still prints a blank sheet.
+     *
+     * @return list<array{number: int, winner: 'A'|'B'|null, scorers: array<int, int>}>
+     */
+    public function scoresheetSets(): array
     {
         $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
 
         $playerSideMap = $this->playerSideMap();
         $games = $this->games->sortBy('game_number')->values();
-        $sets = [];
 
-        foreach (range(1, max($minimumSets, $games->count())) as $number) {
-            $game = $games->firstWhere('game_number', $number);
+        if ($games->isEmpty()) {
+            return [['number' => 1, 'winner' => null, 'scorers' => []]];
+        }
 
-            $sets[] = [
-                'number' => $number,
-                'scores' => $game?->scores($playerSideMap) ?? ['A' => 0, 'B' => 0],
-                'winner' => $game?->winningSide($playerSideMap),
+        return $games->map(function (MatchGame $game): array {
+            $scorers = $game->rallies
+                ->where('rally_number', '<=', self::SCORESHEET_RALLIES)
+                ->pluck('scoring_player_id', 'rally_number')
+                ->all();
+
+            return [
+                'number' => $game->game_number,
+                'winner' => $game->winningSide($this->playerSideMap()),
+                'scorers' => $scorers,
             ];
-        }
-
-        return $sets;
-    }
-
-    /**
-     * The side that won the match: the recorded winner once it's confirmed,
-     * otherwise whichever side has already taken 2 sets.
-     *
-     * @return 'A'|'B'|null
-     */
-    public function winnerSide(): ?string
-    {
-        $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
-
-        if ($this->winner_application_id) {
-            foreach (['A', 'B'] as $side) {
-                if ($this->applicationForSide($side)?->id === $this->winner_application_id) {
-                    return $side;
-                }
-            }
-        }
-
-        $playerSideMap = $this->playerSideMap();
-
-        return GameRules::matchWinner(
-            $this->games->map(fn (MatchGame $game) => $game->winningSide($playerSideMap))->filter()->values()->all()
-        );
+        })->all();
     }
 
     /**

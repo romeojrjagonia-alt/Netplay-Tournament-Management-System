@@ -1,6 +1,4 @@
 @php
-    use App\Support\Badminton\GameRules;
-
     $match->loadMissing([
         'tournamentCategory.tournament',
         'tournamentCategory.category',
@@ -11,18 +9,20 @@
 
     $tournament = $match->tournamentCategory->tournament;
     $sets = $match->scoresheetSets();
-    $sideLabels = ['A' => $match->sideLabel('A') ?: 'Team A', 'B' => $match->sideLabel('B') ?: 'Team B'];
-    $winnerSide = $match->winnerSide();
+    $teams = [
+        'A' => ['label' => 'Team 1', 'players' => $match->sidePlayers('A'), 'names' => $match->sideLabel('A')],
+        'B' => ['label' => 'Team 2', 'players' => $match->sidePlayers('B'), 'names' => $match->sideLabel('B')],
+    ];
     $lineJudges = collect([$match->line_judge_1_name, $match->line_judge_2_name])->filter()->implode(', ');
-    $columns = range(1, GameRules::POINT_CAP + 1);
-    $span = count($columns) + 1;
 
-    $nameWidth = 170;
-    $cellWidth = 27;
+    // Landscape A4 with 0.4in margins leaves 1044px: a 176px name column and
+    // 31 number cells of 28px.
+    $nameWidth = 176;
+    $cellWidth = 28;
 
     $border = 'border:1px solid #000000;';
-    $text = 'font-family:Arial,sans-serif;font-size:10pt;color:#000000;';
-    $box = $border.$text.'padding:4px 6px;';
+    $text = 'font-family:Arial,sans-serif;color:#000000;';
+    $box = $border.$text.'font-size:10pt;padding:4px 6px;';
 @endphp
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
@@ -36,62 +36,74 @@
     </head>
     <body>
         <div class="Section1">
-            <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:{{ $nameWidth + $cellWidth * count($columns) }}px;">
-                <tr>
-                    <td colspan="{{ $span }}" align="center" style="{{ $box }}text-align:center;">
-                        <b style="font-size:14pt;">{{ strtoupper($tournament->name) }}</b><br>
-                        {{ $tournament->date_range_label }}
-                    </td>
-                </tr>
+            @foreach ($sets as $set)
+                @php
+                    $columns = range(1, \App\Models\Matches::SCORESHEET_RALLIES);
+                    $total = count($columns) + 1;
+                @endphp
 
-                <tr>
-                    <td colspan="11" style="{{ $box }}"><b>GAME NO</b>&nbsp;&nbsp;{{ $match->id }}</td>
-                    <td colspan="11" style="{{ $box }}"><b>COURT</b>&nbsp;&nbsp;{{ $match->court }}</td>
-                    <td colspan="10" style="{{ $box }}"><b>BRACKET</b>&nbsp;&nbsp;{{ str($match->bracket_type)->headline() }}</td>
-                </tr>
+                @if (! $loop->first)
+                    <br clear="all" style="mso-special-character:line-break;page-break-before:always">
+                @endif
 
-                <tr>
-                    <td colspan="22" style="{{ $box }}"><b>CATEGORY</b>&nbsp;&nbsp;{{ $match->tournamentCategory->categoryLabel }}</td>
-                    <td colspan="10" style="{{ $box }}"><b>TIME</b>&nbsp;&nbsp;{{ $match->scheduled_at?->format('g:i A, M j, Y') }}</td>
-                </tr>
-
-                @foreach ($sets as $set)
-                    <tr bgcolor="#eeeeee" style="background:#eeeeee;">
-                        <td width="{{ $nameWidth }}" style="{{ $border.$text }}font-size:8pt;padding:3px 6px;"><b>SET {{ $set['number'] }}</b></td>
-                        @foreach ($columns as $number)
-                            <td width="{{ $cellWidth }}" align="center" style="{{ $border.$text }}font-size:8pt;text-align:center;"><b>{{ $number }}</b></td>
-                        @endforeach
+                <table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:{{ $nameWidth + $cellWidth * count($columns) }}px;">
+                    <tr>
+                        <td colspan="{{ $total }}" align="center" style="{{ $box }}text-align:center;">
+                            <b style="font-size:14pt;">{{ strtoupper($tournament->name) }}</b><br>
+                            {{ $tournament->date_range_label }}
+                        </td>
                     </tr>
 
-                    @foreach (['A', 'B'] as $side)
-                        <tr style="height:30px;">
-                            <td height="30" style="{{ $border.$text }}font-size:8pt;padding:3px 6px;"><b>{{ $sideLabels[$side] }}</b></td>
+                    <tr>
+                        <td colspan="3" style="{{ $box }}"><b>GAME NO:</b>&nbsp;&nbsp;{{ $match->id }}</td>
+                        <td colspan="8" style="{{ $box }}">Set: {{ $set['number'] }}</td>
+                        <td colspan="11" style="{{ $box }}"><b>COURT:</b>&nbsp;{{ $match->court }}</td>
+                        <td colspan="{{ $total - 22 }}" style="{{ $box }}"><b>BRACKET:</b>&nbsp;&nbsp;{{ str($match->bracket_type)->headline() }}</td>
+                    </tr>
+
+                    <tr>
+                        <td colspan="{{ $total - 10 }}" style="{{ $box }}"><b>CATEGORY:</b>&nbsp;{{ $match->tournamentCategory->categoryLabel }}</td>
+                        <td colspan="10" style="{{ $box }}"><b>TIME:</b>&nbsp;{{ $match->scheduled_at?->format('g:i A, M j, Y') }}</td>
+                    </tr>
+
+                    @foreach ($teams as $team)
+                        <tr bgcolor="#eeeeee" style="background:#eeeeee;">
+                            <td width="{{ $nameWidth }}" style="{{ $border.$text }}font-size:8pt;padding:2px 6px;"><b>{{ $team['label'] }}</b></td>
                             @foreach ($columns as $number)
-                                @if ($number <= $set['scores'][$side])
-                                    <td height="30" bgcolor="#000000" style="{{ $border }}background:#000000;">&nbsp;</td>
-                                @else
-                                    <td height="30" style="{{ $border }}">&nbsp;</td>
-                                @endif
+                                <td width="{{ $cellWidth }}" align="center" style="{{ $border.$text }}font-size:8pt;text-align:center;"><b>{{ $number }}</b></td>
                             @endforeach
                         </tr>
-                    @endforeach
-                @endforeach
 
-                <tr style="height:90px;">
-                    <td colspan="10" height="90" valign="top" style="{{ $box }}">
-                        <b>UMPIRE:</b> {{ $match->assignedUmpire?->name }}
-                        @if ($lineJudges)
-                            <br><span style="font-size:8pt;">Line judges: {{ $lineJudges }}</span>
-                        @endif
-                    </td>
-                    @foreach (['A', 'B'] as $side)
-                        <td colspan="6" height="90" valign="bottom" style="{{ $box }}font-size:8pt;">
-                            {{ $sideLabels[$side] }}<br><br><br><br><br><span align="center" style="display:block;text-align:center;">Signature</span>
-                        </td>
+                        @foreach ($team['players'] as $player)
+                            <tr style="height:30px;">
+                                <td height="30" style="{{ $border.$text }}font-size:8pt;padding:2px 6px;"><b>{{ $player['name'] }}</b></td>
+                                @foreach ($columns as $number)
+                                    @if (($set['scorers'][$number] ?? null) === $player['id'])
+                                        <td height="30" bgcolor="#000000" style="{{ $border }}background:#000000;">&nbsp;</td>
+                                    @else
+                                        <td height="30" style="{{ $border }}">&nbsp;</td>
+                                    @endif
+                                @endforeach
+                            </tr>
+                        @endforeach
                     @endforeach
-                    <td colspan="10" height="90" valign="top" style="{{ $box }}"><b>WINNER:</b> {{ $winnerSide ? $sideLabels[$winnerSide] : '' }}</td>
-                </tr>
-            </table>
+
+                    <tr style="height:90px;">
+                        <td colspan="10" height="90" valign="top" style="{{ $box }}">
+                            <b>UMPIRE:</b> {{ $match->assignedUmpire?->name }}
+                            @if ($lineJudges)
+                                <br><span style="font-size:8pt;">Line judges: {{ $lineJudges }}</span>
+                            @endif
+                        </td>
+                        @foreach ($teams as $team)
+                            <td colspan="6" height="90" valign="bottom" style="{{ $box }}font-size:8pt;">
+                                {{ $team['names'] }}<br><br><br><br><br><span align="center" style="display:block;text-align:center;">Signature</span>
+                            </td>
+                        @endforeach
+                        <td colspan="{{ $total - 22 }}" height="90" valign="top" style="{{ $box }}"><b>WINNER:</b>&nbsp;&nbsp;{{ $set['winner'] === 'A' ? $teams['A']['label'] : ($set['winner'] === 'B' ? $teams['B']['label'] : '') }}</td>
+                    </tr>
+                </table>
+            @endforeach
         </div>
     </body>
 </html>

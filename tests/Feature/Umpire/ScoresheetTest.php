@@ -127,12 +127,11 @@ test('the printed scoresheet follows the paper form layout', function () {
         ->assertOk()
         ->assertSee('Inato Tournament')
         ->assertSee('July 1-31, 2026')
-        ->assertSee(['GAME NO', 'COURT', 'BRACKET', 'CATEGORY', 'TIME'])
-        ->assertSee(['SET 1', 'SET 2'])
+        ->assertSee(['GAME NO:', 'Set: 1', 'COURT:', 'BRACKET:', 'CATEGORY:', 'TIME:', 'Team 1', 'Team 2'])
         ->assertSee(['UMPIRE:', 'Signature', 'WINNER:'], false);
 });
 
-test('the downloaded document uses the same layout with a landscape page and filled score cells', function () {
+test('the downloaded document uses the same layout with a landscape page and one black cell per rally won', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
 
@@ -141,35 +140,69 @@ test('the downloaded document uses the same layout with a landscape page and fil
     $response = $this->get(route('umpire.matches.scoresheet.download', $match))
         ->assertOk()
         ->assertSee('INATO TOURNAMENT', false)
-        ->assertSee(['GAME NO', 'COURT', 'BRACKET', 'CATEGORY', 'TIME', 'UMPIRE:', 'Signature', 'WINNER:'], false)
+        ->assertSee(['GAME NO:', 'Set: 1', 'COURT:', 'BRACKET:', 'CATEGORY:', 'TIME:', 'Team 1', 'Team 2', 'UMPIRE:', 'Signature', 'WINNER:'], false)
         ->assertSee('mso-page-orientation: landscape', false);
 
-    // One point each so far: a single filled cell per side.
+    // Two rallies so far (one won by each player): exactly two black cells.
     expect(substr_count($response->getContent(), 'bgcolor="#000000"'))->toBe(2);
 });
 
-test('the score sheet always lays out at least two sets and reports each side\'s score', function () {
+test('the black cell for each rally is in the row of the player who won it', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
 
-    $sets = $match->scoresheetSets();
+    $set = $match->scoresheetSets()[0];
+    $playerA = $match->sidePlayers('A')[0];
+    $playerB = $match->sidePlayers('B')[0];
 
-    expect($sets)->toHaveCount(2);
-    expect($sets[0]['scores'])->toBe(['A' => 1, 'B' => 1]);
-    expect($sets[0]['winner'])->toBeNull();
-    expect($sets[1]['scores'])->toBe(['A' => 0, 'B' => 0]);
+    expect($set['scorers'])->toBe([1 => $playerA['id'], 2 => $playerB['id']]);
+    expect($set['winner'])->toBeNull();
 });
 
-test('the winning side comes from the confirmed result, and is empty while undecided', function () {
+test('every set prints on its own sheet, and an unplayed match still prints a blank one', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
+    MatchGame::create(['match_id' => $match->id, 'game_number' => 2]);
 
-    expect($match->winnerSide())->toBeNull();
+    expect($match->fresh()->scoresheetSets())->toHaveCount(2);
 
-    $match->update([
-        'status' => 'completed',
-        'winner_application_id' => $match->matchApplications()->orderBy('id')->first()->application_id,
-    ]);
+    $this->actingAs($umpire);
+    $this->get(route('umpire.matches.scoresheet', $match))->assertSee(['Set: 1', 'Set: 2']);
 
-    expect($match->fresh()->winnerSide())->toBe('A');
+    $blank = scoresheetMatch($umpire);
+    $blank->games()->delete();
+
+    expect($blank->fresh()->scoresheetSets())->toHaveCount(1);
+    expect($blank->fresh()->scoresheetSets()[0]['scorers'])->toBe([]);
+});
+
+test('the grid stays at 31 rallies: later rallies are not printed', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = scoresheetMatch($umpire);
+    $game = $match->games()->first();
+    $player = $match->sidePlayers('A')[0];
+
+    Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $player['id'], 'rally_number' => 40]);
+
+    $set = $match->fresh()->scoresheetSets()[0];
+
+    expect(array_keys($set['scorers']))->toBe([1, 2]);
+    expect(array_key_exists(40, $set['scorers']))->toBeFalse();
+});
+
+test('the winner shown on a sheet is that set\'s winner and stays empty while the set is undecided', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = scoresheetMatch($umpire);
+    $game = $match->games()->first();
+    $playerA = $match->sidePlayers('A')[0];
+
+    $this->actingAs($umpire);
+    expect($match->scoresheetSets()[0]['winner'])->toBeNull();
+
+    foreach (range(3, 22) as $n) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $playerA['id'], 'rally_number' => $n]);
+    }
+
+    expect($match->fresh()->scoresheetSets()[0]['winner'])->toBe('A');
+    $this->get(route('umpire.matches.scoresheet', $match))->assertSee('Team 1');
 });
