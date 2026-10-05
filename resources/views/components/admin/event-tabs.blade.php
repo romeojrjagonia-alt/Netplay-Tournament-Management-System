@@ -5,7 +5,7 @@
     $linkClasses = 'text-white';
 @endphp
 
-<div class="flex items-center justify-center gap-5">
+<div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
     <a href="{{ route('admin.events.show', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'dashboard', $linkClasses => $active !== 'dashboard'])>
         <flux:icon.squares-2x2 class="size-5 shrink-0" />
         Dashboard

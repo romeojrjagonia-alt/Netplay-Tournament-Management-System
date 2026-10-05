@@ -75,26 +75,26 @@ new #[Layout('components.layouts.auth.signin')] class extends Component {
 
 <div class="relative w-full max-w-[994px] overflow-hidden rounded-[20px] bg-white shadow-2xl">
     <a href="{{ route('home') }}" wire:navigate
-       class="absolute top-5 right-5 z-10 text-teal-800 transition hover:text-teal-600">
+       class="absolute top-5 right-5 z-10 text-white transition hover:text-white/80 lg:text-teal-800 lg:hover:text-teal-600">
         <flux:icon.x-mark class="size-7" />
     </a>
 
-    <div class="flex flex-col md:flex-row">
+    <div class="flex flex-col lg:flex-row">
         {{-- Welcome panel --}}
-        <div class="relative hidden shrink-0 overflow-hidden md:block md:w-[464px]"
+        <div class="relative shrink-0 overflow-hidden lg:w-[464px]"
              style="background-image: linear-gradient(202deg, #8CC7C1 3.75%, #77B9B3 12.29%, #61ABA4 19.34%, #3E948D 30.06%, #11776E 41.94%, #0D5750 53.65%, #083531 78.04%, #051C1A 101.46%);">
             <img src="{{ asset('images/auth/grid-pattern.svg') }}" alt=""
                  class="absolute inset-0 h-full w-full object-cover">
 
-            <div class="relative flex h-full min-h-[608px] flex-col justify-end p-10 pb-14">
-                <h2 class="text-[37px] leading-[1.15] text-white">
+            <div class="relative flex h-full min-h-[150px] flex-col justify-end p-6 pt-16 lg:min-h-[608px] lg:p-10 lg:pb-14">
+                <h2 class="text-3xl leading-[1.15] text-white lg:text-[37px]">
                     Welcome Back to<br><span class="font-bold">NetPlay!</span>
                 </h2>
             </div>
         </div>
 
         {{-- Form panel --}}
-        <div class="flex w-full flex-col items-center gap-8 px-8 py-14 md:w-[530px] md:px-14">
+        <div class="flex w-full flex-col items-center gap-8 px-8 py-14 lg:w-[530px] md:px-14">
             <h1 class="text-2xl font-bold text-black">Sign In</h1>
 
             <x-auth-session-status class="text-center" :status="session('status')" />

@@ -38,7 +38,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 <div class="flex flex-col items-center gap-5">
     <x-admin.wizard-steps :current="3" />
 
-    <div class="flex w-[814px] flex-col gap-[26px] rounded-[10px] bg-white px-[33px] py-[35px]">
+    <div class="flex w-full max-w-[814px] flex-col gap-[26px] rounded-[10px] bg-white px-4 py-6 sm:px-[33px] sm:py-[35px]">
         <div class="flex flex-col gap-[17px]">
             <div class="flex items-center justify-between">
                 <span class="text-sm font-bold text-black">Event Details</span>
@@ -137,7 +137,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         </div>
     </div>
 
-    <div class="flex w-[814px] justify-end gap-6">
+    <div class="flex w-full max-w-[814px] justify-end gap-6">
         <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Back
         </a>

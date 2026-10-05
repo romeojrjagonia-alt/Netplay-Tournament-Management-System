@@ -156,21 +156,21 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 <div class="flex flex-col items-center gap-5">
     <x-admin.wizard-steps :current="2" />
 
-    <div class="flex w-[814px] flex-col gap-5 rounded-[10px] bg-white px-[35px] py-[23px]">
+    <div class="flex w-full max-w-[814px] flex-col gap-5 rounded-[10px] bg-white px-4 py-5 sm:px-[35px] sm:py-[23px]">
         <div class="border-b border-[#138177] pb-4">
             <x-player.registration-select label="Pointing System" model="scoringSystem" :options="$this->scoringSystems" />
         </div>
 
-        <div class="flex items-end gap-3">
-            <x-player.registration-select label="Category" model="categoryPreset" :options="collect($presets)->map(fn ($p) => $p['name'])->all()" class="flex-1" />
-            <x-player.registration-field label="Player Level" model="level" placeholder="e.g. Beginner" class="flex-1" />
+        <div class="flex flex-wrap items-end gap-3">
+            <x-player.registration-select label="Category" model="categoryPreset" :options="collect($presets)->map(fn ($p) => $p['name'])->all()" class="min-w-[140px] flex-1" />
+            <x-player.registration-field label="Player Level" model="level" placeholder="e.g. Beginner" class="min-w-[140px] flex-1" />
             <div class="flex items-end gap-1">
                 <x-player.registration-field label="Age Min" model="ageMin" type="number" placeholder="Min" class="w-16" />
                 <span class="pb-2">-</span>
                 <x-player.registration-field label="Age Max" model="ageMax" type="number" placeholder="Max" class="w-16" />
             </div>
-            <x-player.registration-field label="Registration Fee" model="fee" type="number" placeholder="PHP 00.00" class="flex-1" />
-            <x-player.registration-field label="Player Limit" model="limit" type="number" placeholder="Player Limit" class="flex-1" />
+            <x-player.registration-field label="Registration Fee" model="fee" type="number" placeholder="PHP 00.00" class="min-w-[140px] flex-1" />
+            <x-player.registration-field label="Player Limit" model="limit" type="number" placeholder="Player Limit" class="min-w-[140px] flex-1" />
             <button type="button" wire:click="addCategory" class="flex shrink-0 items-center gap-1.5 rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
                 <flux:icon.plus class="size-4" />
                 Add Category
@@ -180,7 +180,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         <div class="flex flex-col gap-2.5">
             <span class="text-xs font-bold text-black">Categories Added ({{ $this->categories->count() }})</span>
 
-            <div class="flex flex-col">
+            <div class="overflow-x-auto"><div class="flex min-w-[560px] flex-col">
                 <div class="flex gap-1.5 border-b border-[#8cc7c1] bg-[#e7f0ef]">
                     <span class="flex-1 p-2.5 text-center text-xs text-black">Category</span>
                     <span class="flex-1 p-2.5 text-center text-xs text-black">Player Level</span>
@@ -204,13 +204,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
                 @empty
                     <p class="py-6 text-center text-xs text-black/50">No categories added yet.</p>
                 @endforelse
-            </div>
+            </div></div>
         </div>
 
         @error('categoryPreset') <p class="text-[10px] text-red-600">{{ $message }}</p> @enderror
     </div>
 
-    <div class="flex w-[814px] justify-end gap-6">
+    <div class="flex w-full max-w-[814px] justify-end gap-6">
         <button type="button" wire:click="back" class="w-[126px] cursor-pointer rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Back
         </button>

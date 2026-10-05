@@ -25,7 +25,7 @@
                  class="fixed inset-0 z-30 bg-black/40 lg:hidden" style="display: none;"></div>
 
             <aside
-                class="fixed inset-y-0 left-0 z-40 flex w-[222px] shrink-0 -translate-x-full flex-col bg-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
+                class="fixed inset-y-0 left-0 z-40 flex h-dvh w-[222px] shrink-0 -translate-x-full flex-col overflow-hidden bg-white transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 lg:self-start"
                 :class="sidebarOpen && 'translate-x-0'"
             >
                 <div class="flex items-center justify-between py-8 pr-4 pl-6 lg:justify-center lg:px-0">
@@ -53,7 +53,7 @@
                 </div>
             </aside>
 
-            <div class="flex flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
+            <div class="flex min-w-0 flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
                 <header class="flex items-center justify-between gap-3 border-b border-white/50 px-4 py-4 sm:px-7">
                     <div class="flex items-center gap-3">
                         <button type="button" class="cursor-pointer text-white lg:hidden" x-on:click="sidebarOpen = true" aria-label="Open menu">

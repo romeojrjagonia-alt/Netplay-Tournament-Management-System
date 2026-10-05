@@ -44,7 +44,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
     @include('livewire.admin.events.wizard._details-fields')
 
-    <div class="flex w-[814px] justify-end gap-6">
+    <div class="flex w-full max-w-[814px] justify-end gap-6">
         <a href="{{ route('admin.events.index') }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Cancel
         </a>

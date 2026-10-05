@@ -33,7 +33,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Edit Event'])] class exten
 <div class="flex flex-col items-center gap-5">
     @include('livewire.admin.events.wizard._details-fields')
 
-    <div class="flex w-[814px] items-center justify-end gap-6">
+    <div class="flex w-full max-w-[814px] items-center justify-end gap-6">
         <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate class="mr-auto flex items-center gap-1.5 rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
             <flux:icon.pencil-square class="size-4" />
             Edit Categories

@@ -81,8 +81,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
 
 <div class="flex flex-col gap-6">
     <div class="flex flex-col gap-4 border-b border-white/50 pb-4">
-        <div class="flex items-center gap-5">
-            <h2 class="flex-1 text-2xl font-bold text-white">{{ $tournament->name }}</h2>
+        <div class="flex flex-wrap items-center gap-3 sm:gap-5">
+            <h2 class="min-w-0 flex-1 basis-full text-2xl font-bold text-white sm:basis-0">{{ $tournament->name }}</h2>
 
             @unless ($tournament->is_published)
                 <a href="{{ route('admin.events.edit', $tournament) }}" wire:navigate class="rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
@@ -136,23 +136,23 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         <x-admin.event-tabs :tournament="$tournament" active="dashboard" />
     </div>
 
-    <div class="flex flex-wrap items-center gap-[30px]">
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+    <div class="flex flex-wrap items-center gap-4 sm:gap-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">NO. OF CATEGORIES</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['categories'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">PENDING APPLICATIONS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['pendingApplications'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">PENDING PAYMENTS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['pendingPayments'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">REGISTERED PLAYERS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['registeredPlayers'] }}</span>
@@ -166,7 +166,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 $capacity = max($tournamentCategory->max_slots, 1);
                 $percent = min(100, (int) round($registered / $capacity * 100));
             @endphp
-            <div class="flex items-center gap-[100px] rounded-[10px] bg-white px-[30px] py-2.5 shadow-[0px_6px_2px_rgba(0,0,0,0.25)]">
+            <div class="flex flex-wrap items-center gap-x-10 gap-y-3 rounded-[10px] bg-white px-5 py-3 sm:px-[30px] lg:gap-x-[100px] shadow-[0px_6px_2px_rgba(0,0,0,0.25)]">
                 <span class="text-lg font-bold text-black">{{ $tournamentCategory->category->name }}</span>
 
                 <div class="flex flex-col gap-1">
@@ -181,7 +181,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                     </span>
                 </div>
 
-                <div class="flex flex-1 flex-col gap-1">
+                <div class="flex min-w-[180px] flex-1 flex-col gap-1">
                     <span class="text-xs text-black">{{ $registered }}/{{ $tournamentCategory->max_slots }} PLAYERS REGISTERED</span>
                     <div class="h-[9px] w-full overflow-hidden rounded-full bg-[#d9d9d9]">
                         <div class="h-full bg-[#9cee69]" style="width: {{ $percent }}%"></div>
@@ -189,7 +189,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 </div>
             </div>
         @empty
-            <div class="flex h-[481px] flex-col items-center justify-center gap-6 rounded-[10px] bg-white">
+            <div class="flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-[10px] bg-white">
                 <p class="text-[22px] text-black/70 italic">No Categories Added Yet</p>
 
                 @unless ($tournament->is_published)

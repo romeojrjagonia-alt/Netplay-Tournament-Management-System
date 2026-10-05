@@ -280,7 +280,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                     @endforeach
                 </select>
 
-                <label class="flex w-[265px] items-center gap-2.5 rounded-[5px] bg-white px-5 py-2.5">
+                <label class="flex w-full items-center sm:w-[265px] gap-2.5 rounded-[5px] bg-white px-5 py-2.5">
                     <flux:icon name="magnifying-glass" class="size-4 shrink-0 text-black/50" />
                     <input
                         type="search"

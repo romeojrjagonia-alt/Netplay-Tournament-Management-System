@@ -144,24 +144,24 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
 <div class="relative w-full max-w-[994px] overflow-hidden rounded-[20px] bg-white shadow-2xl">
     <a href="{{ route('home') }}" wire:navigate
-       class="absolute top-5 right-5 z-10 text-teal-800 transition hover:text-teal-600">
+       class="absolute top-5 right-5 z-10 text-white transition hover:text-white/80 lg:text-teal-800 lg:hover:text-teal-600">
         <flux:icon.x-mark class="size-7" />
     </a>
 
-    <div class="flex flex-col md:flex-row">
+    <div class="flex flex-col lg:flex-row">
         {{-- Status panel --}}
-        <div class="relative hidden shrink-0 overflow-hidden md:block md:w-[464px]"
+        <div class="relative shrink-0 overflow-hidden lg:w-[464px]"
              style="background-image: linear-gradient(202deg, #8CC7C1 3.75%, #77B9B3 12.29%, #61ABA4 19.34%, #3E948D 30.06%, #11776E 41.94%, #0D5750 53.65%, #083531 78.04%, #051C1A 101.46%);">
             <img src="{{ asset('images/auth/grid-pattern.svg') }}" alt=""
                  class="absolute inset-0 h-full w-full object-cover">
 
-            <div class="relative flex h-full min-h-[608px] flex-col justify-end gap-8 p-10 pb-14">
+            <div class="relative flex h-full min-h-[150px] flex-col justify-end gap-8 p-6 pt-16 lg:min-h-[608px] lg:p-10 lg:pb-14">
                 <div class="flex items-end gap-4">
-                    <h2 class="text-[37px] leading-none text-white">Get Started</h2>
+                    <h2 class="text-3xl leading-none text-white lg:text-[37px]">Get Started</h2>
                     <p class="max-w-[160px] text-[15px] leading-5 text-white">Complete this step to register your account.</p>
                 </div>
 
-                <div class="flex gap-[15px]">
+                <div class="hidden gap-[15px] lg:flex">
                     @foreach ([
                         1 => ['label' => 'Select User Type', 'badge' => '#0b4742'],
                         2 => ['label' => 'Sign Up your account', 'badge' => '#083531'],
@@ -178,7 +178,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         </div>
 
         {{-- Form panel --}}
-        <div class="flex w-full flex-col items-center gap-10 px-8 py-10 md:w-[530px] md:px-14">
+        <div class="flex w-full flex-col items-center gap-10 px-8 py-10 lg:w-[530px] md:px-14">
             @if ($step === 1)
                 <div class="flex flex-col items-center gap-8 text-center">
                     <div class="flex flex-col items-center gap-2">
@@ -187,10 +187,10 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                     </div>
 
                     <div class="flex flex-col items-center gap-2">
-                        <div class="flex items-center gap-5">
+                        <div class="flex w-full items-center justify-center gap-3 sm:gap-5">
                             <button type="button" wire:click="selectUserType('player')"
                                     @class([
-                                        'w-[153px] cursor-pointer rounded-[20px] border px-[30px] py-[35px] text-center transition',
+                                        'min-w-0 max-w-[153px] flex-1 cursor-pointer rounded-[20px] border px-3 py-[35px] text-center transition sm:px-[30px]',
                                         'border-emerald-700 bg-emerald-700/25 ring-1 ring-emerald-700' => $userType === 'player',
                                         'border-[#81bfba] bg-[#82c0bb]/25 hover:border-emerald-700' => $userType !== 'player',
                                     ])>
@@ -203,7 +203,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
                             <button type="button" wire:click="selectUserType('umpire')"
                                     @class([
-                                        'w-[153px] cursor-pointer rounded-[20px] border px-[30px] py-[35px] text-center transition',
+                                        'min-w-0 max-w-[153px] flex-1 cursor-pointer rounded-[20px] border px-3 py-[35px] text-center transition sm:px-[30px]',
                                         'border-emerald-700 bg-emerald-700/25 ring-1 ring-emerald-700' => $userType === 'umpire',
                                         'border-[#81bfba] bg-[#82c0bb]/25 hover:border-emerald-700' => $userType !== 'umpire',
                                     ])>
@@ -340,24 +340,24 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             <div class="mt-auto flex w-full items-center justify-center gap-3.5">
                 @if ($step === 1)
                     <a href="{{ route('home') }}" wire:navigate
-                       class="flex h-9 items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
+                       class="flex h-9 items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-8 sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
                         Cancel
                     </a>
                 @else
                     <button type="button" wire:click="previousStep"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
+                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-8 sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
                         Back
                     </button>
                 @endif
 
                 @if ($step < 3)
                     <button type="button" wire:click="nextStep"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-16 text-sm font-bold text-white transition hover:bg-[#0d5750]">
+                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-8 sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750]">
                         Next
                     </button>
                 @else
                     <button type="button" wire:click="register" wire:loading.attr="disabled" wire:target="register"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-16 text-sm font-bold text-white transition hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-60">
+                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-8 sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-60">
                         <span wire:loading.remove wire:target="register">Confirm</span>
                         <span wire:loading wire:target="register">Creating account…</span>
                     </button>

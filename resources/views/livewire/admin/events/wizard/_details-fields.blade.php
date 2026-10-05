@@ -2,8 +2,8 @@
      and the standalone edit page. Relies on the including Livewire
      component's bound properties (name, format, dateStart, …) and its
      posterPreviewUrl computed property. --}}
-<div class="flex w-[814px] flex-col gap-[10px] rounded-[10px] bg-white px-[35px] py-[40px]">
-    <div class="grid grid-cols-2 gap-x-[26px] gap-y-6">
+<div class="flex w-full max-w-[814px] flex-col gap-[10px] rounded-[10px] bg-white px-4 py-6 sm:px-[35px] sm:py-[40px]">
+    <div class="grid grid-cols-1 gap-x-[26px] gap-y-6 sm:grid-cols-2">
         <x-player.registration-field label="Event Name" model="name" placeholder="Enter event name" />
 
         <div class="flex flex-col gap-[5px]">
