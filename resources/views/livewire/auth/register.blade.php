@@ -3,7 +3,6 @@
 use App\Models\Player;
 use App\Models\User;
 use Carbon\Carbon;
-use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -135,12 +134,11 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             return $user;
         });
 
-        event(new Registered($user));
-
         Auth::login($user);
         Session::regenerate();
+        Session::put('verification_prompt', 'signup');
 
-        $this->redirect(route('verification.notice', absolute: false), navigate: true);
+        $this->redirect(route($user->homeRouteName(), absolute: false), navigate: true);
     }
 }; ?>
 

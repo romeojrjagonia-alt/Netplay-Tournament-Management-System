@@ -2,7 +2,6 @@
 
 use App\Models\Player;
 use App\Models\User;
-use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
@@ -106,7 +105,7 @@ test('completing the wizard creates a user and player and logs them in', functio
         ->set('club', 'OBC Badminton Club')
         ->call('register')
         ->assertHasNoErrors()
-        ->assertRedirect(route('verification.notice', absolute: false));
+        ->assertRedirect(route('player.dashboard', absolute: false));
 
     $user = User::where('email', 'juan@example.com')->first();
 
@@ -115,7 +114,8 @@ test('completing the wizard creates a user and player and logs them in', functio
     expect($user->role)->toBe('player');
     expect($user->email_verified_at)->toBeNull();
 
-    Notification::assertSentTo($user, VerifyEmail::class);
+    Notification::assertNothingSent();
+    expect(session('verification_prompt'))->toBe('signup');
 
     $player = Player::where('user_id', $user->id)->first();
 

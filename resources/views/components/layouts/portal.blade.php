@@ -94,6 +94,8 @@
             </div>
         </div>
 
+        <livewire:verify-email-prompt />
+
         @fluxScripts
     </body>
 </html>

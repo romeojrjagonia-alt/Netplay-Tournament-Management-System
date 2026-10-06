@@ -1,5 +1,6 @@
 <?php
 
+use App\Livewire\Actions\SendVerificationEmail;
 use App\Models\Player;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
@@ -17,6 +18,8 @@ new class extends Component {
     public string $address = '';
 
     public string $phoneNumber = '';
+
+    public ?string $verificationStatus = null;
 
     #[Computed]
     public function player(): Player
@@ -56,6 +59,14 @@ new class extends Component {
     }
 
     /**
+     * Send a verification link to the player's current email address.
+     */
+    public function sendVerification(SendVerificationEmail $send): void
+    {
+        $this->verificationStatus = $send(Auth::user());
+    }
+
+    /**
      * Save the editable profile fields (name, address, email, phone number)
      * back to the user and player records.
      */
@@ -74,6 +85,7 @@ new class extends Component {
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;
+            $this->verificationStatus = null;
         }
 
         $user->save();
@@ -119,6 +131,23 @@ new class extends Component {
                         <div>
                             <h2 class="text-xl font-bold text-black uppercase">{{ $this->player->name }}</h2>
                             <p class="text-sm text-black/70">{{ auth()->user()->email }}</p>
+                        </div>
+                    @endif
+
+                    @if (! $editing && ! auth()->user()->hasVerifiedEmail())
+                        <div class="flex flex-col items-start gap-1">
+                            @if ($verificationStatus === 'sent')
+                                <p class="text-xs text-[#0d5750]">Verification link sent. Check your inbox.</p>
+                            @else
+                                <button type="button" wire:click="sendVerification" wire:loading.attr="disabled" wire:target="sendVerification"
+                                        class="cursor-pointer rounded-[5px] bg-[#0d5750] px-4 py-1.5 text-xs font-bold text-white transition hover:bg-[#0b4742] disabled:cursor-not-allowed disabled:opacity-60">
+                                    <span wire:loading.remove wire:target="sendVerification">Verify account</span>
+                                    <span wire:loading wire:target="sendVerification">Sending…</span>
+                                </button>
+                                @if ($verificationStatus === 'throttled')
+                                    <p class="text-[11px] text-red-600">Please wait a minute before requesting another link.</p>
+                                @endif
+                            @endif
                         </div>
                     @endif
 

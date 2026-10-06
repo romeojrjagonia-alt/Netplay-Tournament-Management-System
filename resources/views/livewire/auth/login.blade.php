@@ -37,6 +37,10 @@ new #[Layout('components.layouts.auth.signin')] class extends Component {
         RateLimiter::clear($this->throttleKey());
         Session::regenerate();
 
+        if (! Auth::user()->hasVerifiedEmail()) {
+            Session::put('verification_prompt', 'login');
+        }
+
         $this->redirectIntended(
             default: route(Auth::user()->homeRouteName(), absolute: false),
             navigate: true,

@@ -40,6 +40,30 @@ test('admins are redirected to the admin dashboard after login', function () {
     $this->assertAuthenticated();
 });
 
+test('unverified users are flagged for the verification reminder when logging in', function () {
+    $user = User::factory()->unverified()->create();
+
+    LivewireVolt::test('auth.login')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertHasNoErrors();
+
+    expect(session('verification_prompt'))->toBe('login');
+});
+
+test('verified users are not flagged for the verification reminder when logging in', function () {
+    $user = User::factory()->create();
+
+    LivewireVolt::test('auth.login')
+        ->set('email', $user->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertHasNoErrors();
+
+    expect(session('verification_prompt'))->toBeNull();
+});
+
 test('users can not authenticate with invalid password', function () {
     $user = User::factory()->create();
 

@@ -3,6 +3,8 @@
 use App\Models\Player;
 use App\Models\PlayerStatistic;
 use App\Models\User;
+use App\Notifications\QueuedVerifyEmail;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
 
 test('player dashboard shows a profile trigger and the player\'s details in the modal', function () {
@@ -80,6 +82,49 @@ test('player can edit their name, address, email, and phone number from the prof
     expect($player->name)->toBe('Juan D. Cruz');
     expect($player->address)->toBe('New Address');
     expect($player->phone_number)->toBe('09991234567');
+});
+
+test('unverified players see a verify account button in the profile modal', function () {
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => 'Juan Dela Cruz', 'address' => 'Ozamiz City']);
+
+    $this->actingAs($user);
+
+    Volt::test('player.profile-modal')
+        ->assertSee('Verify account')
+        ->call('sendVerification')
+        ->assertSet('verificationStatus', 'sent')
+        ->assertSee('Verification link sent');
+
+    Notification::assertSentTo($user, QueuedVerifyEmail::class);
+});
+
+test('verified players do not see the verify account button', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => 'Juan Dela Cruz', 'address' => 'Ozamiz City']);
+
+    $this->actingAs($user);
+
+    Volt::test('player.profile-modal')
+        ->assertDontSee('Verify account');
+});
+
+test('changing email from the profile modal makes the player unverified again', function () {
+    $user = User::factory()->create(['role' => 'player', 'email' => 'old@example.com']);
+    Player::create(['user_id' => $user->id, 'name' => 'Juan Dela Cruz', 'address' => 'Ozamiz City']);
+
+    $this->actingAs($user);
+
+    Volt::test('player.profile-modal')
+        ->call('startEditing')
+        ->set('email', 'new@example.com')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSee('Verify account');
+
+    expect($user->fresh()->email_verified_at)->toBeNull();
 });
 
 test('editing the profile rejects an email already taken by another user', function () {
