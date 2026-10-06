@@ -3,6 +3,7 @@
 use App\Models\Player;
 use App\Models\User;
 use Carbon\Carbon;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Session;
@@ -119,7 +120,6 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'email' => $this->email,
                 'password' => $this->password,
                 'role' => $this->userType,
-                'email_verified_at' => now(),
             ]);
 
             Player::create([
@@ -135,10 +135,12 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             return $user;
         });
 
+        event(new Registered($user));
+
         Auth::login($user);
         Session::regenerate();
 
-        $this->redirect(route($user->homeRouteName(), absolute: false), navigate: true);
+        $this->redirect(route('verification.notice', absolute: false), navigate: true);
     }
 }; ?>
 

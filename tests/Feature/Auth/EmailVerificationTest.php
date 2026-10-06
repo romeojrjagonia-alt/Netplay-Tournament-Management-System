@@ -2,8 +2,11 @@
 
 use App\Models\User;
 use Illuminate\Auth\Events\Verified;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\URL;
+use Livewire\Volt\Volt;
 
 test('email verification screen can be rendered', function () {
     $user = User::factory()->unverified()->create();
@@ -11,6 +14,26 @@ test('email verification screen can be rendered', function () {
     $response = $this->actingAs($user)->get('/verify-email');
 
     $response->assertStatus(200);
+});
+
+test('unverified users are redirected to the verification notice', function () {
+    $user = User::factory()->unverified()->create(['role' => 'player']);
+
+    $this->actingAs($user)
+        ->get(route('player.dashboard'))
+        ->assertRedirect(route('verification.notice'));
+});
+
+test('verification email can be resent', function () {
+    Notification::fake();
+
+    $user = User::factory()->unverified()->create();
+
+    Volt::actingAs($user)
+        ->test('auth.verify-email')
+        ->call('sendVerification');
+
+    Notification::assertSentTo($user, VerifyEmail::class);
 });
 
 test('email can be verified', function () {

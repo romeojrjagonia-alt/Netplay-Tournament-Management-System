@@ -2,7 +2,9 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
 
 test('registration screen can be rendered', function () {
@@ -84,6 +86,8 @@ test('final step requires valid profile details before registering', function ()
 });
 
 test('completing the wizard creates a user and player and logs them in', function () {
+    Notification::fake();
+
     Volt::test('auth.register')
         ->call('selectUserType', 'player')
         ->call('nextStep')
@@ -102,14 +106,16 @@ test('completing the wizard creates a user and player and logs them in', functio
         ->set('club', 'OBC Badminton Club')
         ->call('register')
         ->assertHasNoErrors()
-        ->assertRedirect(route('player.dashboard', absolute: false));
+        ->assertRedirect(route('verification.notice', absolute: false));
 
     $user = User::where('email', 'juan@example.com')->first();
 
     expect($user)->not->toBeNull();
     expect($user->name)->toBe('Juan D. Dela Cruz');
     expect($user->role)->toBe('player');
-    expect($user->email_verified_at)->not->toBeNull();
+    expect($user->email_verified_at)->toBeNull();
+
+    Notification::assertSentTo($user, VerifyEmail::class);
 
     $player = Player::where('user_id', $user->id)->first();
 
