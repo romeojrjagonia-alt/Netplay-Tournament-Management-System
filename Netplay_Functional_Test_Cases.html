@@ -1,0 +1,566 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Netplay Testing</title>
+<style>
+body{font-family:"Times New Roman",serif;font-size:12pt;margin:40px}
+h1{font-size:12pt;font-style:italic;font-weight:bold;margin-top:30px}
+p.n{font-style:italic;margin:2px 0 6px}
+p.t{font-weight:bold;font-style:italic;margin:18px 0 0}
+p.c{font-style:italic;margin:4px 0 8px}
+table{border-collapse:collapse;width:100%;margin-bottom:22px}
+td{border:1px solid #000;padding:4px 8px;vertical-align:top}
+td.l{font-weight:bold;width:22%}
+td.h{font-weight:bold}
+</style></head><body>
+<h1>Functional Stability (Functional Completeness, Correctness, Appropriateness)</h1>
+<p class="n">Assessed by the client and selected respondents from Ozamiz Badminton Club. Covers Objective 2: a web-based tournament management system with role-based access.</p>
+<p class="t">Table 25</p>
+<p class="c">Test for Landing Page Display</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the landing page correctly displays Netplay's introduction, features, and the Login and Sign Up buttons.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The landing page loads successfully and displays all text, images, and navigation links correctly.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 26</p>
+<p class="c">Test for Player Registration</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a new user can register as a Player through the multi-step signup form.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Each step is validated, the player account is created, and an email verification link is sent.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 27</p>
+<p class="c">Test for Umpire Registration</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a new user can register as an Umpire through the multi-step signup form.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The account is created with the umpire role and the user is prompted to verify the email address.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 28</p>
+<p class="c">Test for Registration Validation</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the registration form rejects empty required fields, an invalid email, a duplicate email, and mismatched or weak passwords.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The user cannot proceed, field-specific error messages are displayed, and no account is created.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 29</p>
+<p class="c">Test for Login and Role-Based Redirection</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a verified user who logs in with correct credentials is taken to the dashboard of their role (admin, player, or umpire).</td></tr>
+<tr><td class="l">Expected Output:</td><td>The user is authenticated and redirected to the admin, player, or umpire dashboard accordingly.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 30</p>
+<p class="c">Test for Login with Invalid Credentials</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system denies access when the email or password is incorrect.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Login fails, an error message is displayed, and the user remains on the login page.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 31</p>
+<p class="c">Test for Role-Based Access Restriction</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #7</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a user cannot open pages that belong to another role (e.g., a player opening an admin or umpire URL).</td></tr>
+<tr><td class="l">Expected Output:</td><td>Access is denied (403 or redirect) and no restricted data is displayed.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 32</p>
+<p class="c">Test for Create Tournament</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #8</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can create a tournament by entering its name, venue, date range, and format.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The tournament is saved with the entered details and the admin proceeds to the categories step.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 33</p>
+<p class="c">Test for Add Tournament Categories</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #9</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can add categories to a tournament and set the registration fee and maximum slots for each.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Tournament categories are saved with the correct fee and slot count and are listed in the review step.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 34</p>
+<p class="c">Test for Review, Publish, and Edit Tournament</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #10</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can review, publish, and later edit a tournament.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The published tournament appears in the players' event list and edited details are saved and shown correctly.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 35</p>
+<p class="c">Test for Singles Application</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #11</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player can apply for a singles category of an open tournament.</td></tr>
+<tr><td class="l">Expected Output:</td><td>An application with one player is created with Pending status and the player's level is recorded at the time of application.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 36</p>
+<p class="c">Test for Doubles Application with Partner Search</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #12</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player can apply for a doubles category by searching for and selecting an existing player as partner.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The existing player record is reused (no duplicate is created) and the application holds exactly two players.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 37</p>
+<p class="c">Test for Duplicate Entry Prevention</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #13</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player cannot be entered twice in the same tournament category (e.g., directly and again as another player's partner).</td></tr>
+<tr><td class="l">Expected Output:</td><td>The second application is rejected and an error message is displayed.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 38</p>
+<p class="c">Test for Upload Payment Proof</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #14</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player can upload a GCash payment screenshot for an application.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The image is stored and the payment is shown as Pending verification; non-image or oversized files are rejected.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 39</p>
+<p class="c">Test for Verify Payment and Approve Application</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #15</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can review the payment proof and approve the application.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The payment is marked Verified, the application is Approved, and an entry occupying a slot is created.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 40</p>
+<p class="c">Test for Reject Payment and Resubmit</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #16</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can reject an invalid proof and the player can upload a new one.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The rejected proof stays in the history, the player can resubmit, and the latest verified record determines the payment status.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 41</p>
+<p class="c">Test for Slot Limit Enforcement</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #17</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that applications cannot be approved beyond a category's maximum slots.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Once the maximum slots are filled, the category shows as full and further approvals are blocked.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 42</p>
+<p class="c">Test for Generate Draw (Correctness of Bracket)</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #18</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can generate the draw for a category with approved entries and that the bracket is computed correctly.</td></tr>
+<tr><td class="l">Expected Output:</td><td>All match rows for every round are created at once, entries are placed by seed, and BYEs are assigned when the entry count is not a power of two.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 43</p>
+<p class="c">Test for BYE and Winner Advancement</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #19</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that BYE entries and match winners advance to the correct next-round match.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The winner or BYE entry appears in round + 1 at position ceil(position / 2).</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 44</p>
+<p class="c">Test for Schedule Matches</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #20</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can assign a date, time, and court to matches.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The schedule is saved and shown correctly on the admin, umpire, and player views.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 45</p>
+<p class="c">Test for Record Match Score (Correctness of Scoring)</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #21</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an umpire can record rally-by-rally scores and that the system applies badminton rules (21 points, 2-point lead, 30-point cap, best of 3).</td></tr>
+<tr><td class="l">Expected Output:</td><td>Game and match results are computed correctly, and invalid scores or a third game after a 2-0 result are rejected.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 46</p>
+<p class="c">Test for Generate Scoresheet and Draw Documents</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #22</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system produces the documents used in OBC's tournament process (match scoresheet and tournament draw) in place of the manual paper and spreadsheet forms.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The scoresheet and draw show the correct entries, scores, and winners, and can be viewed or downloaded.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 47</p>
+<p class="c">Test for Player Views Matches and Results</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #23</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player can view their schedule, results, and the tournament bracket.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The player's matches and results are displayed correctly and the bracket shows the latest advancement.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 48</p>
+<p class="c">Test for Update Profile and Password</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #24</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a user can update their profile and password in Settings.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Changes are saved and the new password works on the next login.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<h1>Reliability (Maturity, Fault Tolerance, Recoverability, Availability)</h1>
+<p class="n">Assessed by the client and selected respondents from Ozamiz Badminton Club.</p>
+<p class="t">Table 49</p>
+<p class="c">Test for Continuous Operation Under Normal Use</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system runs without crashes or unexpected errors during a full tournament workflow (create tournament, register, pay, draw, score, complete).</td></tr>
+<tr><td class="l">Expected Output:</td><td>The entire workflow is completed without any system failure or error page.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 50</p>
+<p class="c">Test for Handling of Invalid Input</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system handles invalid, empty, or extreme input values (very long text, special characters, negative fees, zero slots) without failing.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Validation messages are displayed and the system remains stable with no data corruption.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 51</p>
+<p class="c">Test for Handling of Invalid URLs and Records</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system responds properly to non-existent pages or record IDs (e.g., a tournament that does not exist).</td></tr>
+<tr><td class="l">Expected Output:</td><td>A 404 page is displayed instead of a system error and the user can navigate back.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 52</p>
+<p class="c">Test for Duplicate Submission Prevention</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that clicking Submit repeatedly (double click) on registration, application, or payment forms does not create duplicate records.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Only one record is created.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 53</p>
+<p class="c">Test for Score Data Retention on Refresh or Disconnection</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that recorded rally scores are kept when the umpire refreshes the page or loses the connection mid-match.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Previously recorded points remain saved and scoring continues from the last recorded rally.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 54</p>
+<p class="c">Test for Failed Upload Recovery</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an interrupted or failed payment proof upload can be retried.</td></tr>
+<tr><td class="l">Expected Output:</td><td>An error message is displayed, no incomplete record is saved, and the player can upload again.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 55</p>
+<p class="c">Test for Data Persistence After Restart</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #7</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that all data remains intact after the web server and database are restarted.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Users, tournaments, applications, brackets, and scores are all retained.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 56</p>
+<p class="c">Test for Session Timeout Handling</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #8</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an expired session redirects the user to login without losing saved data.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The user is asked to log in again and previously saved data is intact.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<h1>Compatibility (Co-existence and Interoperability)</h1>
+<p class="n">Assessed by the client and selected respondents from Ozamiz Badminton Club.</p>
+<p class="t">Table 57</p>
+<p class="c">Test for Web Browser Compatibility</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system works on Google Chrome, Mozilla Firefox, Microsoft Edge, and Safari.</td></tr>
+<tr><td class="l">Expected Output:</td><td>All pages, forms, and the bracket display render and function identically on each browser.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 58</p>
+<p class="c">Test for Device and Screen Size Compatibility</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system is usable on desktop, tablet, and mobile screens.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The layout adapts to each screen size without overlapping elements or horizontal scrolling, and all functions remain accessible.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 59</p>
+<p class="c">Test for Operating System Compatibility</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system can be accessed on Windows, Android, and iOS.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The system loads and works properly on each operating system.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 60</p>
+<p class="c">Test for Bracket Viewer Compatibility</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the tournament bracket displays and updates properly on different browsers and devices.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The bracket is fully visible, correctly arranged, and shows the latest results.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 61</p>
+<p class="c">Test for Document and Image Compatibility</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that downloaded scoresheets open on common viewers and that payment proofs in JPG and PNG formats are accepted.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Files open without errors and supported image formats upload successfully.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 62</p>
+<p class="c">Test for Email Notification Interoperability</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system works with the SMTP provider for email verification, password reset, and application status notifications.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Emails are delivered to the recipient's inbox with working links.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<h1>Usability (Learnability, Operability, User Error Protection, User Interface Aesthetics)</h1>
+<p class="n">Assessed by the client and selected respondents from Ozamiz Badminton Club, supported by a usability questionnaire.</p>
+<p class="t">Table 63</p>
+<p class="c">Test for Learnability for First-Time Users</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a first-time player can register and apply to a tournament without training or assistance.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The player completes the task unaided within a reasonable time and without needing instructions.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 64</p>
+<p class="c">Test for Ease of Operation for Organizers</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an admin can complete core tasks (create tournament, verify payment, generate draw) with a minimal number of steps.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Each task is completed in a few clear steps with labeled buttons and visible progress (e.g., the wizard steps).</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 65</p>
+<p class="c">Test for Ease of Operation for Umpires</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that an umpire can record a match quickly using the scoring screen during live play.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Points are recorded with one tap or click per rally and the current score is clearly visible.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 66</p>
+<p class="c">Test for User Error Protection</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the system warns users before irreversible actions (e.g., approving or rejecting a payment, finalizing a match, generating a draw) and shows clear error messages.</td></tr>
+<tr><td class="l">Expected Output:</td><td>A confirmation prompt is displayed and error messages explain how to fix the problem.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 67</p>
+<p class="c">Test for Interface Consistency and Aesthetics</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the interface uses consistent layout, colors, labels, and icons across all pages and roles.</td></tr>
+<tr><td class="l">Expected Output:</td><td>All pages follow the same design and text is readable with proper contrast.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 68</p>
+<p class="c">Test for Appearance Settings</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that users can switch between light, dark, and system appearance modes.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The selected theme is applied across all pages and retained on the next visit.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<h1>Performance Efficiency (Time Behavior, Resource Utilization, Capacity)</h1>
+<p class="n">Assessed through technical testing using tools such as Google Lighthouse, Apache JMeter, and browser developer tools.</p>
+<p class="t">Table 69</p>
+<p class="c">Test for Page Load Time</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To measure the load time of key pages (landing, login, dashboards, event list, bracket) using Google Lighthouse or browser developer tools.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Pages load within an acceptable time (for example, within 3 seconds) on a normal connection.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 70</p>
+<p class="c">Test for Concurrent Registrations</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To measure system behavior when about 100 users register or apply at the same time using Apache JMeter.</td></tr>
+<tr><td class="l">Expected Output:</td><td>All requests are processed without errors or data loss and response time stays acceptable.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 71</p>
+<p class="c">Test for Concurrent Payment Proof Uploads</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To measure system behavior when many players upload payment proofs at the same time.</td></tr>
+<tr><td class="l">Expected Output:</td><td>All uploads succeed and are stored correctly without timeouts or corrupted files.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 72</p>
+<p class="c">Test for Bracket Generation Time</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To measure the time to generate and display a draw for 8, 16, 32, and 64 entries.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The bracket is generated and displayed quickly with all match rows complete.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 73</p>
+<p class="c">Test for Database Query Efficiency</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that rendering a 32-entry bracket and the dashboards does not cause excessive or repeated queries (N+1).</td></tr>
+<tr><td class="l">Expected Output:</td><td>The number of queries stays small and does not grow with the number of matches.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 74</p>
+<p class="c">Test for Live Score Update Response</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To measure the time between recording a rally and the score being updated on the screen and for viewers.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The score updates almost instantly with no noticeable delay.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<h1>Security (Confidentiality, Integrity, Authenticity, Accountability)</h1>
+<p class="n">Assessed through technical testing using tools such as OWASP ZAP and manual penetration checks.</p>
+<p class="t">Table 75</p>
+<p class="c">Test for Authentication Brute-Force Protection</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #1</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that repeated failed login attempts are limited.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The account or IP is temporarily throttled after several failed attempts and an error message is displayed.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 76</p>
+<p class="c">Test for Password Storage</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #2</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that passwords are stored securely in the database.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Passwords are stored as hashed values and never as plain text.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 77</p>
+<p class="c">Test for Unauthorized Access to Another User's Data</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #3</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a player cannot view or change another player's application, payment proof, or profile by changing the ID in the URL.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The request is rejected with 403 or 404 and no data is exposed.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 78</p>
+<p class="c">Test for SQL Injection</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #4</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that input fields (login, search, forms) are protected against SQL injection (e.g., entering ' OR 1=1 --).</td></tr>
+<tr><td class="l">Expected Output:</td><td>The input is treated as plain text, no database error is shown, and no unauthorized data is returned.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 79</p>
+<p class="c">Test for Cross-Site Scripting (XSS)</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #5</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that scripts entered in text fields (name, tournament name, remarks) are not executed when displayed.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The script is displayed as plain text and is not executed.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 80</p>
+<p class="c">Test for Cross-Site Request Forgery (CSRF)</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #6</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that forms and actions require a valid CSRF token.</td></tr>
+<tr><td class="l">Expected Output:</td><td>A request without a valid token is rejected (419 page expired).</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 81</p>
+<p class="c">Test for Secure File Upload</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #7</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the payment proof upload accepts only valid image files and rejects executable or disguised files (e.g., .php renamed to .jpg) and oversized files.</td></tr>
+<tr><td class="l">Expected Output:</td><td>Invalid files are rejected and uploaded files cannot be executed on the server.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 82</p>
+<p class="c">Test for Session Management and Logout</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #8</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that sessions are invalidated on logout and that the back button does not reveal protected pages.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The session is destroyed and protected pages require login again.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 83</p>
+<p class="c">Test for Email Verification Enforcement</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #9</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that a user with an unverified email cannot access the dashboards or system features.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The user is redirected to the email verification notice.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+<p class="t">Table 84</p>
+<p class="c">Test for Secure Transmission</p>
+<table>
+<tr><td colspan="2" class="h">Test Case #10</td></tr>
+<tr><td class="l">Objective:</td><td>To verify that the deployed system is served over HTTPS and that sensitive data is not shown in URLs.</td></tr>
+<tr><td class="l">Expected Output:</td><td>The site uses HTTPS and no credentials or personal data appear in URLs.</td></tr>
+<tr><td class="l">Actual Output:</td><td>&nbsp;</td></tr>
+<tr><td class="l">Status:</td><td>&nbsp;</td></tr>
+</table>
+</body></html>

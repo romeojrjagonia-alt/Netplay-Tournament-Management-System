@@ -54,7 +54,8 @@
             </aside>
 
             <div class="flex min-w-0 flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
-                <header class="flex items-center justify-between gap-3 border-b border-white/50 px-4 py-4 sm:px-7">
+                <header class="border-b border-white/50 px-4 py-4 sm:px-7">
+                  <div class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <button type="button" class="cursor-pointer text-white lg:hidden" x-on:click="sidebarOpen = true" aria-label="Open menu">
                             <flux:icon.bars-3 class="size-6" />
@@ -86,10 +87,13 @@
                             </div>
                         @endisset
                     </div>
+                  </div>
                 </header>
 
                 <main class="flex-1 overflow-auto p-4 sm:p-7">
-                    {{ $slot }}
+                    <div class="mx-auto w-full max-w-[1440px]">
+                        {{ $slot }}
+                    </div>
                 </main>
             </div>
         </div>

@@ -1,7 +1,7 @@
 @props(['current' => 1])
 
 @php
-    $steps = [1 => 'Event Details', 2 => 'Tournament Details', 3 => 'Review Details'];
+    $steps = [1 => 'Event Details', 2 => 'Confirm Details'];
 @endphp
 
 <div class="flex flex-wrap items-center gap-x-3 gap-y-3">

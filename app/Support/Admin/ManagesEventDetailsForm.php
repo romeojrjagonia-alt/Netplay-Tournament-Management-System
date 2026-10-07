@@ -28,6 +28,8 @@ trait ManagesEventDetailsForm
 
     public string $location = '';
 
+    public string $scoringSystem = '';
+
     public string $dateStart = '';
 
     public string $dateEnd = '';
@@ -49,6 +51,17 @@ trait ManagesEventDetailsForm
 
     public $poster = null;
 
+    /**
+     * The only pointing system currently supported — a dropdown rather than
+     * free text so every event scores the way GameRules implements it
+     * (best of 3 to 21). Extend this list when other systems are supported.
+     *
+     * @var array<string, string>
+     */
+    public array $scoringSystems = [
+        'Best of 3 to 21' => '21-Point Rally',
+    ];
+
     /** @var array<int, string> */
     public array $weekOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -62,6 +75,7 @@ trait ManagesEventDetailsForm
         $this->name = $tournament->name;
         $this->format = $tournament->format;
         $this->location = $tournament->location ?? '';
+        $this->scoringSystem = $tournament->scoring_system;
         $this->dateStart = $tournament->date_start->format('Y-m-d');
         $this->dateEnd = $tournament->date_end->format('Y-m-d');
         $this->registrationStart = $tournament->registration_start->format('Y-m-d');
@@ -105,6 +119,7 @@ trait ManagesEventDetailsForm
             'name' => ['required', 'string', 'max:255'],
             'format' => ['required', 'in:single_elimination,round_robin,double_elimination'],
             'location' => ['nullable', 'string', 'max:255'],
+            'scoringSystem' => ['required', Rule::in(array_keys($this->scoringSystems))],
             'dateStart' => ['required', 'date'],
             'dateEnd' => ['required', 'date', 'after_or_equal:dateStart'],
             'timeStart' => ['nullable', 'date_format:H:i', 'required_with:timeEnd'],
@@ -132,7 +147,7 @@ trait ManagesEventDetailsForm
             'format' => $data['format'],
             'sport' => 'Badminton',
             'location' => $data['location'],
-            'scoring_system' => $this->tournament->scoring_system ?? '',
+            'scoring_system' => $data['scoringSystem'],
             'date_start' => $data['dateStart'],
             'date_end' => $data['dateEnd'],
             'time' => $data['timeStart'] && $data['timeEnd']

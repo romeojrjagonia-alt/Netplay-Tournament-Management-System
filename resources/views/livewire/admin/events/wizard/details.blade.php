@@ -27,7 +27,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
     }
 
     /**
-     * Validate this step and persist it as a draft, then move on to step 2.
+     * Validate this step and persist it as a draft, then move on to the confirmation step.
      */
     public function next(): void
     {
@@ -35,7 +35,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
         $this->saveDetails($this->validateDetails());
 
-        $this->redirect(route('admin.events.wizard.categories', $this->tournament), navigate: true);
+        $this->redirect(route('admin.events.wizard.review', $this->tournament), navigate: true);
     }
 }; ?>
 

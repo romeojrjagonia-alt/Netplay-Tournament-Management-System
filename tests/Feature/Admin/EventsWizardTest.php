@@ -57,16 +57,16 @@ test('a non-admin cannot access any wizard step', function () {
     $this->actingAs(User::factory()->create(['role' => 'player']));
 
     Volt::test('admin.events.wizard.details')->assertForbidden();
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])->assertForbidden();
     Volt::test('admin.events.wizard.review', ['tournament' => $tournament])->assertForbidden();
 });
 
-test('completing step 1 creates a draft tournament and moves to step 2', function () {
+test('completing step 1 creates a draft tournament and moves to the confirmation step', function () {
     $this->actingAs(wizardAdmin());
 
     Volt::test('admin.events.wizard.details')
         ->set('name', 'Inato Tournament')
         ->set('format', 'round_robin')
+        ->set('scoringSystem', 'Best of 3 to 21')
         ->set('location', 'OBC Badminton Facility')
         ->set('dateStart', '2026-09-01')
         ->set('dateEnd', '2026-09-30')
@@ -91,7 +91,7 @@ test('step 1 in edit mode updates the existing draft instead of creating a new o
     Volt::test('admin.events.wizard.details', ['tournament' => $tournament])
         ->set('name', 'Renamed Tournament')
         ->call('next')
-        ->assertRedirect(route('admin.events.wizard.categories', $tournament));
+        ->assertRedirect(route('admin.events.wizard.review', $tournament));
 
     expect(Tournament::count())->toBe(1);
     expect($tournament->fresh()->name)->toBe('Renamed Tournament');
@@ -103,6 +103,7 @@ test('completing step 1 with a time range stores it as a formatted string', func
     Volt::test('admin.events.wizard.details')
         ->set('name', 'Inato Tournament')
         ->set('format', 'round_robin')
+        ->set('scoringSystem', 'Best of 3 to 21')
         ->set('dateStart', '2026-09-01')
         ->set('dateEnd', '2026-09-30')
         ->set('timeStart', '08:00')
@@ -124,6 +125,7 @@ test('an end time before the start time is rejected', function () {
     Volt::test('admin.events.wizard.details')
         ->set('name', 'Inato Tournament')
         ->set('format', 'round_robin')
+        ->set('scoringSystem', 'Best of 3 to 21')
         ->set('dateStart', '2026-09-01')
         ->set('dateEnd', '2026-09-30')
         ->set('timeStart', '11:00')
@@ -168,6 +170,7 @@ test('step 1 requires a cover image to actually be an image', function () {
     Volt::test('admin.events.wizard.details')
         ->set('name', 'Inato Tournament')
         ->set('format', 'round_robin')
+        ->set('scoringSystem', 'Best of 3 to 21')
         ->set('dateStart', '2026-09-01')
         ->set('dateEnd', '2026-09-30')
         ->set('registrationStart', '2026-06-01')
@@ -178,109 +181,47 @@ test('step 1 requires a cover image to actually be an image', function () {
         ->assertHasErrors(['poster' => 'image']);
 });
 
-test('adding a category creates the category and tournament category rows', function () {
+test('the confirmation step shows the event recap and the post-confirm prompt', function () {
     $tournament = wizardDraftTournament();
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->set('categoryPreset', 'mixed_doubles')
-        ->set('level', 'Level B')
-        ->set('ageMin', '18')
-        ->set('ageMax', '25')
-        ->set('fee', '300')
-        ->set('limit', '16')
-        ->call('addCategory')
-        ->assertSee('Mixed Doubles')
-        ->assertSee('Level B');
-
-    $tournamentCategory = $tournament->tournamentCategories()->with('category')->first();
-
-    expect($tournamentCategory)->not->toBeNull();
-    expect($tournamentCategory->category->gender)->toBe('mixed');
-    expect($tournamentCategory->category->team_size)->toBe(2);
-    expect((float) $tournamentCategory->registration_fee)->toBe(300.0);
-    expect($tournamentCategory->max_slots)->toBe(16);
-});
-
-test('adding the same category twice to the same tournament is rejected', function () {
-    $tournament = wizardDraftTournament();
-    wizardAddCategory($tournament, ['category' => ['name' => 'Mixed Doubles', 'gender' => 'mixed', 'team_size' => 2, 'level' => 'Level B', 'age_min' => 18, 'age_max' => 25]]);
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->set('categoryPreset', 'mixed_doubles')
-        ->set('level', 'Level B')
-        ->set('ageMin', '18')
-        ->set('ageMax', '25')
-        ->set('fee', '300')
-        ->set('limit', '16')
-        ->call('addCategory')
-        ->assertHasErrors('categoryPreset');
-
-    expect($tournament->tournamentCategories()->count())->toBe(1);
-});
-
-test('the pointing system is a dropdown restricted to the supported list', function () {
-    $tournament = wizardDraftTournament();
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->set('scoringSystem', 'Best of 3 to 21')
-        ->assertHasNoErrors('scoringSystem');
-
-    expect($tournament->fresh()->scoring_system)->toBe('Best of 3 to 21');
-});
-
-test('removing a category deletes it from the event', function () {
-    $tournament = wizardDraftTournament();
-    $tournamentCategory = wizardAddCategory($tournament);
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->call('removeCategory', $tournamentCategory->id);
-
-    expect($tournament->tournamentCategories()->count())->toBe(0);
-});
-
-test('step 2 shows "Add Categories Later" and still advances when no category has been added', function () {
-    $tournament = wizardDraftTournament();
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->assertSee('Add Categories Later')
-        ->call('next')
-        ->assertRedirect(route('admin.events.wizard.review', $tournament));
-});
-
-test('step 2 advances to step 3 once a category exists', function () {
-    $tournament = wizardDraftTournament();
-    wizardAddCategory($tournament);
-
-    $this->actingAs(wizardAdmin());
-
-    Volt::test('admin.events.wizard.categories', ['tournament' => $tournament])
-        ->assertSee('Next')
-        ->assertDontSee('Add Categories Later')
-        ->call('next')
-        ->assertRedirect(route('admin.events.wizard.review', $tournament));
-});
-
-test('the review step shows the event and category recap', function () {
-    $tournament = wizardDraftTournament();
-    wizardAddCategory($tournament, ['registration_fee' => 250, 'max_slots' => 20]);
 
     $this->actingAs(wizardAdmin());
 
     Volt::test('admin.events.wizard.review', ['tournament' => $tournament])
         ->assertSee('Inato Tournament')
-        ->assertSee("Men's Singles")
-        ->assertSee('PHP 250.00')
-        ->assertSeeHtml(route('admin.events.show', $tournament));
+        ->assertSee('Best of 3 to 21')
+        ->assertSet('showCategoryPrompt', false)
+        ->call('confirm')
+        ->assertSet('showCategoryPrompt', true)
+        ->assertSee('Add Later')
+        ->call('addCategories')
+        ->assertRedirect(route('admin.categories.index'));
+});
+
+test('choosing Add Later from the confirmation prompt goes to the event page', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.review', ['tournament' => $tournament])
+        ->call('confirm')
+        ->call('addLater')
+        ->assertRedirect(route('admin.events.show', $tournament));
+});
+
+test('step 1 requires a pointing system from the supported list', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('name', 'Inato Tournament')
+        ->set('format', 'round_robin')
+        ->set('scoringSystem', 'Made up')
+        ->set('dateStart', '2026-09-01')
+        ->set('dateEnd', '2026-09-30')
+        ->set('registrationStart', '2026-06-01')
+        ->set('registrationEnd', '2026-08-31')
+        ->set('selectedDays', ['Sat'])
+        ->call('next')
+        ->assertHasErrors('scoringSystem');
 });
 
 test('the edit page saves changes and redirects back to the event page', function () {
@@ -306,7 +247,7 @@ test('a non-admin cannot access the edit page', function () {
     Volt::test('admin.events.edit', ['tournament' => $tournament])->assertForbidden();
 });
 
-test('a published event cannot be reached through the details, edit, or categories routes', function () {
+test('a published event cannot be reached through the details, edit, or review routes', function () {
     $tournament = wizardDraftTournament(['status' => 'published']);
     wizardAddCategory($tournament);
 
@@ -314,7 +255,7 @@ test('a published event cannot be reached through the details, edit, or categori
 
     $this->actingAs($admin)->get(route('admin.events.wizard.details', $tournament))->assertForbidden();
     $this->actingAs($admin)->get(route('admin.events.edit', $tournament))->assertForbidden();
-    $this->actingAs($admin)->get(route('admin.events.wizard.categories', $tournament))->assertForbidden();
+    $this->actingAs($admin)->get(route('admin.events.wizard.review', $tournament))->assertForbidden();
 });
 
 test('the create-event route resolves the details wizard without a tournament', function () {
@@ -330,7 +271,6 @@ test('the wizard step routes resolve the tournament via route model binding', fu
     $admin = wizardAdmin();
 
     $this->actingAs($admin)->get(route('admin.events.wizard.details', $tournament))->assertOk();
-    $this->actingAs($admin)->get(route('admin.events.wizard.categories', $tournament))->assertOk();
     $this->actingAs($admin)->get(route('admin.events.wizard.review', $tournament))->assertOk();
     $this->actingAs($admin)->get(route('admin.events.edit', $tournament))->assertOk();
 });

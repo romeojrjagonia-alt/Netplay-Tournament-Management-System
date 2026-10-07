@@ -1,42 +1,46 @@
 <?php
 
 use App\Models\Tournament;
-use Illuminate\Support\Collection;
-use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 
 new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] class extends Component {
     public Tournament $tournament;
 
+    public bool $showCategoryPrompt = false;
+
     public function mount(Tournament $tournament): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
+
+        // Published events are frozen — no returning to the wizard.
+        abort_if($tournament->is_published, 403);
 
         $this->tournament = $tournament;
     }
 
     /**
-     * @return Collection<int, \App\Models\TournamentCategory>
+     * The draft was already saved in step 1 — confirming just asks the
+     * admin whether to add categories now or later.
      */
-    #[Computed]
-    public function categories(): Collection
+    public function confirm(): void
     {
-        return $this->tournament->tournamentCategories()->with('category')->get();
+        $this->showCategoryPrompt = true;
     }
 
-    public function formatDateRange(): string
+    public function addCategories(): void
     {
-        if ($this->tournament->date_start->isSameMonth($this->tournament->date_end)) {
-            return $this->tournament->date_start->format('F j').' - '.$this->tournament->date_end->format('j, Y');
-        }
+        $this->redirect(route('admin.categories.index'), navigate: true);
+    }
 
-        return $this->tournament->date_start->format('F j, Y').' - '.$this->tournament->date_end->format('F j, Y');
+    public function addLater(): void
+    {
+        $this->redirect(route('admin.events.show', $this->tournament), navigate: true);
     }
 }; ?>
 
 <div class="flex flex-col items-center gap-5">
-    <x-admin.wizard-steps :current="3" />
+    <x-admin.wizard-steps :current="2" />
 
     <div class="flex w-full max-w-[814px] flex-col gap-[26px] rounded-[10px] bg-white px-4 py-6 sm:px-[33px] sm:py-[35px]">
         <div class="flex flex-col gap-[17px]">
@@ -96,53 +100,45 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
             </div>
         </div>
 
+
         <div class="flex flex-col gap-[15px]">
-            <div class="flex items-end justify-between">
-                <span class="text-sm font-bold text-black">Tournament Details</span>
-                <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate aria-label="Edit tournament details">
-                    <flux:icon.pencil-square class="size-5 text-black" />
-                </a>
-            </div>
+            <span class="text-sm font-bold text-black">Tournament Details</span>
 
             <div class="flex gap-2.5 text-white">
+                <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
+                    <span class="text-[11px]">Format</span>
+                    <span class="text-xs font-bold">{{ str($tournament->format)->replace('_', ' ')->title() }}</span>
+                </div>
                 <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
                     <span class="text-[11px]">Pointing System</span>
                     <span class="text-xs font-bold">{{ $tournament->scoring_system ?: '—' }}</span>
                 </div>
-                <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
-                    <span class="text-[11px]">No. of Categories</span>
-                    <span class="text-xs font-bold">{{ $this->categories->count() }}</span>
-                </div>
-            </div>
-
-            <div class="flex flex-col">
-                <div class="flex gap-1.5 border-b border-[#8cc7c1] bg-[#e7f0ef]">
-                    <span class="flex-1 p-2.5 text-center text-xs text-black">Category</span>
-                    <span class="flex-1 p-2.5 text-center text-xs text-black">Level</span>
-                    <span class="flex-1 p-2.5 text-center text-xs text-black">Age</span>
-                    <span class="flex-1 p-2.5 text-center text-xs text-black">Limit</span>
-                    <span class="flex-1 p-2.5 text-center text-xs text-black">Registration Fee</span>
-                </div>
-
-                @foreach ($this->categories as $tournamentCategory)
-                    <div class="flex gap-1.5 border-b border-[#ddefed] bg-white">
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $tournamentCategory->category->name }}</span>
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $tournamentCategory->category->level ?? '—' }}</span>
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $tournamentCategory->category->age_min ?? '—' }} - {{ $tournamentCategory->category->age_max ?? '—' }}</span>
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $tournamentCategory->max_slots }}</span>
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">PHP {{ number_format((float) $tournamentCategory->registration_fee, 2) }}</span>
-                    </div>
-                @endforeach
             </div>
         </div>
     </div>
 
     <div class="flex w-full max-w-[814px] justify-end gap-6">
-        <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
+        <a href="{{ route('admin.events.wizard.details', $tournament) }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Back
         </a>
-        <a href="{{ route('admin.events.show', $tournament) }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] bg-[#096] px-[30px] py-[10px] text-xs font-medium text-white">
+        <button type="button" wire:click="confirm" class="w-[126px] cursor-pointer rounded-[5px] bg-[#096] px-[30px] py-[10px] text-xs font-medium text-white">
             Create Event
-        </a>
+        </button>
     </div>
+
+    <flux:modal wire:model.self="showCategoryPrompt" :dismissible="false" :closable="false" class="max-w-md">
+        <div class="flex flex-col gap-5">
+            <div class="flex flex-col gap-2">
+                <flux:heading size="lg">Event created</flux:heading>
+                <flux:text>
+                    "{{ $tournament->name }}" was saved as a draft. Would you like to add categories to it now, or add them later from the event page?
+                </flux:text>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <flux:button wire:click="addLater">Add Later</flux:button>
+                <flux:button variant="primary" wire:click="addCategories">Add Categories</flux:button>
+            </div>
+        </div>
+    </flux:modal>
 </div>

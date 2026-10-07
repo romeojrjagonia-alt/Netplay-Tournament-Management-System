@@ -143,7 +143,7 @@ test('publishing a draft with no categories is rejected', function () {
     expect($tournament->fresh()->status)->toBe('draft');
 });
 
-test('a draft with no categories shows an Add Category button, a published event does not', function () {
+test('a draft with no categories shows an Add Categories button, a published event does not', function () {
     $draft = eventsShowTournament(['name' => 'Draft Event', 'status' => 'draft']);
     $published = eventsShowTournament(['name' => 'Published Event', 'status' => 'published']);
 
@@ -151,11 +151,11 @@ test('a draft with no categories shows an Add Category button, a published event
 
     Volt::test('admin.events.show', ['tournament' => $draft])
         ->assertSee('No Categories Added Yet')
-        ->assertSeeHtml(route('admin.events.wizard.categories', $draft));
+        ->assertSeeHtml('wire:click="openCategoryModal"');
 
     Volt::test('admin.events.show', ['tournament' => $published])
         ->assertSee('No Categories Added Yet')
-        ->assertDontSeeHtml(route('admin.events.wizard.categories', $published));
+        ->assertDontSeeHtml('wire:click="openCategoryModal"');
 });
 
 test('the Edit Event button only shows for a draft event', function () {

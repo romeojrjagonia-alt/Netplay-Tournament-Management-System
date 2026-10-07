@@ -18,6 +18,12 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
     public ?string $userType = null;
 
+    /**
+     * True when the visitor arrived from Google and still needs a profile.
+     * Name and email then come from the session, never from client state.
+     */
+    public bool $viaGoogle = false;
+
     public string $firstName = '';
     public string $lastName = '';
     public string $middleInitial = '';
@@ -32,6 +38,21 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public string $province = '';
     public string $club = '';
     public $profilePhoto = null;
+
+    /**
+     * Pre-fill from a pending Google sign-up, if there is one.
+     */
+    public function mount(): void
+    {
+        $google = Session::get('google_signup');
+
+        if ($google !== null) {
+            $this->viaGoogle = true;
+            $this->firstName = $google['first_name'];
+            $this->lastName = $google['last_name'];
+            $this->email = $google['email'];
+        }
+    }
 
     /**
      * Live-computed age preview, derived from the entered birth date.
@@ -61,6 +82,11 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             ], [
                 'userType.required' => "Please choose how you'll use NetPlay.",
             ]);
+
+            // Google already supplied the account details, so skip step 2.
+            $this->step = $this->viaGoogle ? 3 : 2;
+
+            return;
         }
 
         if ($this->step === 2) {
@@ -81,7 +107,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
      */
     public function previousStep(): void
     {
-        $this->step = max($this->step - 1, 1);
+        $this->step = $this->viaGoogle && $this->step === 3 ? 1 : max($this->step - 1, 1);
     }
 
     /**
@@ -89,13 +115,27 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
      */
     public function register(): void
     {
+        $google = $this->viaGoogle ? Session::get('google_signup') : null;
+
+        if ($this->viaGoogle && $google === null) {
+            $this->redirect(route('login'), navigate: true);
+
+            return;
+        }
+
+        if ($google !== null) {
+            $this->firstName = $google['first_name'];
+            $this->lastName = $google['last_name'];
+            $this->email = $google['email'];
+        }
+
         $this->validate([
             'userType' => ['required', 'in:player,umpire'],
             'firstName' => ['required', 'string', 'max:255'],
-            'lastName' => ['required', 'string', 'max:255'],
+            'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
             'middleInitial' => ['nullable', 'string', 'max:5'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', 'min:8', 'confirmed'],
             'birthDate' => ['required', 'date', 'before:today'],
             'gender' => ['required', 'in:male,female,prefer_not_to_say'],
             'purok' => ['required', 'string', 'max:255'],
@@ -113,12 +153,14 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
         $photoPath = $this->profilePhoto?->store('player-photos', 'public');
 
-        $user = DB::transaction(function () use ($fullName, $photoPath) {
+        $user = DB::transaction(function () use ($fullName, $photoPath, $google) {
             $user = User::create([
                 'name' => $fullName,
                 'email' => $this->email,
-                'password' => $this->password,
                 'role' => $this->userType,
+                ...($google !== null
+                    ? ['google_id' => $google['id'], 'email_verified_at' => now()]
+                    : ['password' => $this->password]),
             ]);
 
             Player::create([
@@ -136,7 +178,11 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
         Auth::login($user);
         Session::regenerate();
-        Session::put('verification_prompt', 'signup');
+        Session::forget('google_signup');
+
+        if ($google === null) {
+            Session::put('verification_prompt', 'signup');
+        }
 
         $this->redirect(route($user->homeRouteName(), absolute: false), navigate: true);
     }
@@ -226,6 +272,18 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             <p class="text-[11px] text-red-600">{{ $message }}</p>
                         @enderror
                     </div>
+
+                    @if ($viaGoogle)
+                        <p class="text-xs text-[#3e948d]">Signing up with Google as <span class="font-bold">{{ $email }}</span></p>
+                    @else
+                        <div class="flex w-full flex-col items-center gap-3">
+                            <div class="flex w-full items-center gap-3 text-xs text-black/50">
+                                <span class="h-px flex-1 bg-black/15"></span>or<span class="h-px flex-1 bg-black/15"></span>
+                            </div>
+
+                            <x-auth.google-button label="Sign up with Google" class="max-w-[313px]" />
+                        </div>
+                    @endif
                 </div>
             @elseif ($step === 2)
                 <div class="flex w-full flex-col items-center gap-8">

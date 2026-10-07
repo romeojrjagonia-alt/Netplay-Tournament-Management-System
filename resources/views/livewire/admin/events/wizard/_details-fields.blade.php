@@ -73,6 +73,8 @@
             :options="['single_elimination' => 'Single Elimination', 'round_robin' => 'Round Robin', 'double_elimination' => 'Double Elimination']"
         />
 
+        <x-player.registration-select label="Pointing System" model="scoringSystem" :options="$this->scoringSystems" />
+
         @if ($format === 'round_robin')
             <x-player.registration-select
                 label="1st Tiebreaker"

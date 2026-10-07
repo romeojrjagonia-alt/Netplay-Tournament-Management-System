@@ -4,15 +4,6 @@
         @include('partials.head', ['title' => 'NetPlay — Play. Compete. Excel'])
     </head>
     <body class="bg-emerald-950 font-sans antialiased">
-        {{-- ============================================================
-             NetPlay Landing Page
-             Adapted from Figma (node 138-115).
-             - Active tournaments come from the Tournament model.
-             - Annual tournaments are a client-curated array (see the PHP block below).
-             - Navbar is fixed and gains a solid background once scrolled.
-             - The annual carousel and navbar scroll state use plain inline JS
-               (this page does not load Alpine).
-        ============================================================ --}}
 
         @php
             $activeTournaments = \App\Models\Tournament::query()
@@ -33,7 +24,8 @@
         @endphp
 
         {{-- ============ NAVBAR ============ --}}
-        <nav id="site-nav" class="fixed inset-x-0 top-0 z-50 flex w-full items-center justify-between px-6 py-3 transition-colors duration-300 sm:px-16 lg:px-40">
+        <nav id="site-nav" class="fixed inset-x-0 top-0 z-50 transition-colors duration-300">
+            <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 sm:px-10">
             <a href="{{ route('home') }}" wire:navigate class="text-2xl font-bold text-white sm:text-3xl">NetPlay</a>
 
             <ul class="hidden items-center gap-10 text-sm text-white md:flex">
@@ -51,7 +43,11 @@
                     Sign Up
                 </a>
             </div>
+        </div>
         </nav>
+
+        {{-- Boxed page: content is capped and centered, with side margins on wide screens --}}
+        <div class="mx-auto w-full max-w-6xl overflow-hidden">
 
         {{-- ============ HERO ============ --}}
         <section class="relative w-full overflow-hidden bg-gradient-to-b from-green-950 to-emerald-950">
@@ -59,7 +55,7 @@
                  class="pointer-events-none absolute top-0 left-1/2 w-[1603px] max-w-none -translate-x-1/2 opacity-30"
                  aria-hidden="true">
 
-            <div class="relative mx-auto flex max-w-6xl flex-col items-start gap-3.5 px-6 pt-32 pb-20 sm:pt-44 sm:pb-28 sm:px-16 lg:px-0">
+            <div class="relative mx-auto flex max-w-6xl flex-col items-start gap-3.5 px-6 pt-32 pb-20 sm:px-10 sm:pt-44 sm:pb-28">
                 <h1
                     class="bg-clip-text text-[2.15rem] leading-tight font-bold text-transparent sm:text-7xl sm:leading-[72px]"
                     style="background-image: linear-gradient(81deg, #459085 15.2%, #71bf77 40%, #9cee69 100%)"
@@ -84,7 +80,7 @@
 
             <div id="annual-carousel" class="relative mt-10">
                 <div data-track
-                     class="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth px-6 scroll-px-6 [scrollbar-width:none] sm:scroll-px-16 sm:px-16 [&::-webkit-scrollbar]:hidden">
+                     class="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth px-6 scroll-px-6 [scrollbar-width:none] sm:scroll-px-10 sm:px-10 [&::-webkit-scrollbar]:hidden">
                     @foreach ($annualTournaments as $tournament)
                         <article class="flex w-[88%] shrink-0 snap-start flex-col items-start gap-4 rounded-lg border border-emerald-700/60 bg-emerald-950 p-4 sm:w-[calc((100%-1.25rem)/2)] lg:w-[calc((100%-2*1.25rem)/3)] xl:flex-row">
                             @if ($tournament['image'])
@@ -111,7 +107,7 @@
         </section>
 
         {{-- ============ ACTIVE TOURNAMENTS ============ --}}
-        <section id="tournaments" class="w-full bg-emerald-950 px-6 pt-8 pb-20 sm:px-16 lg:px-40">
+        <section id="tournaments" class="w-full bg-emerald-950 px-6 pt-8 pb-20 sm:px-10">
             <div class="mx-auto flex max-w-6xl flex-col gap-8">
                 <div class="flex items-end justify-between">
                     <div>
@@ -170,7 +166,7 @@
         </section>
 
         {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
-        <section class="w-full bg-emerald-700/60 px-6 py-12 sm:px-16 sm:py-16 lg:px-44">
+        <section class="w-full bg-emerald-700/60 px-6 py-12 sm:px-10 sm:py-16 lg:px-16">
             <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
                 <div class="flex max-w-sm flex-col gap-3 text-center lg:text-left">
                     <h2 class="text-3xl leading-tight font-bold text-white sm:text-5xl">
@@ -217,7 +213,7 @@
         </section>
 
         {{-- ============ FOOTER ============ --}}
-        <footer class="w-full bg-teal-950 px-6 py-16 sm:px-40">
+        <footer class="w-full bg-teal-950 px-6 py-16 sm:px-10">
             <div class="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-16">
                 <div class="flex max-w-sm flex-col gap-1.5">
                     <p class="text-5xl font-bold text-white">NetPlay</p>
@@ -242,6 +238,7 @@
                 </p>
             </div>
         </footer>
+        </div>
 
         <script>
             (() => {

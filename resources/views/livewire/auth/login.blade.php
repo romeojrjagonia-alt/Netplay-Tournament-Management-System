@@ -139,6 +139,14 @@ new #[Layout('components.layouts.auth.signin')] class extends Component {
                 </button>
             </form>
 
+            <div class="flex w-full max-w-[313px] flex-col items-center gap-3">
+                <div class="flex w-full items-center gap-3 text-xs text-black/50">
+                    <span class="h-px flex-1 bg-black/15"></span>or<span class="h-px flex-1 bg-black/15"></span>
+                </div>
+
+                <x-auth.google-button label="Sign in with Google" />
+            </div>
+
             <div class="flex items-center gap-1 text-xs text-[#138177]">
                 Don't have an account?
                 <a href="{{ route('register') }}" wire:navigate class="font-bold">Sign Up</a>

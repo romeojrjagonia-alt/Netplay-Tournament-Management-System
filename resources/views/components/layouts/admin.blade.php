@@ -20,6 +20,10 @@
             Create New Event
         </x-portal.sidebar-link>
 
+        <x-portal.sidebar-link icon="squares-2x2" :href="route('admin.categories.index')" :active="request()->routeIs('admin.categories.index')" wire:navigate>
+            Create Categories
+        </x-portal.sidebar-link>
+
         <p class="px-2.5 pt-4 pb-1 text-xs text-black">System</p>
         <x-portal.sidebar-link icon="users" href="#">Users</x-portal.sidebar-link>
     </x-slot:nav>
