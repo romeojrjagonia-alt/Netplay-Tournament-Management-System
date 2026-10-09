@@ -13,14 +13,19 @@
                 ->get();
 
             // Annual tournaments are a fixed, client-curated list (held every year by OBC),
-            // not driven by tournament records. Set 'image' to a poster URL once available.
+            // not driven by tournament records. Posters live in public/images/annual.
             $annualTournaments = [
-                ['name' => 'Inato Tournament', 'image' => null],
-                ['name' => 'XSmash Badminton Cup', 'image' => null],
-                ['name' => 'Inato Tournament', 'image' => null],
-                ['name' => 'XSmash Badminton Cup', 'image' => null],
+                [
+                    'name' => '4th Inato Badminton Cup',
+                    'blurb' => 'July 10-12, 2026 in Ozamiz.',
+                    'image' => asset('images/annual/inato-tournament.jpg'),
+                ],
+                [
+                    'name' => 'XSmash Badminton Cup',
+                    'blurb' => '2025 Edition. December 5-7 at JAL Badminton Court.',
+                    'image' => asset('images/annual/xsmash-badminton-cup.jpg'),
+                ],
             ];
-            $annualBlurb = 'Paragraph. Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.';
         @endphp
 
         {{-- ============ NAVBAR ============ --}}
@@ -63,7 +68,7 @@
                     Play.Compete.Excel
                 </h1>
                 <p class="max-w-[607px] text-base leading-7 text-white sm:text-lg sm:leading-9">
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                    Want to compete among the best players in a tournament? Register now!
                 </p>
                 <a href="{{ route('register') }}" wire:navigate
                    class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
@@ -78,30 +83,27 @@
                 <h2 class="text-sm font-bold tracking-wide text-emerald-900 uppercase">Annual Tournaments</h2>
             </div>
 
-            <div id="annual-carousel" class="relative mt-10">
-                <div data-track
-                     class="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth px-6 scroll-px-6 [scrollbar-width:none] sm:scroll-px-10 sm:px-10 [&::-webkit-scrollbar]:hidden">
-                    @foreach ($annualTournaments as $tournament)
-                        <article class="flex w-[88%] shrink-0 snap-start flex-col items-start gap-4 rounded-lg border border-emerald-700/60 bg-emerald-950 p-4 sm:w-[calc((100%-1.25rem)/2)] lg:w-[calc((100%-2*1.25rem)/3)] xl:flex-row">
-                            @if ($tournament['image'])
-                                <img src="{{ $tournament['image'] }}" alt="{{ $tournament['name'] }}"
-                                     class="h-32 w-full rounded object-cover xl:w-36 xl:shrink-0">
-                            @else
-                                <div class="h-32 w-full rounded bg-emerald-900 xl:w-36 xl:shrink-0" role="img" aria-label="{{ $tournament['name'] }}"></div>
-                            @endif
-                            <div class="flex min-w-0 flex-1 flex-col gap-2">
-                                <h3 class="text-sm font-bold text-white">{{ $tournament['name'] }}</h3>
-                                <p class="text-[10px] leading-4 text-white/80">{{ $annualBlurb }}</p>
-                            </div>
-                        </article>
+            {{-- Continuous marquee: the card set renders twice and the track slides left by exactly one set. --}}
+            <div class="mt-10 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_4%,black_96%,transparent)]">
+                <div class="flex w-max animate-marquee hover:[animation-play-state:paused] motion-reduce:animate-none">
+                    @foreach ([false, true] as $isDuplicate)
+                        <div class="flex shrink-0 gap-5 pr-5" @if ($isDuplicate) aria-hidden="true" @endif>
+                            @foreach (array_merge($annualTournaments, $annualTournaments) as $tournament)
+                                <article class="flex w-[300px] shrink-0 flex-col gap-4 rounded-lg border border-emerald-700/60 bg-emerald-950 p-4 sm:w-[380px]">
+                                    @if ($tournament['image'])
+                                        <img src="{{ $tournament['image'] }}" alt="{{ $isDuplicate ? '' : $tournament['name'] }}"
+                                             class="aspect-[2/1] w-full rounded object-cover">
+                                    @else
+                                        <div class="aspect-[2/1] w-full rounded bg-emerald-900"></div>
+                                    @endif
+                                    <div class="flex min-w-0 flex-1 flex-col gap-2">
+                                        <h3 class="text-base font-bold text-white">{{ $tournament['name'] }}</h3>
+                                        <p class="text-xs leading-5 text-white/80">{{ $tournament['blurb'] }}</p>
+                                    </div>
+                                </article>
+                            @endforeach
+                        </div>
                     @endforeach
-                </div>
-
-                <div class="mt-6 flex items-center justify-center gap-4">
-                    <button type="button" data-prev aria-label="Previous"
-                            class="flex size-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20">&larr;</button>
-                    <button type="button" data-next aria-label="Next"
-                            class="flex size-8 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20">&rarr;</button>
                 </div>
             </div>
         </section>
@@ -154,7 +156,7 @@
                                     @endif
                                 </div>
 
-                                <a href="{{ Route::has('tournaments.register') ? route('tournaments.register') : route('register') }}" wire:navigate
+                                <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate
                                    class="mt-2 self-end rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
                                     Register
                                 </a>
@@ -166,27 +168,18 @@
         </section>
 
         {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
-        <section class="w-full bg-emerald-700/60 px-6 py-12 sm:px-10 sm:py-16 lg:px-16">
+        <section id="check-application" class="w-full bg-emerald-700/60 px-6 py-12 sm:px-10 sm:py-16 lg:px-16">
             <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
                 <div class="flex max-w-sm flex-col gap-3 text-center lg:text-left">
                     <h2 class="text-3xl leading-tight font-bold text-white sm:text-5xl">
                         Check Tournament Application Progress
                     </h2>
                     <p class="text-xs leading-4 text-white">
-                        Check your application progress through entering your match ID
+                        Enter the reference code you received when you registered to see your application status and pay your fee.
                     </p>
                 </div>
 
-                {{-- TODO: convert to a Volt component (livewire/application-lookup) for live validation --}}
-                <form action="{{ Route::has('applications.lookup') ? route('applications.lookup') : '#' }}" method="GET" class="flex flex-col gap-1.5">
-                    <label for="match_id" class="text-sm text-white">Enter Match ID</label>
-                    <input id="match_id" name="match_id" type="text" placeholder="Match ID"
-                           class="h-11 w-60 rounded-[10px] bg-white px-2.5 text-sm text-black placeholder:text-black/30 focus:ring-2 focus:ring-emerald-600 focus:outline-none">
-                    <button type="submit"
-                            class="mt-2 self-start rounded-[36px] bg-white px-9 py-1.5 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
-                        Search
-                    </button>
-                </form>
+                <livewire:applications.lookup />
             </div>
         </section>
 
@@ -240,79 +233,14 @@
         </footer>
         </div>
 
+        @fluxScripts
+
         <script>
             (() => {
                 const nav = document.getElementById('site-nav');
                 const syncNav = () => nav.classList.toggle('bg-emerald-950/95', window.scrollY > 24);
                 syncNav();
                 window.addEventListener('scroll', syncNav, { passive: true });
-
-                const root = document.getElementById('annual-carousel');
-                const track = root.querySelector('[data-track]');
-                const originals = [...track.children];
-
-                // Seamless loop: render a clone of the set before and after the real
-                // one, then silently jump back to the real set whenever scrolling settles.
-                const makeClones = () => originals.map((card) => {
-                    const clone = card.cloneNode(true);
-                    clone.setAttribute('aria-hidden', 'true');
-                    return clone;
-                });
-                track.prepend(...makeClones());
-                track.append(...makeClones());
-
-                const count = originals.length;
-                const pad = () => parseFloat(getComputedStyle(track).paddingLeft);
-                const step = () => originals[1].offsetLeft - originals[0].offsetLeft;
-                const homeLeft = () => originals[0].offsetLeft - pad();
-                const jump = (left) => {
-                    track.style.scrollBehavior = 'auto';
-                    track.style.scrollSnapType = 'none';
-                    track.scrollLeft = left;
-                    setTimeout(() => {
-                        track.style.scrollBehavior = '';
-                        track.style.scrollSnapType = '';
-                    }, 50);
-                };
-                const normalize = () => {
-                    const home = homeLeft();
-                    const setWidth = step() * count;
-                    if (track.scrollLeft < home - 1) {
-                        jump(track.scrollLeft + setWidth);
-                    } else if (track.scrollLeft >= home + setWidth - 1) {
-                        jump(track.scrollLeft - setWidth);
-                    } else {
-                        track.style.scrollSnapType = '';
-                    }
-                };
-
-                jump(homeLeft());
-                window.addEventListener('resize', () => jump(homeLeft()));
-
-                let settle;
-                track.addEventListener('scroll', () => {
-                    clearTimeout(settle);
-                    settle = setTimeout(normalize, 120);
-                }, { passive: true });
-
-                const goBy = (direction) => {
-                    const index = Math.round((track.scrollLeft - homeLeft()) / step()) + direction;
-                    // Snap fights smooth programmatic scrolling; it is restored once scrolling settles.
-                    track.style.scrollSnapType = 'none';
-                    track.scrollTo({ left: homeLeft() + index * step() });
-                };
-                const next = () => goBy(1);
-                const prev = () => goBy(-1);
-                root.querySelector('[data-next]').addEventListener('click', next);
-                root.querySelector('[data-prev]').addEventListener('click', prev);
-
-                let timer = setInterval(next, 4000);
-                const pause = () => clearInterval(timer);
-                const resume = () => { clearInterval(timer); timer = setInterval(next, 4000); };
-                root.addEventListener('mouseenter', pause);
-                root.addEventListener('mouseleave', resume);
-                root.addEventListener('touchstart', pause, { passive: true });
-                root.addEventListener('touchend', resume, { passive: true });
             })();
         </script>
     </body>

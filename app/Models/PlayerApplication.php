@@ -15,9 +15,36 @@ class PlayerApplication extends Model
      * @var list<string>
      */
     protected $fillable = [
+        'reference_code',
         'tournament_category_id',
         'status',
+        'rejection_reason',
     ];
+
+    /**
+     * Every application gets a short, shareable reference code so walk-in
+     * players (who have no account) can look it up from the landing page.
+     */
+    protected static function booted(): void
+    {
+        static::creating(function (PlayerApplication $application): void {
+            $application->reference_code ??= static::generateReferenceCode();
+        });
+    }
+
+    public static function generateReferenceCode(): string
+    {
+        // No 0/O/1/I so the code is easy to read out and type.
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+        do {
+            $code = 'NP-'.collect(range(1, 6))
+                ->map(fn (): string => $alphabet[random_int(0, strlen($alphabet) - 1)])
+                ->implode('');
+        } while (static::where('reference_code', $code)->exists());
+
+        return $code;
+    }
 
     /**
      * Human-readable status, matching the wording already used on the

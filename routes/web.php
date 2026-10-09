@@ -8,6 +8,14 @@ Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
+// Public (no account needed): walk-in players register and pay for tournaments
+// using the reference code issued with their application.
+Volt::route('tournaments/{tournament}/register', 'tournaments.register')
+    ->name('tournaments.register');
+
+Volt::route('applications/{reference}/payment', 'applications.payment')
+    ->name('applications.payment');
+
 Route::get('dashboard', function () {
     return match (auth()->user()->role) {
         'admin' => redirect()->route('admin.dashboard'),

@@ -104,6 +104,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     public function startRegistration(): void
     {
+        $this->resetRegistrationForm();
+
+        $this->dispatch('modal-close', name: 'tournament-details');
+        $this->dispatch('modal-show', name: 'tournament-registration');
+    }
+
+    private function resetRegistrationForm(): void
+    {
         $this->resetValidation();
 
         $this->regStep = 1;
@@ -154,9 +162,6 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             $this->regEmail = auth()->user()->email;
             $this->regPhoneNumber = '';
         }
-
-        $this->dispatch('modal-close', name: 'tournament-details');
-        $this->dispatch('modal-show', name: 'tournament-registration');
     }
 
     public function cancelRegistration(): void

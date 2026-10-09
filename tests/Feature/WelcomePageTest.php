@@ -34,3 +34,19 @@ test('welcome page shows tournaments accepting registrations as cards', function
         ->assertSee($tournament->name)
         ->assertSee('JALS Badminton Court');
 });
+
+test('active tournament register button links to the public registration form', function () {
+    $tournament = Tournament::create([
+        'name' => 'Direct Register Cup',
+        'format' => 'single_elimination',
+        'sport' => 'badminton',
+        'scoring_system' => 'rally',
+        'date_start' => now()->addDays(10),
+        'date_end' => now()->addDays(12),
+        'registration_start' => now()->subDay(),
+        'registration_end' => now()->addDays(5),
+        'status' => 'published',
+    ]);
+
+    $this->get('/')->assertSee(route('tournaments.register', $tournament), false);
+});

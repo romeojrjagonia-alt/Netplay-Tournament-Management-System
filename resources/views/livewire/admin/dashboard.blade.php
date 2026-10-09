@@ -27,6 +27,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
     public ?int $viewingPaymentId = null;
 
+    public string $rejectionReason = '';
+
     public function selectTab(string $tab): void
     {
         $this->activeTab = $tab;
@@ -37,6 +39,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     public function viewApplication(int $applicationId): void
     {
         $this->viewingApplicationId = $applicationId;
+        $this->rejectionReason = '';
     }
 
     public function viewPayment(int $paymentId): void
@@ -60,11 +63,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
     public function rejectApplication(int $applicationId): void
     {
+        $this->validate(['rejectionReason' => ['nullable', 'string', 'max:500']]);
+
         PlayerApplication::where('status', 'pending_verification')
             ->findOrFail($applicationId)
-            ->update(['status' => 'rejected']);
+            ->update([
+                'status' => 'rejected',
+                'rejection_reason' => trim($this->rejectionReason) !== '' ? trim($this->rejectionReason) : null,
+            ]);
 
         $this->viewingApplicationId = null;
+        $this->rejectionReason = '';
 
         $this->closeModalAndNotify('application-details', 'Application rejected.', 'danger');
     }
@@ -365,7 +374,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-end gap-[22px]">
+                    <div class="flex flex-col gap-1">
+                        <label for="rejectionReason" class="text-[11px] text-[#646464]">Reason for rejection (optional, shown to the applicant)</label>
+                        <textarea id="rejectionReason" wire:model="rejectionReason" rows="2" maxlength="500"
+                                  placeholder="e.g. Birth date doesn't match the category's age range"
+                                  class="w-full rounded-[5px] border border-[#d3d3d3] bg-white p-2.5 text-xs text-black placeholder:text-black/40 focus:outline-none"></textarea>
+                        @error('rejectionReason')
+                            <p class="text-[10px] text-red-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-end gap-[22px]">
                         <button type="button" wire:click="rejectApplication({{ $this->viewingApplication->id }})" class="w-[126px] cursor-pointer rounded-[5px] border border-[#bd6b6c] bg-white px-[30px] py-[10px] text-xs font-medium text-[#bd6b6c]">
                             Reject
                         </button>

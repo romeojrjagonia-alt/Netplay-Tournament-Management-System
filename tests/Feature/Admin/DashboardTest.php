@@ -208,6 +208,22 @@ test('rejecting an application marks it rejected', function () {
     expect($application->fresh()->status)->toBe('rejected');
 });
 
+test('rejecting an application stores the optional reason for the applicant', function () {
+    $tournament = dashboardTournament();
+    $tournamentCategory = dashboardTournamentCategory($tournament);
+    $application = dashboardApplication($tournamentCategory, [dashboardPlayer()], 'pending_verification');
+
+    $this->actingAs(dashboardAdmin());
+
+    Volt::test('admin.dashboard')
+        ->set('rejectionReason', 'Age is outside the category range')
+        ->call('rejectApplication', $application->id);
+
+    expect($application->fresh())
+        ->status->toBe('rejected')
+        ->rejection_reason->toBe('Age is outside the category range');
+});
+
 test('approving a payment verifies it and approves the application', function () {
     $tournament = dashboardTournament();
     $tournamentCategory = dashboardTournamentCategory($tournament);
