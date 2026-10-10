@@ -18,6 +18,12 @@ class GoogleAuthController extends Controller
      */
     public function redirect(): SymfonyRedirectResponse
     {
+        if (blank(config('services.google.client_id')) || blank(config('services.google.client_secret'))) {
+            report(new \RuntimeException('Google OAuth is not configured: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET.'));
+
+            return $this->failed('Google sign-in is not available right now.');
+        }
+
         return Socialite::driver('google')->redirect();
     }
 
