@@ -7,6 +7,7 @@ use App\Models\Matches;
 use App\Models\MatchGame;
 use App\Models\Player;
 use App\Models\PlayerApplication;
+use App\Models\Rally;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
@@ -163,5 +164,96 @@ test('a completed match shows win or lose from the current player\'s perspective
 
     Volt::test('player.matches')
         ->assertSee('LOSE')
-        ->assertSee('0 games to 2');
+        ->assertSee('Winner')
+        ->assertSee('Rival Player')
+        ->assertSee('2 sets played');
+});
+
+function matchesScoreRallies(MatchGame $game, Player $leader, int $leaderPoints, Player $trailer, int $trailerPoints): void
+{
+    $number = 1;
+
+    foreach (range(1, $leaderPoints) as $ignored) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $leader->id, 'rally_number' => $number++]);
+    }
+
+    foreach (range(1, $trailerPoints) as $ignored) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $trailer->id, 'rally_number' => $number++]);
+    }
+}
+
+test('an in-progress match shows its live score on the ongoing tab only', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => $user->name]);
+    $rival = Player::create(['name' => 'Rival Player']);
+
+    $tournamentCategory = matchesTournamentCategory();
+    $myApplication = matchesApplicationFor($tournamentCategory, $player);
+    $rivalApplication = matchesApplicationFor($tournamentCategory, $rival);
+
+    $match = matchesMatch($tournamentCategory, ['status' => 'in_progress', 'court' => 'Court 7']);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $myApplication->id, 'slot' => 1]);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $rivalApplication->id, 'slot' => 2]);
+
+    $finished = MatchGame::create(['match_id' => $match->id, 'game_number' => 1, 'winner_application_id' => $myApplication->id]);
+    matchesScoreRallies($finished, $player, 21, $rival, 17);
+
+    $current = MatchGame::create(['match_id' => $match->id, 'game_number' => 2]);
+    matchesScoreRallies($current, $player, 9, $rival, 12);
+
+    $this->actingAs($user);
+
+    Volt::test('player.matches')
+        ->set('tab', 'ongoing')
+        ->assertSee('LIVE')
+        ->assertSee('Court 7')
+        ->assertSeeInOrder(['Game', '2', 'in progress'])
+        ->assertSeeInOrder(['Games won', '1 - 0'])
+        ->assertSee('G1: 21-17')
+        ->assertSee('>9</span>', false)
+        ->assertSee('>12</span>', false);
+
+    Volt::test('player.matches')
+        ->set('tab', 'upcoming')
+        ->assertDontSee('Court 7');
+
+    Volt::test('player.matches')
+        ->set('tab', 'concluded')
+        ->assertDontSee('Court 7');
+});
+
+test('a concluded match shows the winner, sets played and each game score', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => $user->name]);
+    $rival = Player::create(['name' => 'Rival Player']);
+
+    $tournamentCategory = matchesTournamentCategory();
+    $myApplication = matchesApplicationFor($tournamentCategory, $player);
+    $rivalApplication = matchesApplicationFor($tournamentCategory, $rival);
+
+    $match = matchesMatch($tournamentCategory, [
+        'status' => 'completed',
+        'winner_application_id' => $myApplication->id,
+        'scheduled_at' => now()->subDay(),
+    ]);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $myApplication->id, 'slot' => 1]);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $rivalApplication->id, 'slot' => 2]);
+
+    $gameOne = MatchGame::create(['match_id' => $match->id, 'game_number' => 1, 'winner_application_id' => $myApplication->id]);
+    matchesScoreRallies($gameOne, $player, 21, $rival, 15);
+    $gameTwo = MatchGame::create(['match_id' => $match->id, 'game_number' => 2, 'winner_application_id' => $rivalApplication->id]);
+    matchesScoreRallies($gameTwo, $player, 18, $rival, 21);
+    $gameThree = MatchGame::create(['match_id' => $match->id, 'game_number' => 3, 'winner_application_id' => $myApplication->id]);
+    matchesScoreRallies($gameThree, $player, 21, $rival, 19);
+
+    $this->actingAs($user);
+
+    Volt::test('player.matches')
+        ->set('tab', 'concluded')
+        ->assertSee('WIN')
+        ->assertSeeInOrder(['Winner', $player->name])
+        ->assertSee('3 sets played')
+        ->assertSee('G1: 21-15')
+        ->assertSee('G2: 18-21')
+        ->assertSee('G3: 21-19');
 });

@@ -12,6 +12,10 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->trustProxies(at: '*');
+
+        // Invalidate a session when its user's password changes (password reset
+        // or settings), so other devices are signed out.
+        $middleware->authenticateSessions();
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

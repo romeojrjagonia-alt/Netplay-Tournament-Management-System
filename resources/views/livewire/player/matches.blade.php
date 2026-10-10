@@ -19,14 +19,28 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     }
 
     /**
-     * This player's matches that are scheduled or in progress, soonest first.
+     * This player's matches that have not started yet, soonest first.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
     #[Computed]
     public function upcomingMatches()
     {
-        return $this->playerMatches(['scheduled', 'in_progress'])
+        return $this->playerMatches(['scheduled'])
+            ->sortBy('scheduled_at')
+            ->map(fn (Matches $match) => $this->matchViewData($match))
+            ->values();
+    }
+
+    /**
+     * This player's matches an umpire is scoring right now, soonest first.
+     *
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function ongoingMatches()
+    {
+        return $this->playerMatches(['in_progress'])
             ->sortBy('scheduled_at')
             ->map(fn (Matches $match) => $this->matchViewData($match))
             ->values();
@@ -62,14 +76,15 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
             )
             ->with([
                 'matchApplications.application.applicationPlayers.player',
-                'games',
+                'games.rallies',
             ])
             ->get();
     }
 
     /**
-     * Shape a match into the fields the match card component expects,
-     * including the win/lose result from this player's own perspective.
+     * Shape a match into the fields the match card component expects:
+     * the live score for an ongoing match, or the winner, sets played and
+     * per-game scores (with win/lose from this player's side) once done.
      *
      * @return array<string, mixed>
      */
@@ -77,23 +92,48 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     {
         $playerId = auth()->user()->player->id;
 
-        $teamApplications = $match->matchApplications->pluck('application');
-        $teamA = $teamApplications->get(0);
-        $teamB = $teamApplications->get(1);
+        $applicationA = $match->applicationForSide('A');
+        $applicationB = $match->applicationForSide('B');
+        $mySide = $match->playerSideMap()[$playerId] ?? null;
 
+        $games = $match->gameScores();
+        $gamesWonA = collect($games)->where('winner', 'A')->count();
+        $gamesWonB = collect($games)->where('winner', 'B')->count();
+
+        $live = null;
         $result = null;
 
-        if ($match->status === 'completed' && $match->winner_application_id) {
-            $myApplicationId = $teamApplications
-                ->first(fn ($application) => $application?->applicationPlayers->contains('player_id', $playerId))
-                ?->id;
+        if ($match->status === 'in_progress') {
+            $current = collect($games)->first(fn (array $game) => $game['winner'] === null)
+                ?? collect($games)->last();
 
-            $gamesWonByA = $teamA ? $match->games->where('winner_application_id', $teamA->id)->count() : 0;
-            $gamesWonByB = $teamB ? $match->games->where('winner_application_id', $teamB->id)->count() : 0;
+            $live = [
+                'currentGame' => $current['number'] ?? 1,
+                'scoreA' => $current['A'] ?? 0,
+                'scoreB' => $current['B'] ?? 0,
+                'gamesWonA' => $gamesWonA,
+                'gamesWonB' => $gamesWonB,
+                'finishedGames' => collect($games)->filter(fn (array $game) => $game['winner'] !== null)->values()->all(),
+            ];
+        }
+
+        if ($match->status === 'completed' && $match->winner_application_id) {
+            $winnerSide = null;
+
+            if ($match->winner_application_id === $applicationA?->id) {
+                $winnerSide = 'A';
+            } elseif ($match->winner_application_id === $applicationB?->id) {
+                $winnerSide = 'B';
+            }
 
             $result = [
-                'outcome' => $match->winner_application_id === $myApplicationId ? 'win' : 'lose',
-                'note' => "{$gamesWonByA} games to {$gamesWonByB}",
+                'outcome' => $mySide === null || $winnerSide === null ? null : ($winnerSide === $mySide ? 'win' : 'lose'),
+                'winnerSide' => $winnerSide,
+                'winnerName' => $winnerSide ? $match->sideLabel($winnerSide) : null,
+                'setsPlayed' => count($games),
+                'gamesWonA' => $gamesWonA,
+                'gamesWonB' => $gamesWonB,
+                'games' => $games,
             ];
         }
 
@@ -104,43 +144,55 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
             'date' => $match->scheduled_at?->format('F j, Y'),
             'round' => $match->round,
             'teamAName' => 'Team A',
-            'teamAPlayers' => $teamA?->applicationPlayers->pluck('player.name')->all() ?? [],
+            'teamAPlayers' => $applicationA?->applicationPlayers->pluck('player.name')->all() ?? [],
             'teamBName' => 'Team B',
-            'teamBPlayers' => $teamB?->applicationPlayers->pluck('player.name')->all() ?? [],
+            'teamBPlayers' => $applicationB?->applicationPlayers->pluck('player.name')->all() ?? [],
+            'live' => $live,
             'result' => $result,
         ];
     }
 }; ?>
 
-<div class="flex flex-col gap-5">
-    <div class="flex h-10 w-fit items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
-        <button type="button" wire:click="selectTab('all')"
-                @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
-                    'bg-[#0b4742] text-white' => $tab === 'all',
-                    'cursor-pointer text-[#0b4742]' => $tab !== 'all',
-                ])>
-            All Matches
-        </button>
-        <button type="button" wire:click="selectTab('upcoming')"
-                @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
-                    'bg-[#0b4742] text-white' => $tab === 'upcoming',
-                    'cursor-pointer text-[#0b4742]' => $tab !== 'upcoming',
-                ])>
-            Upcoming Matches
-        </button>
-        <button type="button" wire:click="selectTab('concluded')"
-                @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
-                    'bg-[#0b4742] text-white' => $tab === 'concluded',
-                    'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
-                ])>
-            Concluded Matches
-        </button>
+<div class="flex flex-col gap-5" wire:poll.5s.visible>
+    <div class="flex h-10 w-fit max-w-full items-center gap-4 overflow-x-auto rounded-full bg-white px-2.5 py-1.5">
+        @foreach (['all' => 'All Matches', 'upcoming' => 'Upcoming Matches', 'ongoing' => 'Ongoing Matches', 'concluded' => 'Concluded Matches'] as $key => $label)
+            <button type="button" wire:click="selectTab('{{ $key }}')"
+                    @class([
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs',
+                        'bg-[#0b4742] text-white' => $tab === $key,
+                        'cursor-pointer text-[#0b4742]' => $tab !== $key,
+                    ])>
+                {{ $label }}
+            </button>
+        @endforeach
     </div>
 
-    @if ($tab !== 'concluded')
+    @if ($tab === 'ongoing' || ($tab === 'all' && $this->ongoingMatches->isNotEmpty()))
+        <div class="flex flex-col gap-2.5">
+            <h2 class="text-sm font-bold text-white">Ongoing Matches</h2>
+
+            <div class="flex flex-col gap-[17px]">
+                @forelse ($this->ongoingMatches as $match)
+                    <x-player.match-card
+                        wire:key="ongoing-{{ $match['id'] }}"
+                        :court="$match['court']"
+                        :match-time="$match['time']"
+                        :match-date="$match['date']"
+                        :round="$match['round']"
+                        :team-a-name="$match['teamAName']"
+                        :team-a-players="$match['teamAPlayers']"
+                        :team-b-name="$match['teamBName']"
+                        :team-b-players="$match['teamBPlayers']"
+                        :live="$match['live']"
+                    />
+                @empty
+                    <p class="py-10 text-center text-sm text-white">No matches are being played right now.</p>
+                @endforelse
+            </div>
+        </div>
+    @endif
+
+    @if ($tab === 'all' || $tab === 'upcoming')
         <div class="flex flex-col gap-2.5">
             <h2 class="text-sm font-bold text-white">Upcoming Matches</h2>
 
@@ -165,7 +217,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
         </div>
     @endif
 
-    @if ($tab !== 'upcoming')
+    @if ($tab === 'all' || $tab === 'concluded')
         <div class="flex flex-col gap-2.5">
             <h2 class="text-sm font-bold text-white">Previous Matches</h2>
 

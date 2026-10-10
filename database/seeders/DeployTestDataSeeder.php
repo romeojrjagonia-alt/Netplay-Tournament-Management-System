@@ -9,6 +9,7 @@ use App\Models\MatchGame;
 use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
+use App\Models\Rally;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
@@ -48,6 +49,10 @@ use Illuminate\Support\Str;
  *   entries and NO bracket yet, plus applications in every review state;
  *   Women's Singles has a generated bracket with byes; Mixed Doubles is full.
  * - "[TEST] Past Classic": concluded single elimination, champion decided.
+ * - "[TEST] Live Scores": ongoing round robin for the player match cards.
+ *   player1 has one concluded win, one concluded loss, one match being
+ *   scored right now (live points) and one upcoming. Re-running the seeder
+ *   adds this tournament on its own; existing [TEST] data is left alone.
  * - "[TEST] Spring Draft": unpublished draft with an empty category.
  */
 class DeployTestDataSeeder extends Seeder
@@ -104,6 +109,7 @@ class DeployTestDataSeeder extends Seeder
         $this->seedRoundRobinOpen($umpire, $loginPlayers);
         $this->seedKnockoutCup($loginPlayers);
         $this->seedPastClassic();
+        $this->seedLiveScores($umpire, $loginPlayers);
         $this->seedSpringDraft();
 
         $this->report($admin);
@@ -303,6 +309,77 @@ class DeployTestDataSeeder extends Seeder
         }
     }
 
+    /**
+     * Test Player One's view of every match card state: a concluded win, a
+     * concluded loss in three games, a match being scored right now (game 1
+     * decided, game 2 mid-play) and one still upcoming.
+     *
+     * @param  list<Player>  $loginPlayers
+     */
+    private function seedLiveScores(User $umpire, array $loginPlayers): void
+    {
+        $tournament = $this->tournament('Live Scores', 'round_robin', [
+            'date_start' => now()->subDay()->toDateString(),
+            'date_end' => now()->addDays(2)->toDateString(),
+            'registration_start' => now()->subDays(21)->toDateString(),
+            'registration_end' => now()->subDays(3)->toDateString(),
+        ]);
+
+        if (! $tournament) {
+            return;
+        }
+
+        $category = $this->tournamentCategory($tournament, "Men's Singles", 'male', 1, 'Level C', 250, 16);
+
+        $mine = $this->approvedEntry($category, [$loginPlayers[0]]);
+
+        foreach (range(1, 4) as $n) {
+            $this->approvedEntry($category, [$this->player("Jose Villanueva $n", 'male')]);
+        }
+
+        app(RoundRobinScheduler::class)->generate($category);
+
+        $matches = $this->orderedMatches($category);
+
+        $isMine = fn (Matches $match): bool => $match->matchApplications()->where('application_id', $mine->id)->exists();
+
+        // Round robin lists every entry once per round, so the player's
+        // matches are picked out and given a state each; the rest wait.
+        $mineMatches = $matches->filter($isMine)->values();
+
+        $matches->each(function (Matches $match, int $index) use ($umpire): void {
+            $match->update([
+                'scheduled_at' => now()->addDay()->setTime(9, 0)->addMinutes($index * 40),
+                'court' => (string) (($index % 2) + 1),
+                'assigned_umpire_id' => $umpire->id,
+            ]);
+        });
+
+        $myIndexIn = fn (Matches $match): int => $match->matchApplications()->get()
+            ->search(fn ($entry) => $entry->application_id === $mine->id);
+
+        // Concluded: Test Player One wins 2-0.
+        $won = $mineMatches[0];
+        $won->update(['scheduled_at' => now()->subHours(5)]);
+        $this->completeMatch($won, $myIndexIn($won), 2);
+
+        // Concluded: Test Player One loses 1-2.
+        $lost = $mineMatches[1];
+        $lost->update(['scheduled_at' => now()->subHours(3)]);
+        $this->completeMatch($lost, 1 - $myIndexIn($lost), 3);
+
+        // Ongoing: game 1 to Test Player One, game 2 under way and close.
+        $live = $mineMatches[2];
+        $opponentId = $live->matchApplications()->get()
+            ->first(fn ($entry) => $entry->application_id !== $mine->id)->application_id;
+
+        $live->update(['status' => 'in_progress', 'scheduled_at' => now()->subMinutes(20)]);
+        $this->recordGame($live, 1, $mine->id, $opponentId, 21, 18, true);
+        $this->recordGame($live, 2, $opponentId, $mine->id, 12, 10, false);
+
+        // The fourth stays scheduled for tomorrow, as the loop above set it.
+    }
+
     private function seedSpringDraft(): void
     {
         $tournament = $this->tournament('Spring Draft', 'round_robin', [
@@ -474,15 +551,68 @@ class DeployTestDataSeeder extends Seeder
 
         $gameWinners = $gamesPlayed === 3 ? [$loserId, $winnerId, $winnerId] : [$winnerId, $winnerId];
 
+        $trailerPoints = [17, 12, 19, 15];
+
         foreach ($gameWinners as $index => $gameWinnerId) {
-            MatchGame::create([
-                'match_id' => $match->id,
-                'game_number' => $index + 1,
-                'winner_application_id' => $gameWinnerId,
-            ]);
+            $this->recordGame(
+                $match,
+                $index + 1,
+                $gameWinnerId,
+                $gameWinnerId === $winnerId ? $loserId : $winnerId,
+                21,
+                $trailerPoints[($match->id + $index) % count($trailerPoints)],
+                true,
+            );
         }
 
         $match->update(['status' => 'completed', 'winner_application_id' => $winnerId]);
+    }
+
+    /**
+     * Create a game with a full rally log, so point scores show on the match
+     * cards. The trailing entry's points are spread evenly through the game;
+     * a decided game ends on the leader's point, so the game is not over
+     * before its last rally.
+     *
+     * @param  int  $leaderPoints  21 for a decided game
+     * @param  int  $trailerPoints  at most 19 for a decided game
+     * @param  bool  $decided  false leaves the game in progress, with no winner
+     */
+    private function recordGame(Matches $match, int $gameNumber, int $leaderId, int $trailerId, int $leaderPoints, int $trailerPoints, bool $decided): void
+    {
+        $game = MatchGame::create([
+            'match_id' => $match->id,
+            'game_number' => $gameNumber,
+            'winner_application_id' => $decided ? $leaderId : null,
+        ]);
+
+        $leaderPlayers = ApplicationPlayer::where('application_id', $leaderId)->pluck('player_id')->all();
+        $trailerPlayers = ApplicationPlayer::where('application_id', $trailerId)->pluck('player_id')->all();
+
+        $total = $leaderPoints + $trailerPoints;
+
+        $trailerRallies = [];
+
+        for ($point = 0; $point < $trailerPoints; $point++) {
+            $trailerRallies[(int) floor(($point + 0.5) * $total / $trailerPoints)] = true;
+        }
+
+        $leaderScored = 0;
+        $trailerScored = 0;
+
+        for ($index = 0; $index < $total; $index++) {
+            if (isset($trailerRallies[$index])) {
+                $scorerId = $trailerPlayers[$trailerScored++ % count($trailerPlayers)];
+            } else {
+                $scorerId = $leaderPlayers[$leaderScored++ % count($leaderPlayers)];
+            }
+
+            Rally::create([
+                'match_game_id' => $game->id,
+                'scoring_player_id' => $scorerId,
+                'rally_number' => $index + 1,
+            ]);
+        }
     }
 
     /**

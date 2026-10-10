@@ -23,7 +23,7 @@ afterEach(function () {
 it('seeds tournaments, accounts and match data', function () {
     $this->seed(DeployTestDataSeeder::class);
 
-    expect(Tournament::where('name', 'like', '[TEST] %')->count())->toBe(4);
+    expect(Tournament::where('name', 'like', '[TEST] %')->count())->toBe(5);
     expect(Tournament::where('name', '[TEST] Spring Draft')->value('status'))->toBe('draft');
 
     $admin = User::where('email', 'admin@seed.netplay.test')->first();
@@ -34,7 +34,7 @@ it('seeds tournaments, accounts and match data', function () {
 
     expect(User::where('role', 'umpire')->count())->toBe(2);
     expect(Matches::where('status', 'completed')->count())->toBeGreaterThan(0);
-    expect(Matches::where('status', 'in_progress')->count())->toBe(1);
+    expect(Matches::where('status', 'in_progress')->count())->toBe(2);
     expect(PlayerApplication::whereIn('status', ['pending_verification', 'payment_pending', 'rejected'])->count())->toBeGreaterThan(0);
     expect(PaymentDetail::where('payment_status', 'pending')->count())->toBe(1);
 

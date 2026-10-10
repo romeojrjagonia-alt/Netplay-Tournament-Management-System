@@ -163,6 +163,39 @@ class Matches extends Model
     }
 
     /**
+     * Each game's point score and winning side, in play order. A decided
+     * game takes its stored winner; one with no stored winner falls back to
+     * what its rally log says, and stays null while still being played.
+     *
+     * @return list<array{number: int, A: int, B: int, winner: 'A'|'B'|null}>
+     */
+    public function gameScores(): array
+    {
+        $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
+
+        $playerSideMap = $this->playerSideMap();
+        $applicationIdA = $this->applicationForSide('A')?->id;
+        $applicationIdB = $this->applicationForSide('B')?->id;
+
+        return $this->games
+            ->sortBy('game_number')
+            ->values()
+            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB): array {
+                $scores = $game->scores($playerSideMap);
+
+                $winner = match (true) {
+                    $game->winner_application_id === null => $game->winningSide($playerSideMap),
+                    $game->winner_application_id === $applicationIdA => 'A',
+                    $game->winner_application_id === $applicationIdB => 'B',
+                    default => null,
+                };
+
+                return ['number' => $game->game_number, 'A' => $scores['A'], 'B' => $scores['B'], 'winner' => $winner];
+            })
+            ->all();
+    }
+
+    /**
      * The application (entry) on the given side ('A' or 'B') of this match.
      */
     public function applicationForSide(string $side): ?PlayerApplication
