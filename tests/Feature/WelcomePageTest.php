@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Tournament;
+use App\Models\User;
 
 test('welcome page renders the landing page sections', function () {
     $response = $this->get('/');
@@ -49,4 +50,27 @@ test('active tournament register button links to the public registration form', 
     ]);
 
     $this->get('/')->assertSee(route('tournaments.register', $tournament), false);
+});
+
+test('guests see sign in and sign up on the landing page', function () {
+    $this->get('/')
+        ->assertSee('Sign In')
+        ->assertSee('Sign Up')
+        ->assertDontSee('Go to Dashboard');
+});
+
+test('signed in users see a dashboard link and sign out instead of sign in', function () {
+    $user = User::factory()->create(['role' => 'player']);
+
+    $this->actingAs($user)
+        ->get('/')
+        ->assertSee('Go to Dashboard')
+        ->assertSee('Sign Out')
+        ->assertDontSee('Sign In')
+        ->assertDontSee('REGISTER NOW!')
+        ->assertSee(route('player.dashboard'), false);
+});
+
+test('the session lifetime defaults to 30 minutes', function () {
+    expect((int) config('session.lifetime'))->toBe(30);
 });

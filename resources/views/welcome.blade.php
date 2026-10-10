@@ -39,14 +39,28 @@
             </ul>
 
             <div class="flex items-center gap-3 sm:gap-5">
-                <a href="{{ route('login') }}" wire:navigate
-                   class="flex h-9 items-center justify-center rounded-[36px] px-3 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
-                    Sign In
-                </a>
-                <a href="{{ route('register') }}" wire:navigate
-                   class="flex h-9 items-center justify-center rounded-[36px] bg-white px-4 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
-                    Sign Up
-                </a>
+                @auth
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit"
+                                class="flex h-9 cursor-pointer items-center justify-center rounded-[36px] px-3 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
+                            Sign Out
+                        </button>
+                    </form>
+                    <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] bg-white px-4 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
+                        Go to Dashboard
+                    </a>
+                @else
+                    <a href="{{ route('login') }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] px-3 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
+                        Sign In
+                    </a>
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] bg-white px-4 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
+                        Sign Up
+                    </a>
+                @endauth
             </div>
         </div>
         </nav>
@@ -70,10 +84,17 @@
                 <p class="max-w-[607px] text-base leading-7 text-white sm:text-lg sm:leading-9">
                     Want to compete among the best players in a tournament? Register now!
                 </p>
-                <a href="{{ route('register') }}" wire:navigate
-                   class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
-                    REGISTER NOW!
-                </a>
+                @auth
+                    <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                       class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
+                        GO TO DASHBOARD
+                    </a>
+                @else
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
+                        REGISTER NOW!
+                    </a>
+                @endauth
             </div>
         </section>
 
@@ -198,10 +219,12 @@
                     <p class="mt-1 text-xs text-black">Simply register through creating new account!</p>
                 </div>
 
-                <a href="{{ route('register') }}" wire:navigate
-                   class="shrink-0 rounded-full bg-emerald-900 px-8 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800">
-                    Register Now!
-                </a>
+                @guest
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="shrink-0 rounded-full bg-emerald-900 px-8 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                        Register Now!
+                    </a>
+                @endguest
             </div>
         </section>
 
