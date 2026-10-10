@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\PlayerApplication;
+use App\Models\Tournament;
+use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -11,97 +14,108 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     }
 
     /**
-     * The next tournament this player is entered in.
+     * The next tournament this player has a confirmed entry in, if any.
      *
-     * TODO: replace with the player's next Entry once tournaments/entries exist.
-     *
-     * @return array<string, mixed>
+     * @return array<string, mixed>|null
      */
     #[Computed]
-    public function upcomingTournament(): array
+    public function upcomingTournament(): ?array
     {
-        return [
-            'label' => 'UPCOMING TOURNAMENT',
-            'name' => 'Inato Tournament',
-            'dates' => 'July 1 - 31, 2026',
-            'time' => '9:00 AM - 5:00 PM',
-            'days' => ['Sat', 'Sun'],
-            'badge' => 'Accepting Registrations Starting Sept. 28, 2026',
-        ];
+        $tournament = Tournament::query()
+            ->whereIn('id', $this->applications->where('status', 'approved')->pluck('tournamentCategory.tournament_id'))
+            ->whereDate('date_end', '>=', now())
+            ->orderBy('date_start')
+            ->first();
+
+        return $tournament ? $this->cardFor($tournament, 'UPCOMING TOURNAMENT', 'You are registered') : null;
     }
 
     /**
      * Tournaments whose registration window is currently open.
      *
-     * TODO: replace with Tournament::openForRegistration()->get().
-     *
-     * @return array<int, array<string, mixed>>
+     * @return Collection<int, array<string, mixed>>
      */
     #[Computed]
-    public function openTournaments(): array
+    public function openTournaments(): Collection
     {
-        return [
-            [
-                'label' => 'ONGOING TOURNAMENT',
-                'name' => 'Inato Tournament',
-                'dates' => 'July 1 - 31, 2026',
-                'time' => '9:00 AM - 5:00 PM',
-                'days' => ['Sat', 'Sun'],
-                'badge' => 'Accepting Registrations till August 12, 2026',
-            ],
-            [
-                'label' => 'ONGOING TOURNAMENT',
-                'name' => 'Inato Tournament',
-                'dates' => 'July 1 - 31, 2026',
-                'time' => '9:00 AM - 5:00 PM',
-                'days' => ['Sat', 'Sun'],
-                'badge' => 'Accepting Registrations till August 12, 2026',
-            ],
-        ];
+        return Tournament::query()
+            ->acceptingRegistrations()
+            ->orderBy('registration_end')
+            ->limit(4)
+            ->get()
+            ->map(fn (Tournament $tournament) => $this->cardFor(
+                $tournament,
+                'OPEN FOR REGISTRATION',
+                'Accepting Registrations till '.$tournament->registration_end->format('F j, Y'),
+            ));
     }
 
     /**
-     * This player's in-flight applications and where each one sits.
+     * This player's applications, newest first, with the state of each.
      *
-     * TODO: replace with the player's applications, deriving `status` from
-     * the approval state and the latest verified payment row.
-     *
-     * @return array<int, array<string, string|null>>
+     * @return Collection<int, PlayerApplication>
      */
     #[Computed]
-    public function applications(): array
+    public function applications(): Collection
+    {
+        $player = auth()->user()->player;
+
+        if (! $player) {
+            return collect();
+        }
+
+        return $player->playerApplications()
+            ->with(['tournamentCategory.tournament', 'tournamentCategory.category'])
+            ->latest('player_applications.created_at')
+            ->get();
+    }
+
+    /**
+     * What the player has to do next for an application, if anything.
+     */
+    public function noteFor(PlayerApplication $application): ?string
+    {
+        return match ($application->status) {
+            'payment_pending' => 'Pay the registration fee with your reference code '.$application->reference_code.'.',
+            'rejected' => $application->rejection_reason ? 'Reason: '.$application->rejection_reason : null,
+            default => null,
+        };
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function cardFor(Tournament $tournament, string $label, string $badge): array
     {
         return [
-            [
-                'name' => 'Inato Tournament',
-                'status' => 'Waiting for organizers verification',
-                'note' => null,
-            ],
-            [
-                'name' => 'Inato Tournament',
-                'status' => 'Verification confirmed, proceed to payment',
-                'note' => 'Proceed to payment procedures within 5 days.',
-            ],
+            'label' => $label,
+            'name' => $tournament->name,
+            'dates' => $tournament->date_range_label,
+            'time' => $tournament->time,
+            'days' => $tournament->specific_days ? array_map('trim', explode(',', $tournament->specific_days)) : [],
+            'badge' => $badge,
         ];
     }
 }; ?>
 
 <div class="flex flex-col gap-5">
-    <x-player.tournament-card
-        class="h-[204px] px-10"
-        :label="$this->upcomingTournament['label']"
-        :name="$this->upcomingTournament['name']"
-        :dates="$this->upcomingTournament['dates']"
-        :time="$this->upcomingTournament['time']"
-        :days="$this->upcomingTournament['days']"
-        :badge="$this->upcomingTournament['badge']"
-    />
+    @if ($this->upcomingTournament)
+        <x-player.tournament-card
+            class="h-[204px] px-10"
+            :label="$this->upcomingTournament['label']"
+            :name="$this->upcomingTournament['name']"
+            :dates="$this->upcomingTournament['dates']"
+            :time="$this->upcomingTournament['time']"
+            :days="$this->upcomingTournament['days']"
+            :badge="$this->upcomingTournament['badge']"
+        />
+    @endif
 
     <div class="flex flex-col gap-2.5">
         <h2 class="text-sm font-bold text-white">Currently Open for Registrations</h2>
 
         <div class="grid gap-[30px] lg:grid-cols-2">
-            @foreach ($this->openTournaments as $tournament)
+            @forelse ($this->openTournaments as $tournament)
                 <x-player.tournament-card
                     wire:key="open-{{ $loop->index }}"
                     class="h-[203px]"
@@ -113,7 +127,9 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
                     :days="$tournament['days']"
                     :badge="$tournament['badge']"
                 />
-            @endforeach
+            @empty
+                <p class="py-4 text-xs text-white">No tournaments are accepting registrations right now.</p>
+            @endforelse
         </div>
     </div>
 
@@ -123,10 +139,10 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
         <div class="flex flex-col gap-[15px] rounded-[5px] bg-[#77b9b3]/60 p-5">
             @forelse ($this->applications as $application)
                 <x-player.application-row
-                    wire:key="application-{{ $loop->index }}"
-                    :name="$application['name']"
-                    :status="$application['status']"
-                    :note="$application['note']"
+                    wire:key="application-{{ $application->id }}"
+                    :name="$application->tournamentCategory->tournament->name.' — '.$application->tournamentCategory->category_label"
+                    :status="$application->status_label"
+                    :note="$this->noteFor($application)"
                 />
             @empty
                 <p class="py-4 text-center text-xs text-white">You have no tournament applications in progress.</p>

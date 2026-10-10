@@ -137,7 +137,7 @@ test('publishing a draft with no categories is rejected', function () {
 
     Volt::test('admin.events.show', ['tournament' => $tournament])
         ->call('togglePublish')
-        ->assertSee('Add at least one category before publishing this event.')
+        ->assertDispatched('system-message', variant: 'danger')
         ->assertSee('Publish Event');
 
     expect($tournament->fresh()->status)->toBe('draft');

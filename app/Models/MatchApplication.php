@@ -15,6 +15,7 @@ class MatchApplication extends Model
     protected $fillable = [
         'match_id',
         'application_id',
+        'slot',
     ];
 
     public function match(): BelongsTo

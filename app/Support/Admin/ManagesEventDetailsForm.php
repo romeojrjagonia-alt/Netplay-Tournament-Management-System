@@ -117,7 +117,7 @@ trait ManagesEventDetailsForm
     {
         return $this->validate([
             'name' => ['required', 'string', 'max:255'],
-            'format' => ['required', 'in:single_elimination,round_robin,double_elimination'],
+            'format' => ['required', 'in:single_elimination,round_robin'],
             'location' => ['nullable', 'string', 'max:255'],
             'scoringSystem' => ['required', Rule::in(array_keys($this->scoringSystems))],
             'dateStart' => ['required', 'date'],

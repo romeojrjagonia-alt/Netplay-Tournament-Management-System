@@ -111,7 +111,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     private function closeModalAndNotify(string $modal, string $message, string $variant = 'success'): void
     {
         $this->dispatch('modal-close', name: $modal);
-        $this->dispatch('admin-toast', message: $message, variant: $variant);
+        $this->dispatch('system-message', message: $message, variant: $variant);
     }
 
     /**
@@ -470,13 +470,5 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         </div>
     </flux:modal>
 
-    <flux:toast />
 
-    @script
-    <script>
-        this.$on('admin-toast', (event) => {
-            window.Flux.toast({ text: event.detail.message, variant: event.detail.variant });
-        });
-    </script>
-    @endscript
 </div>

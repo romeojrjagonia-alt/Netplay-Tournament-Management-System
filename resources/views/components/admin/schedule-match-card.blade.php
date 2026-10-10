@@ -44,7 +44,7 @@
                 ])>{{ $loop->iteration }}</span>
 
                 <span @class(['flex-1 text-sm text-black', 'font-bold' => $winnerSide === $side])>
-                    {{ $match->sideLabel($side) ?: 'TBD' }}
+                    {{ $match->sideLabel($side) ?: ($match->status === 'completed' ? 'BYE' : 'TBD') }}
                 </span>
 
                 @foreach ($gameResults as $result)

@@ -13,8 +13,6 @@ use Livewire\Volt\Component;
 new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] class extends Component {
     public Tournament $tournament;
 
-    public ?string $publishError = null;
-
     public bool $showCategoryModal = false;
 
     /** @var array<int, string> Fee inputs for categories not yet added, keyed by category id. */
@@ -165,12 +163,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     public function togglePublish(): void
     {
         if (! $this->tournament->is_published && $this->tournament->tournamentCategories()->doesntExist()) {
-            $this->publishError = 'Add at least one category before publishing this event.';
+            $this->dispatch('system-message', title: 'Cannot publish yet', message: 'Add at least one category before publishing this event.', variant: 'danger');
 
             return;
         }
-
-        $this->publishError = null;
 
         $this->tournament->update(['status' => $this->tournament->is_published ? 'draft' : 'published']);
     }
@@ -231,14 +227,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 </button>
             @endunless
 
+            @if ($tournament->is_published && $tournament->registration_end->endOfDay()->isFuture())
+                <a href="{{ route('tournaments.register', $tournament) }}" class="rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    Register Walk-in
+                </a>
+            @endif
+
             <button type="button" wire:click="togglePublish" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
                 {{ $tournament->is_published ? 'Unpublish Event' : 'Publish Event' }}
             </button>
         </div>
 
-        @if ($publishError)
-            <p class="text-right text-xs font-medium text-red-300">{{ $publishError }}</p>
-        @endif
 
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex flex-wrap items-center gap-8">
@@ -312,7 +311,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
 
                 <div class="flex flex-col gap-1">
                     <span class="text-xs text-black">LEVEL</span>
-                    <span class="text-xs font-bold text-black uppercase">{{ $tournamentCategory->category->level ?? '—' }}</span>
+                    <span class="text-xs font-bold text-black uppercase">{{ $tournamentCategory->category->level ?? 'Any' }}</span>
                 </div>
 
                 <div class="flex flex-col gap-1">
@@ -358,7 +357,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                             <div class="flex flex-wrap items-start gap-2 border-b border-[#ddefed] p-2.5 last:border-b-0" wire:key="available-{{ $category->id }}">
                                 <div class="min-w-[160px] flex-1">
                                     <p class="text-xs font-bold">{{ $category->name }}</p>
-                                    <p class="text-[11px] opacity-70">{{ $category->level ?? '—' }} · {{ $category->age_label }}</p>
+                                    <p class="text-[11px] opacity-70">{{ $category->level ?? 'Any' }} · {{ $category->age_label }}</p>
                                 </div>
                                 <div class="flex flex-col gap-0.5">
                                     <input type="number" step="0.01" min="0" wire:model="newFee.{{ $category->id }}" placeholder="Fee (PHP)" aria-label="Registration fee" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black placeholder:text-black/50">
@@ -386,7 +385,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                             <div class="flex flex-wrap items-start gap-2 border-b border-[#ddefed] p-2.5 last:border-b-0" wire:key="added-{{ $tournamentCategory->id }}">
                                 <div class="min-w-[160px] flex-1">
                                     <p class="text-xs font-bold">{{ $tournamentCategory->category->name }}</p>
-                                    <p class="text-[11px] opacity-70">{{ $tournamentCategory->category->level ?? '—' }} · {{ $tournamentCategory->category->age_label }}</p>
+                                    <p class="text-[11px] opacity-70">{{ $tournamentCategory->category->level ?? 'Any' }} · {{ $tournamentCategory->category->age_label }}</p>
                                 </div>
                                 <div class="flex flex-col gap-0.5">
                                     <input type="number" step="0.01" min="0" wire:model="editFee.{{ $tournamentCategory->id }}" wire:change="saveCategoryTerms({{ $tournamentCategory->id }})" aria-label="Registration fee" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black">

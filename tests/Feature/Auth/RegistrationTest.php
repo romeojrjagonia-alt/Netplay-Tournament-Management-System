@@ -36,7 +36,7 @@ test('selecting a user type advances to step two', function () {
 
 test('step two requires valid account details before advancing', function () {
     Volt::test('auth.register')
-        ->call('selectUserType', 'umpire')
+        ->call('selectUserType', 'player')
         ->call('nextStep')
         ->set('password', 'short')
         ->set('password_confirmation', 'mismatch')

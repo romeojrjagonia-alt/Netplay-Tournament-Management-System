@@ -118,6 +118,36 @@ class TournamentCategory extends Model
         return $this->belongsTo(Category::class);
     }
 
+    /**
+     * Entries holding a slot: every application that hasn't been rejected,
+     * so a category can't be oversold while applications are still pending.
+     */
+    public function activeEntriesCount(): int
+    {
+        return $this->playerApplications()->where('status', '!=', 'rejected')->count();
+    }
+
+    public function isFull(): bool
+    {
+        return $this->activeEntriesCount() >= $this->max_slots;
+    }
+
+    /**
+     * Lock the category row and refuse a new application when it is full.
+     * Call inside the transaction that creates the application, so two
+     * simultaneous registrations can't both take the last slot.
+     *
+     * @throws \RuntimeException when no slot is left
+     */
+    public static function lockAndAssertOpenSlot(int $tournamentCategoryId): void
+    {
+        $tournamentCategory = static::query()->whereKey($tournamentCategoryId)->lockForUpdate()->firstOrFail();
+
+        if ($tournamentCategory->isFull()) {
+            throw new \RuntimeException('This category is full — all '.$tournamentCategory->max_slots.' slots are taken.');
+        }
+    }
+
     public function playerApplications(): HasMany
     {
         return $this->hasMany(PlayerApplication::class);

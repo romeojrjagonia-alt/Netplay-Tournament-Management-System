@@ -227,6 +227,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
         try {
             DB::transaction(function () use ($tournamentCategoryId): void {
+                TournamentCategory::lockAndAssertOpenSlot($tournamentCategoryId);
+
                 $applicant = $this->resolveApplicantPlayer();
 
                 $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
@@ -263,13 +265,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             });
         } catch (\RuntimeException $e) {
             $this->addError('registration', $e->getMessage());
+            $this->dispatch('system-message', title: 'Could not submit application', message: $e->getMessage(), variant: 'danger');
 
             return;
         }
 
         $this->viewingTournamentId = null;
         $this->dispatch('modal-close', name: 'tournament-registration');
-        $this->dispatch('registration-toast', message: 'Application submitted! Waiting for organizer verification.', variant: 'success');
+        $this->dispatch('system-message', title: 'Application submitted', message: 'Waiting for organizer verification.', variant: 'success');
 
         unset($this->tournaments, $this->myApplications);
     }
@@ -808,7 +811,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             model="regTournamentCategoryId"
                             placeholder="Select Category"
                             :live="true"
-                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '')])"
+                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '').($tc->isFull() ? ' (Full)' : '')])"
                         />
 
                         @if ($this->isDoublesRegistration)
@@ -948,9 +951,6 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 </div>
             </div>
 
-            @error('registration')
-                <p class="text-[11px] text-red-600">{{ $message }}</p>
-            @enderror
 
             <div class="grid grid-cols-2 gap-[20px]">
                 @if ($regStep === 1)
@@ -981,13 +981,4 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         </div>
     </flux:modal>
 
-    <flux:toast />
-
-    @script
-    <script>
-        this.$on('registration-toast', (event) => {
-            window.Flux.toast({ text: event.detail.message, variant: event.detail.variant });
-        });
-    </script>
-    @endscript
 </div>

@@ -274,3 +274,15 @@ test('the wizard step routes resolve the tournament via route model binding', fu
     $this->actingAs($admin)->get(route('admin.events.wizard.review', $tournament))->assertOk();
     $this->actingAs($admin)->get(route('admin.events.edit', $tournament))->assertOk();
 });
+
+test('double elimination is not offered as a tournament format', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    Volt::test('admin.events.wizard.details')
+        ->assertDontSee('Double Elimination')
+        ->assertSee('Single Elimination')
+        ->assertSee('Round Robin')
+        ->set('format', 'double_elimination')
+        ->call('next')
+        ->assertHasErrors(['format']);
+});

@@ -38,6 +38,11 @@ class Category extends Model
     ];
 
     /**
+     * The form value meaning "open to all levels", stored as a null level.
+     */
+    public const ANY_LEVEL = 'any';
+
+    /**
      * The selectable player levels.
      *
      * @var list<string>

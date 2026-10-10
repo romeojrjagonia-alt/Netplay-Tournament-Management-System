@@ -70,7 +70,7 @@
             label="Tournament Format"
             model="format"
             :live="true"
-            :options="['single_elimination' => 'Single Elimination', 'round_robin' => 'Round Robin', 'double_elimination' => 'Double Elimination']"
+            :options="['single_elimination' => 'Single Elimination', 'round_robin' => 'Round Robin']"
         />
 
         <x-player.registration-select label="Pointing System" model="scoringSystem" :options="$this->scoringSystems" />

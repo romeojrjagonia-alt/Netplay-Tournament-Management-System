@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Player;
 use App\Models\User;
 use Livewire\Volt\Volt;
 
@@ -72,4 +73,32 @@ test('correct password must be provided to delete account', function () {
     $response->assertHasErrors(['password']);
 
     expect($user->fresh())->not->toBeNull();
+});
+test('changing the account email also updates the linked player contact email', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => $user->name, 'email' => 'old-contact@example.com']);
+
+    $this->actingAs($user);
+
+    Volt::test('settings.profile')
+        ->set('name', $user->name)
+        ->set('email', 'new-address@example.com')
+        ->call('updateProfileInformation')
+        ->assertHasNoErrors();
+
+    expect($player->fresh()->email)->toBe('new-address@example.com');
+});
+
+test('saving the profile without an email change leaves the player contact email alone', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => $user->name, 'email' => 'contact@example.com']);
+
+    $this->actingAs($user);
+
+    Volt::test('settings.profile')
+        ->set('name', 'Renamed Player')
+        ->set('email', $user->email)
+        ->call('updateProfileInformation');
+
+    expect($player->fresh()->email)->toBe('contact@example.com');
 });

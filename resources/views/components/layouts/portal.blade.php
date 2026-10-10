@@ -100,6 +100,8 @@
 
         <livewire:verify-email-prompt />
 
+        <x-system-modal />
+
         @fluxScripts
     </body>
 </html>

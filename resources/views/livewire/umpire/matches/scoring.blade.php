@@ -114,7 +114,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     #[Computed]
     public function canStartMatch(): bool
     {
-        return $this->match->status !== 'completed' && $this->games->count() === 0;
+        return $this->match->status !== 'completed'
+            && $this->games->count() === 0
+            && $this->match->matchApplications()->count() >= 2;
     }
 
     #[Computed]

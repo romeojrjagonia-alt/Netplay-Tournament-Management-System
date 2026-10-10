@@ -25,7 +25,9 @@
         </x-portal.sidebar-link>
 
         <p class="px-2.5 pt-4 pb-1 text-xs text-black">System</p>
-        <x-portal.sidebar-link icon="users" href="#">Users</x-portal.sidebar-link>
+        <x-portal.sidebar-link icon="users" :href="route('admin.users.index')" :active="request()->routeIs('admin.users.index')" wire:navigate>
+            Users
+        </x-portal.sidebar-link>
     </x-slot:nav>
 
     {{ $slot }}

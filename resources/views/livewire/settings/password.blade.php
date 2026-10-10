@@ -34,6 +34,7 @@ new class extends Component {
         $this->reset('current_password', 'password', 'password_confirmation');
 
         $this->dispatch('password-updated');
+        $this->dispatch('system-message', title: 'Password updated', message: 'Your password was changed.', variant: 'success');
     }
 }; ?>
 
@@ -75,9 +76,6 @@ new class extends Component {
                     <flux:button variant="primary" type="submit" class="w-full">{{ __('Save') }}</flux:button>
                 </div>
 
-                <x-action-message class="me-3" on="password-updated">
-                    {{ __('Saved.') }}
-                </x-action-message>
             </div>
         </form>
     </x-settings.layout>

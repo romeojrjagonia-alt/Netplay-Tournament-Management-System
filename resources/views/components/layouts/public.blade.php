@@ -14,6 +14,8 @@
             {{ $slot }}
         </div>
 
+        <x-system-modal />
+
         @fluxScripts
     </body>
 </html>

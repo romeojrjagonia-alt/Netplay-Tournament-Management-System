@@ -78,7 +78,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     {
         if ($this->step === 1) {
             $this->validate([
-                'userType' => ['required', 'in:player,umpire'],
+                'userType' => ['required', 'in:player'],
             ], [
                 'userType.required' => "Please choose how you'll use NetPlay.",
             ]);
@@ -130,7 +130,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         }
 
         $this->validate([
-            'userType' => ['required', 'in:player,umpire'],
+            'userType' => ['required', 'in:player'],
             'firstName' => ['required', 'string', 'max:255'],
             'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
             'middleInitial' => ['nullable', 'string', 'max:5'],
@@ -247,25 +247,6 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 <p class="mt-1 text-[9px] text-black">Register for tournaments and track your matches</p>
                             </button>
 
-                            <button type="button" wire:click="selectUserType('umpire')"
-                                    @class([
-                                        'min-w-0 max-w-[153px] flex-1 cursor-pointer rounded-[20px] border px-3 py-[35px] text-center transition sm:px-[30px]',
-                                        'border-emerald-700 bg-emerald-700/25 ring-1 ring-emerald-700' => $userType === 'umpire',
-                                        'border-[#81bfba] bg-[#82c0bb]/25 hover:border-emerald-700' => $userType !== 'umpire',
-                                    ])>
-                                <div class="relative mx-auto h-[71px] w-[93px]">
-                                    <div class="absolute inset-[32.9%_0_0_36.59%] flex items-center justify-center">
-                                        <img src="{{ asset('images/auth/umpire-icon-1.svg') }}" alt=""
-                                             class="h-[31px] w-[51px] rotate-[159.1deg]">
-                                    </div>
-                                    <div class="absolute inset-[0_38.01%_21.93%_0] flex items-center justify-center">
-                                        <img src="{{ asset('images/auth/umpire-icon-2.svg') }}" alt=""
-                                             class="h-[42px] w-[47px] rotate-[19.31deg]">
-                                    </div>
-                                </div>
-                                <p class="text-xs font-bold text-black">Umpire</p>
-                                <p class="mt-1 text-[9px] text-black">Officiate matches and manage live scoring</p>
-                            </button>
                         </div>
 
                         @error('userType')

@@ -188,7 +188,7 @@ test('approving an application moves it to payment pending', function () {
         ->call('approveApplication', $application->id)
         ->assertSet('totals.pendingApprovals', 0)
         ->assertDispatched('modal-close', name: 'application-details')
-        ->assertDispatched('admin-toast', variant: 'success');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($application->fresh()->status)->toBe('payment_pending');
 });
@@ -203,7 +203,7 @@ test('rejecting an application marks it rejected', function () {
     Volt::test('admin.dashboard')
         ->call('rejectApplication', $application->id)
         ->assertDispatched('modal-close', name: 'application-details')
-        ->assertDispatched('admin-toast', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'danger');
 
     expect($application->fresh()->status)->toBe('rejected');
 });
@@ -243,7 +243,7 @@ test('approving a payment verifies it and approves the application', function ()
         ->call('approvePayment', $payment->id)
         ->assertSet('totals.pendingPayments', 0)
         ->assertDispatched('modal-close', name: 'payment-details')
-        ->assertDispatched('admin-toast', variant: 'success');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($payment->fresh()->payment_status)->toBe('verified');
     expect($application->fresh()->status)->toBe('approved');
@@ -267,7 +267,7 @@ test('rejecting a payment keeps the application in payment pending', function ()
         ->set('activeTab', 'payments')
         ->call('rejectPayment', $payment->id)
         ->assertDispatched('modal-close', name: 'payment-details')
-        ->assertDispatched('admin-toast', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'danger');
 
     expect($payment->fresh()->payment_status)->toBe('rejected');
     expect($application->fresh()->status)->toBe('payment_pending');

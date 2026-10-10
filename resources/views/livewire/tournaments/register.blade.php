@@ -56,10 +56,11 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
         $this->tournament = $tournament;
 
-        $player = auth()->user()?->player;
+        $user = $this->applicantUser();
+        $player = $user?->player;
 
-        if (auth()->check()) {
-            $this->regEmail = $player?->email ?? auth()->user()->email;
+        if ($user) {
+            $this->regEmail = $player?->email ?? $user->email;
         }
 
         if ($player) {
@@ -105,20 +106,26 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             $this->validate($this->pairStepRules());
         }
 
-        $throttleKey = 'tournament-register:'.request()->ip();
+        // Staff entering a field of walk-ins from one desk aren't throttled.
+        if (! auth()->user()?->isAdmin()) {
+            $throttleKey = 'tournament-register:'.request()->ip();
 
-        if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
-            $this->addError('registration', 'Too many registrations from this device. Please try again later.');
+            if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
+                $this->addError('registration', 'Too many registrations from this device. Please try again later.');
+                $this->dispatch('system-message', title: 'Too many registrations', message: 'Too many registrations from this device. Please try again later.', variant: 'danger');
 
-            return;
+                return;
+            }
+
+            RateLimiter::hit($throttleKey, 3600);
         }
-
-        RateLimiter::hit($throttleKey, 3600);
 
         $tournamentCategoryId = $this->regTournamentCategoryId;
 
         try {
             $application = DB::transaction(function () use ($tournamentCategoryId): PlayerApplication {
+                TournamentCategory::lockAndAssertOpenSlot($tournamentCategoryId);
+
                 $applicant = $this->resolveApplicantPlayer();
                 $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
 
@@ -166,6 +173,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             });
         } catch (\RuntimeException $e) {
             $this->addError('registration', $e->getMessage());
+            $this->dispatch('system-message', title: 'Could not submit application', message: $e->getMessage(), variant: 'danger');
 
             return;
         }
@@ -280,6 +288,18 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
     }
 
     /**
+     * The signed-in player this registration is for. An admin registering a
+     * walk-in is staff acting for someone else, so their own account is
+     * never prefilled into, or linked to, the walk-in's player record.
+     */
+    private function applicantUser(): ?\App\Models\User
+    {
+        $user = auth()->user();
+
+        return $user && ! $user->isAdmin() ? $user : null;
+    }
+
+    /**
      * A signed-in player's own record is kept in sync with what they enter;
      * a guest is matched to (or added as) a player record without touching
      * anyone else's details.
@@ -297,7 +317,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             'phone_number' => $this->normalizePhone($this->regPhoneNumber),
         ];
 
-        $ownPlayer = auth()->user()?->player;
+        $ownPlayer = $this->applicantUser()?->player;
 
         if ($ownPlayer) {
             $ownPlayer->update($attributes);
@@ -307,8 +327,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
         $player = $this->findOrCreatePlayer($attributes);
 
-        if (auth()->check() && $player->user_id === null) {
-            $player->update(['user_id' => auth()->id()]);
+        if ($this->applicantUser() && $player->user_id === null) {
+            $player->update(['user_id' => $this->applicantUser()->id]);
         }
 
         return $player;
@@ -493,7 +513,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         model="regTournamentCategoryId"
                         placeholder="Select Category"
                         :live="true"
-                        :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2)])"
+                        :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2).($tc->isFull() ? ' (Full)' : '')])"
                     />
                 @elseif ($this->isPairStep)
                     <p class="text-xs text-black/60">Enter your partner's details. If they have played with us before, we'll match their phone number to their existing record.</p>
@@ -546,9 +566,6 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             </div>
         </div>
 
-        @error('registration')
-            <p class="text-xs text-red-600">{{ $message }}</p>
-        @enderror
 
         <div class="grid grid-cols-2 gap-5">
             @if ($regStep === 1)

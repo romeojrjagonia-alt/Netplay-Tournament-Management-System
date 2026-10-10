@@ -49,6 +49,10 @@ Volt::route('admin/events/{tournament}/edit', 'admin.events.edit')
     ->middleware('auth')
     ->name('admin.events.edit');
 
+Volt::route('admin/users', 'admin.users.index')
+    ->middleware('auth')
+    ->name('admin.users.index');
+
 Volt::route('admin/categories', 'admin.categories.index')
     ->middleware('auth')
     ->name('admin.categories.index');

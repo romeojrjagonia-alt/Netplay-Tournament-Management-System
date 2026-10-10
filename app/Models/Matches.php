@@ -27,6 +27,7 @@ class Matches extends Model
         'winner_application_id',
         'status',
         'scheduled_at',
+        'schedule_notified_at',
         'court',
         'assigned_umpire_id',
         'line_judge_1_name',
@@ -42,6 +43,7 @@ class Matches extends Model
     {
         return [
             'scheduled_at' => 'datetime',
+            'schedule_notified_at' => 'datetime',
         ];
     }
 
@@ -62,7 +64,7 @@ class Matches extends Model
 
     public function matchApplications(): HasMany
     {
-        return $this->hasMany(MatchApplication::class, 'match_id');
+        return $this->hasMany(MatchApplication::class, 'match_id')->orderBy('slot')->orderBy('id');
     }
 
     public function games(): HasMany
@@ -86,7 +88,7 @@ class Matches extends Model
         $map = [];
 
         foreach ($this->matchApplications as $index => $matchApplication) {
-            $side = $index === 0 ? 'A' : 'B';
+            $side = $this->sideOf($matchApplication, $index);
 
             foreach ($matchApplication->application?->applicationPlayers ?? [] as $applicationPlayer) {
                 $map[$applicationPlayer->player_id] = $side;
@@ -165,8 +167,28 @@ class Matches extends Model
      */
     public function applicationForSide(string $side): ?PlayerApplication
     {
-        $index = $side === 'A' ? 0 : 1;
+        $this->loadMissing('matchApplications.application');
 
-        return $this->matchApplications->get($index)?->application;
+        // Bracket matches pin each entry to a slot, so a half-filled match
+        // keeps its lone entry on its own side.
+        foreach ($this->matchApplications as $index => $matchApplication) {
+            if ($this->sideOf($matchApplication, $index) === $side) {
+                return $matchApplication->application;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return 'A'|'B'
+     */
+    private function sideOf(MatchApplication $matchApplication, int $index): string
+    {
+        if ($matchApplication->slot !== null) {
+            return $matchApplication->slot === 1 ? 'A' : 'B';
+        }
+
+        return $index === 0 ? 'A' : 'B';
     }
 }

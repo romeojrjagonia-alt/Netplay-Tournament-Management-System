@@ -1,12 +1,17 @@
 <?php
 
 use App\Models\Category;
-use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 10;
+
     public string $categoryType = '';
 
     public string $level = '';
@@ -33,7 +38,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
     {
         $data = $this->validate([
             'categoryType' => ['required', 'in:'.implode(',', array_keys(Category::GENDER_TYPES))],
-            'level' => ['required', 'in:'.implode(',', Category::LEVELS)],
+            'level' => ['required', 'in:'.Category::ANY_LEVEL.','.implode(',', Category::LEVELS)],
             'ageMin' => ['nullable', 'integer', 'min:0', 'max:120'],
             'ageMax' => ['nullable', 'integer', 'min:0', 'max:120', 'gte:ageMin'],
         ]);
@@ -44,7 +49,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
             'name' => $type['name'],
             'gender' => $type['gender'],
             'team_size' => $type['team_size'],
-            'level' => $data['level'],
+            'level' => $data['level'] === Category::ANY_LEVEL ? null : $data['level'],
             'age_min' => $data['ageMin'] !== '' ? (int) $data['ageMin'] : null,
             'age_max' => $data['ageMax'] !== '' ? (int) $data['ageMax'] : null,
         ];
@@ -84,7 +89,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
         $this->resetValidation();
         $this->editingId = $category->id;
         $this->categoryType = $category->gender_type_key ?? '';
-        $this->level = $category->level ?? '';
+        $this->level = $category->level ?? Category::ANY_LEVEL;
         $this->ageMin = (string) ($category->age_min ?? '');
         $this->ageMax = (string) ($category->age_max ?? '');
     }
@@ -116,20 +121,27 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
         }
 
         unset($this->categories);
+
+        // Deleting the last row of the last page would leave an empty page.
+        if ($this->categories->isEmpty() && $this->getPage() > 1) {
+            $this->previousPage();
+            unset($this->categories);
+        }
     }
 
     /**
-     * @return Collection<int, Category>
+     * @return LengthAwarePaginator<int, Category>
      */
     #[Computed]
-    public function categories(): Collection
+    public function categories(): LengthAwarePaginator
     {
         return Category::query()
             ->withCount('tournamentCategories')
             ->withExists(['tournamentCategories as is_in_published_event' => fn ($query) => $query->whereHas('tournament', fn ($tournament) => $tournament->published())])
             ->orderBy('name')
             ->orderBy('level')
-            ->get();
+            ->orderBy('id')
+            ->paginate(self::PER_PAGE);
     }
 }; ?>
 
@@ -144,7 +156,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
 
         <div class="flex flex-wrap items-end gap-3">
             <x-player.registration-select label="Gender" model="categoryType" :options="collect(\App\Models\Category::GENDER_TYPES)->map(fn ($type) => $type['name'])->all()" class="min-w-[160px] flex-1" />
-            <x-player.registration-select label="Player Level" model="level" :options="array_combine(\App\Models\Category::LEVELS, \App\Models\Category::LEVELS)" class="min-w-[160px] flex-1" />
+            <x-player.registration-select label="Player Level" model="level" :options="[\App\Models\Category::ANY_LEVEL => 'Any'] + array_combine(\App\Models\Category::LEVELS, \App\Models\Category::LEVELS)" class="min-w-[160px] flex-1" />
             <div class="flex items-end gap-1">
                 <x-player.registration-field label="Age Min" model="ageMin" type="number" placeholder="Any" class="w-20" />
                 <span class="pb-2">-</span>
@@ -172,7 +184,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
     </div>
 
     <div class="flex w-full flex-col gap-2.5 rounded-[10px] bg-white px-4 py-5 sm:px-[35px] sm:py-[23px]">
-        <span class="text-xs font-bold text-black">Categories ({{ $this->categories->count() }})</span>
+        <span class="text-xs font-bold text-black">Categories ({{ $this->categories->total() }})</span>
 
         <div class="overflow-x-auto">
             <div class="flex min-w-[560px] flex-col">
@@ -187,7 +199,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
                 @forelse ($this->categories as $category)
                     <div class="flex items-center gap-1.5 border-b border-[#ddefed] bg-white" wire:key="category-{{ $category->id }}">
                         <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $category->name }}</span>
-                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $category->level ?? '—' }}</span>
+                        <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $category->level ?? 'Any' }}</span>
                         <span class="flex-1 p-2.5 text-center text-xs text-black">{{ $category->age_label }}</span>
                         <span class="w-24 p-2.5 text-center text-xs text-black">{{ $category->tournament_categories_count }} {{ str('event')->plural($category->tournament_categories_count) }}</span>
                         <div class="flex w-20 items-center justify-center gap-2">
@@ -198,7 +210,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
                                     <flux:icon.pencil-square class="size-4" />
                                 </button>
                                 @if ($category->tournament_categories_count === 0)
-                                    <button type="button" wire:click="delete({{ $category->id }})" wire:confirm="Delete this category?" class="cursor-pointer text-[#bd6b6c]" aria-label="Delete category">
+                                    <button type="button" x-on:click="$dispatch('system-confirm', { title: 'Delete category?', message: @js('Delete '.$category->name.($category->level ? ' ('.$category->level.')' : '').'? This can\'t be undone.'), variant: 'danger', confirmLabel: 'Delete', confirm: () => $wire.delete({{ $category->id }}) })" class="cursor-pointer text-[#bd6b6c]" aria-label="Delete category">
                                         <flux:icon.trash class="size-4" />
                                     </button>
                                 @endif
@@ -210,6 +222,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
                 @endforelse
             </div>
         </div>
+
+        @if ($this->categories->hasPages())
+            <div class="pt-2">{{ $this->categories->links() }}</div>
+        @endif
     </div>
 
     <flux:modal wire:model.self="showDuplicateWarning" class="max-w-md">

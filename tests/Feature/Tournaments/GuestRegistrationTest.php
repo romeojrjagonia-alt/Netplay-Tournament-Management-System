@@ -221,3 +221,84 @@ test('a signed-in player keeps their own player record when registering', functi
     expect(Player::count())->toBe(1)
         ->and(ApplicationPlayer::where('player_id', $player->id)->exists())->toBeTrue();
 });
+
+test('an admin registers a walk-in without the walk-in being tied to the admin account', function () {
+    $admin = User::factory()->create(['role' => 'admin']);
+    Player::create(['user_id' => $admin->id, 'name' => 'Admin Person']);
+
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    $this->actingAs($admin);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000001'])
+        ->assertSet('regFirstName', 'Juan')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    $walkIn = Player::where('phone_number', '09170000001')->firstOrFail();
+
+    expect($walkIn->user_id)->toBeNull()
+        ->and(Player::count())->toBe(2)
+        ->and(ApplicationPlayer::where('player_id', $walkIn->id)->exists())->toBeTrue();
+});
+
+test('an admin is not throttled when registering many walk-ins', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    foreach (range(1, 12) as $i) {
+        fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, [
+            'phone' => '0917000'.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
+            'first' => "Walkin$i",
+        ])
+            ->call('nextStep')
+            ->call('submit')
+            ->assertHasNoErrors();
+    }
+
+    expect(PlayerApplication::count())->toBe(12);
+});
+
+test('a category refuses applications once its slots are taken', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+    $category->update(['max_slots' => 2]);
+
+    foreach (['0917000001', '0917000002'] as $phone) {
+        fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => $phone, 'first' => 'P'.$phone])
+            ->call('nextStep')
+            ->call('submit')
+            ->assertHasNoErrors();
+    }
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000003', 'first' => 'Late'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasErrors('registration')
+        ->assertDispatched('system-message', variant: 'danger');
+
+    expect(PlayerApplication::count())->toBe(2);
+});
+
+test('a rejected application frees its slot', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+    $category->update(['max_slots' => 1]);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000001'])
+        ->call('nextStep')
+        ->call('submit');
+
+    PlayerApplication::firstOrFail()->update(['status' => 'rejected']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000002', 'first' => 'Next'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(PlayerApplication::where('status', '!=', 'rejected')->count())->toBe(1);
+});

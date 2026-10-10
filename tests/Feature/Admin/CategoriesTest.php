@@ -307,7 +307,7 @@ test('an event cannot be published until it has a category, then can be', functi
 
     Volt::test('admin.events.show', ['tournament' => $tournament])
         ->call('togglePublish')
-        ->assertSee('Add at least one category before publishing this event.');
+        ->assertDispatched('system-message', variant: 'danger');
 
     expect($tournament->fresh()->status)->toBe('draft');
 
@@ -316,4 +316,91 @@ test('an event cannot be published until it has a category, then can be', functi
     Volt::test('admin.events.show', ['tournament' => $tournament])->call('togglePublish');
 
     expect($tournament->fresh()->status)->toBe('published');
+});
+
+test('the category list shows ten per page and can be paged', function () {
+    foreach (range(1, 12) as $age) {
+        categoriesLibraryEntry(['age_min' => $age, 'age_max' => $age + 20]);
+    }
+
+    $this->actingAs(categoriesAdmin());
+
+    $component = Volt::test('admin.categories.index')
+        ->assertSee('Categories (12)');
+
+    expect($component->get('categories')->items())->toHaveCount(10)
+        ->and($component->get('categories')->lastPage())->toBe(2);
+
+    $component->call('gotoPage', 2);
+
+    expect($component->get('categories')->items())->toHaveCount(2);
+});
+
+test('deleting the last category on the last page steps back a page', function () {
+    foreach (range(1, 11) as $age) {
+        categoriesLibraryEntry(['age_min' => $age, 'age_max' => $age + 20]);
+    }
+
+    $this->actingAs(categoriesAdmin());
+
+    $component = Volt::test('admin.categories.index')->call('gotoPage', 2);
+
+    $lastOnPage = $component->get('categories')->items()[0];
+
+    $component->call('delete', $lastOnPage->id);
+
+    expect($component->get('categories')->currentPage())->toBe(1)
+        ->and($component->get('categories')->items())->toHaveCount(10);
+});
+
+test('choosing Any for the player level stores an all-levels category', function () {
+    $this->actingAs(categoriesAdmin());
+
+    Volt::test('admin.categories.index')
+        ->set('categoryType', 'mens_singles')
+        ->set('level', 'any')
+        ->call('save')
+        ->assertHasNoErrors()
+        ->assertSee('Any');
+
+    $category = Category::firstOrFail();
+
+    expect($category->level)->toBeNull()
+        ->and($category->name)->toBe("Men's Singles");
+});
+
+test('an Any level category is only a duplicate of another Any level category', function () {
+    categoriesLibraryEntry(['level' => 'Level A']);
+
+    $this->actingAs(categoriesAdmin());
+
+    Volt::test('admin.categories.index')
+        ->set('categoryType', 'mens_singles')
+        ->set('level', 'any')
+        ->call('save')
+        ->assertSet('showDuplicateWarning', false);
+
+    expect(Category::count())->toBe(2);
+
+    Volt::test('admin.categories.index')
+        ->set('categoryType', 'mens_singles')
+        ->set('level', 'any')
+        ->call('save')
+        ->assertSet('showDuplicateWarning', true);
+
+    expect(Category::count())->toBe(2);
+});
+
+test('editing an Any level category preselects Any and can move it to a level', function () {
+    $category = categoriesLibraryEntry(['level' => null]);
+
+    $this->actingAs(categoriesAdmin());
+
+    Volt::test('admin.categories.index')
+        ->call('edit', $category->id)
+        ->assertSet('level', 'any')
+        ->set('level', 'Level B')
+        ->call('save');
+
+    expect($category->fresh()->level)->toBe('Level B');
 });

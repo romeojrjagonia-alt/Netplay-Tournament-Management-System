@@ -1,12 +1,18 @@
 <?php
 
 use App\Actions\Applications\RerouteApplication;
+use App\Actions\Matches\NotifyPlayersOfSchedule;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Models\User;
 use App\Support\Scheduling\RoundRobinScheduler;
+use App\Support\Scheduling\SingleEliminationScheduler;
 use App\Support\Standings\RoundRobinStandings;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -18,15 +24,21 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public int $selectedCategoryId;
 
-    public ?string $notice = null;
-
-    public ?string $errorMessage = null;
-
     public ?int $reroutingApplicationId = null;
 
     public ?int $rerouteDestinationId = null;
 
     public bool $overrideEligibility = false;
+
+    public ?int $editingMatchId = null;
+
+    public string $editDate = '';
+
+    public string $editTime = '';
+
+    public string $editCourt = '';
+
+    public ?int $editUmpireId = null;
 
     public function mount(Tournament $tournament, TournamentCategory $tournamentCategory): void
     {
@@ -45,23 +57,112 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->redirect(route('admin.events.schedule.show', [$this->tournament, $category]), navigate: true);
     }
 
-    public function generate(RoundRobinScheduler $scheduler): void
+    public function generate(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
     {
-        abort_unless($this->tournament->format === 'round_robin', 403);
+        abort_unless(in_array($this->tournament->format, ['round_robin', 'single_elimination'], true), 403);
 
-        $this->notice = null;
-        $this->errorMessage = null;
+        $scheduler = $this->tournament->format === 'round_robin' ? $roundRobin : $singleElimination;
+
 
         try {
             $count = $scheduler->generate($this->tournamentCategory);
         } catch (InvalidArgumentException $exception) {
-            $this->errorMessage = $exception->getMessage();
+            $this->say($exception->getMessage(), 'danger');
 
             return;
         }
 
         $this->cancelReroute();
-        $this->notice = "Schedule generated: {$count} matches created.";
+        $this->say("Schedule generated: {$count} matches created.");
+    }
+
+    /**
+     * Show the admin a message in the shared system modal.
+     */
+    private function say(string $message, string $variant = 'success'): void
+    {
+        $this->dispatch('system-message', message: $message, variant: $variant);
+    }
+
+    public function editMatch(int $matchId): void
+    {
+        $match = $this->tournamentCategory->matches()->findOrFail($matchId);
+
+        $this->resetValidation();
+
+        $this->editingMatchId = $match->id;
+        $this->editDate = $match->scheduled_at?->format('Y-m-d') ?? '';
+        $this->editTime = $match->scheduled_at?->format('H:i') ?? '';
+        $this->editCourt = $match->court ?? '';
+        $this->editUmpireId = $match->assigned_umpire_id;
+    }
+
+    public function cancelEditMatch(): void
+    {
+        $this->reset('editingMatchId', 'editDate', 'editTime', 'editCourt', 'editUmpireId');
+        $this->resetValidation();
+    }
+
+    /**
+     * Save a match's date, time, court and umpire. A changed date, time or
+     * court clears the "players notified" mark so the new details are
+     * emailed again.
+     */
+    public function saveMatch(): void
+    {
+        $this->validate([
+            'editDate' => ['nullable', 'date', 'required_with:editTime'],
+            'editTime' => ['nullable', 'date_format:H:i', 'required_with:editDate'],
+            'editCourt' => ['nullable', 'string', 'max:50'],
+            'editUmpireId' => ['nullable', Rule::exists('users', 'id')->where('role', 'umpire')],
+        ], [
+            'editDate.required_with' => 'Choose a date as well as a time.',
+            'editTime.required_with' => 'Choose a time as well as a date.',
+        ]);
+
+        $match = $this->tournamentCategory->matches()->findOrFail($this->editingMatchId);
+
+        abort_if($match->status === 'completed', 403);
+
+        $scheduledAt = $this->editDate !== '' ? Carbon::parse($this->editDate.' '.$this->editTime) : null;
+        $court = trim($this->editCourt) !== '' ? trim($this->editCourt) : null;
+
+        $match->fill([
+            'scheduled_at' => $scheduledAt,
+            'court' => $court,
+            'assigned_umpire_id' => $this->editUmpireId,
+        ]);
+
+        if ($match->isDirty(['scheduled_at', 'court'])) {
+            $match->schedule_notified_at = null;
+        }
+
+        $match->save();
+
+        $this->cancelEditMatch();
+        unset($this->rounds, $this->pendingNotificationCount);
+        $this->say('Match details saved.');
+    }
+
+    /**
+     * Email the players of every match in this category that has a time but
+     * hasn't been announced (or has changed since).
+     */
+    public function notifyPlayers(NotifyPlayersOfSchedule $notify): void
+    {
+
+        $result = $notify->handle($this->tournamentCategory);
+
+        unset($this->rounds, $this->pendingNotificationCount);
+
+        if ($result['matches'] === 0) {
+            $this->say('There are no scheduled matches with a new date and time to announce.', 'danger');
+
+            return;
+        }
+
+        $this->say("Sent {$result['emails']} ".Str::plural('email', $result['emails'])." for {$result['matches']} ".Str::plural('match', $result['matches']).'.'
+            .($result['without_email'] > 0 ? " {$result['without_email']} ".Str::plural('player', $result['without_email']).' had no email address on file.' : ''));
     }
 
     public function startReroute(int $applicationId): void
@@ -69,8 +170,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->reroutingApplicationId = $applicationId;
         $this->rerouteDestinationId = null;
         $this->overrideEligibility = false;
-        $this->notice = null;
-        $this->errorMessage = null;
     }
 
     public function cancelReroute(): void
@@ -85,7 +184,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public function reroute(RerouteApplication $reroute): void
     {
-        $this->errorMessage = null;
 
         $application = $this->tournamentCategory->playerApplications()
             ->where('status', 'approved')
@@ -93,7 +191,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $destination = $this->tournament->tournamentCategories()->find($this->rerouteDestinationId);
 
         if (! $application || ! $destination) {
-            $this->errorMessage = 'Choose a destination category.';
+            $this->say('Choose a destination category.', 'danger');
 
             return;
         }
@@ -101,13 +199,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         try {
             $result = $reroute->handle($application, $destination, $this->overrideEligibility);
         } catch (InvalidArgumentException $exception) {
-            $this->errorMessage = $exception->getMessage();
+            $this->say($exception->getMessage(), 'danger');
 
             return;
         }
 
-        $this->notice = 'Entry moved to '.$destination->load('category')->category_label.'.'
-            .($result['fee_changed'] ? " Note: the registration fee changes from ₱{$result['from_fee']} to ₱{$result['to_fee']}; reconcile this with the player." : '');
+        $this->say('Entry moved to '.$destination->load('category')->category_label.'.'
+            .($result['fee_changed'] ? " Note: the registration fee changes from ₱{$result['from_fee']} to ₱{$result['to_fee']}; reconcile this with the player." : ''));
 
         $this->cancelReroute();
     }
@@ -135,6 +233,28 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             ->get();
     }
 
+    /**
+     * @return Collection<int, User>
+     */
+    #[Computed]
+    public function umpires(): Collection
+    {
+        return User::query()->where('role', 'umpire')->orderBy('name')->get();
+    }
+
+    /**
+     * Matches with a date and time whose players haven't been emailed yet.
+     */
+    #[Computed]
+    public function pendingNotificationCount(): int
+    {
+        return $this->tournamentCategory->matches()
+            ->where('status', 'scheduled')
+            ->whereNotNull('scheduled_at')
+            ->whereNull('schedule_notified_at')
+            ->count();
+    }
+
     #[Computed]
     public function hasDraw(): bool
     {
@@ -150,7 +270,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     public function rounds(): Collection
     {
         return $this->tournamentCategory->matches()
-            ->with(['games.rallies', 'matchApplications.application.applicationPlayers.player'])
+            ->with(['games.rallies', 'assignedUmpire', 'matchApplications.application.applicationPlayers.player'])
             ->orderBy('round')
             ->orderBy('position')
             ->get()
@@ -220,10 +340,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         @if ($this->hasDraw)
             <div class="flex items-center gap-3">
-                <span title="Editing match logistics is coming soon" class="flex cursor-not-allowed items-center gap-1.5 rounded-[5px] bg-white/20 px-[20px] py-[7px] text-xs font-medium text-white/50">
-                    <flux:icon.pencil-square class="size-4" />
-                    Edit
-                </span>
+                <button
+                    type="button"
+                    x-on:click="$dispatch('system-confirm', {
+                        title: 'Email players?',
+                        message: @js('Email the players of '.$this->pendingNotificationCount.' scheduled '.Str::plural('match', $this->pendingNotificationCount).' about their match time?'),
+                        confirmLabel: 'Send emails',
+                        confirm: () => $wire.notifyPlayers(),
+                    })"
+                    @disabled($this->pendingNotificationCount === 0)
+                    class="flex items-center gap-1.5 rounded-[5px] bg-[#9cee69] px-[20px] py-[7px] text-xs font-medium text-[#051c1a] enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    <flux:icon.envelope class="size-4" />
+                    Email players ({{ $this->pendingNotificationCount }})
+                </button>
                 <span title="Export is coming soon" class="flex cursor-not-allowed items-center gap-1.5 rounded-[5px] bg-white/20 px-[20px] py-[7px] text-xs font-medium text-white/50">
                     <flux:icon.arrow-down-tray class="size-4" />
                     Export
@@ -232,15 +362,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         @endif
     </div>
 
-    @if ($notice)
-        <p class="rounded-[5px] bg-[#9cee69] px-4 py-2 text-xs font-medium text-[#051c1a]">{{ $notice }}</p>
-    @endif
 
-    @if ($errorMessage)
-        <p class="rounded-[5px] bg-red-100 px-4 py-2 text-xs font-medium text-red-700">{{ $errorMessage }}</p>
-    @endif
-
-    @if ($tournament->format !== 'round_robin')
+    @if (! in_array($tournament->format, ['round_robin', 'single_elimination'], true))
         <div class="flex h-[300px] flex-col items-center justify-center gap-2 rounded-[10px] bg-white">
             <p class="text-[22px] text-black/70 italic">Schedule generation for {{ str_replace('_', ' ', $tournament->format) }} is coming in a later phase</p>
         </div>
@@ -254,8 +377,12 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
                 <button
                     type="button"
-                    wire:click="generate"
-                    wire:confirm="Generate the round-robin schedule? This can't be undone, and entries can no longer be added or moved afterward."
+                    x-on:click="$dispatch('system-confirm', {
+                        title: 'Generate schedule?',
+                        message: @js('Generate the '.str_replace('_', ' ', $tournament->format).' schedule? This can\'t be undone, and entries can no longer be added or moved afterward.'),
+                        confirmLabel: 'Generate',
+                        confirm: () => $wire.generate(),
+                    })"
                     @disabled($this->entries->count() < 2)
                     class="rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -344,8 +471,51 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
                     <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         @foreach ($matches as $match)
-                            <div wire:key="match-{{ $match->id }}">
+                            <div wire:key="match-{{ $match->id }}" class="flex flex-col gap-2">
                                 <x-admin.schedule-match-card :match="$match" />
+
+                                @if ($editingMatchId === $match->id)
+                                    <form wire:submit="saveMatch" class="flex flex-col gap-3 rounded-[10px] bg-white p-4">
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Date
+                                                <input type="date" wire:model="editDate" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                @error('editDate') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Time
+                                                <input type="time" wire:model="editTime" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                @error('editTime') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Court
+                                                <input type="text" wire:model="editCourt" placeholder="e.g. 1" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                @error('editCourt') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Umpire
+                                                <select wire:model="editUmpireId" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                    <option value="">Unassigned</option>
+                                                    @foreach ($this->umpires as $umpire)
+                                                        <option value="{{ $umpire->id }}">{{ $umpire->name }}</option>
+                                                    @endforeach
+                                                </select>
+                                                @error('editUmpireId') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                        </div>
+                                        <div class="flex justify-end gap-2">
+                                            <button type="button" wire:click="cancelEditMatch" class="cursor-pointer rounded-[5px] border border-black/20 px-3 py-1.5 text-xs text-black">Cancel</button>
+                                            <button type="submit" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-3 py-1.5 text-xs font-medium text-white">Save</button>
+                                        </div>
+                                    </form>
+                                @elseif ($match->status !== 'completed')
+                                    <div class="flex items-center justify-between gap-2 px-1 text-[11px] text-white">
+                                        <span>Umpire: {{ $match->assignedUmpire?->name ?? 'Unassigned' }}</span>
+                                        <button type="button" wire:click="editMatch({{ $match->id }})" class="cursor-pointer font-medium underline">Edit time, court &amp; umpire</button>
+                                    </div>
+                                @endif
                             </div>
                         @endforeach
                     </div>
@@ -353,6 +523,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @endforeach
         </div>
 
+        @if ($tournament->format === 'round_robin')
         <div class="flex flex-col gap-3 rounded-[10px] bg-white p-[30px]">
             <span class="text-lg font-bold text-black">Standings</span>
 
@@ -383,5 +554,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                 <p class="text-[10px] text-black/60">* Still tied after the configured tiebreakers.</p>
             @endif
         </div>
+        @endif
     @endif
 </div>

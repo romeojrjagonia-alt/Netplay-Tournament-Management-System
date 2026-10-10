@@ -5,6 +5,7 @@ namespace App\Observers;
 use App\Models\Matches;
 use App\Models\PlayerApplication;
 use App\Models\PlayerStatistic;
+use App\Support\Scheduling\SingleEliminationScheduler;
 use App\Support\Standings\RoundRobinStandings;
 
 class MatchObserver
@@ -59,6 +60,7 @@ class MatchObserver
         }
 
         if ($isCompleted && $matches->winner_application_id && (! $wasCompleted || $matches->wasChanged('winner_application_id'))) {
+            app(SingleEliminationScheduler::class)->advance($matches);
             $this->adjustStatistics($matches, $matches->winner_application_id, 1);
             $this->promoteChampionshipWinners($matches, $matches->winner_application_id);
         }
@@ -81,6 +83,11 @@ class MatchObserver
     private function adjustStatistics(Matches $matches, int $winnerApplicationId, int $direction): void
     {
         $matches->loadMissing('matchApplications.application.applicationPlayers');
+
+        // A bye has a lone entry and no opponent, so it is not a played match.
+        if ($matches->matchApplications->count() < 2) {
+            return;
+        }
 
         foreach ($matches->matchApplications as $matchApplication) {
             $application = $matchApplication->application;
