@@ -38,7 +38,8 @@ test('login and signup pages offer google', function () {
 
 test('the google route redirects to google', function () {
     $this->get(route('auth.google'))
-        ->assertRedirectContains('accounts.google.com');
+        ->assertRedirectContains('accounts.google.com')
+        ->assertRedirectContains('prompt=select_account');
 });
 
 test('a user already linked to google is logged in', function () {
@@ -46,10 +47,16 @@ test('a user already linked to google is logged in', function () {
 
     fakeGoogleUser();
 
-    $this->get(route('auth.google.callback'))
+    $response = $this->get(route('auth.google.callback'))
         ->assertRedirect(route('player.dashboard', absolute: false));
 
     $this->assertAuthenticatedAs($user);
+
+    // No long-lived "remember me" cookie: closing the browser must end the login.
+    $rememberCookies = collect($response->headers->getCookies())
+        ->filter(fn ($cookie) => str_starts_with($cookie->getName(), 'remember_web_'));
+
+    expect($rememberCookies)->toBeEmpty();
 });
 
 test('google links to an existing email account and verifies it', function () {

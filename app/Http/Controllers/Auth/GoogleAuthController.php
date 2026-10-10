@@ -24,7 +24,9 @@ class GoogleAuthController extends Controller
             return $this->failed('Google sign-in is not available right now.');
         }
 
-        return Socialite::driver('google')->redirect();
+        // Always show Google's account chooser so a signed-in Google session
+        // is never picked silently (matters on shared computers).
+        return Socialite::driver('google')->with(['prompt' => 'select_account'])->redirect();
     }
 
     /**
@@ -65,7 +67,7 @@ class GoogleAuthController extends Controller
             'email_verified_at' => $user->email_verified_at ?? now(),
         ])->save();
 
-        Auth::login($user, remember: true);
+        Auth::login($user);
         Session::regenerate();
         Session::forget('google_signup');
 
