@@ -3,28 +3,34 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Auth\Events\Verified;
-use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Support\Facades\Auth;
 
 class VerifyEmailController extends Controller
 {
     /**
-     * Mark the authenticated user's email address as verified.
+     * Mark the email address in a signed verification link as verified.
+     *
+     * The link is signed and carries a hash of the email it was sent to, so it
+     * does not need an active session: players often open it on another device.
      */
-    public function __invoke(EmailVerificationRequest $request): RedirectResponse
+    public function __invoke(string $id, string $hash): RedirectResponse
     {
-        if ($request->user()->hasVerifiedEmail()) {
-            return redirect()->intended(route('dashboard', absolute: false).'?verified=1');
-        }
+        $user = User::findOrFail($id);
 
-        if ($request->user()->markEmailAsVerified()) {
-            /** @var \Illuminate\Contracts\Auth\MustVerifyEmail $user */
-            $user = $request->user();
+        abort_unless(hash_equals(sha1($user->getEmailForVerification()), $hash), 403);
 
+        if (! $user->hasVerifiedEmail() && $user->markEmailAsVerified()) {
             event(new Verified($user));
         }
 
-        return redirect()->intended(route('dashboard', absolute: false).'?verified=1');
+        if (Auth::check()) {
+            return redirect()->route(Auth::user()->homeRouteName());
+        }
+
+        return redirect()->route('login')
+            ->with('status', __('Your email has been verified. You can sign in now.'));
     }
 }

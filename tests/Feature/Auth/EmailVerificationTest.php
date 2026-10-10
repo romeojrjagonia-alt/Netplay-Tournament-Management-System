@@ -52,7 +52,28 @@ test('email can be verified', function () {
     Event::assertDispatched(Verified::class);
 
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
-    $response->assertRedirect(route('dashboard', absolute: false).'?verified=1');
+    $response->assertRedirect(route($user->homeRouteName()));
+});
+
+test('email can be verified from another browser without a session', function () {
+    $user = User::factory()->unverified()->create();
+
+    Event::fake();
+
+    $verificationUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1($user->email)]
+    );
+
+    $this->get($verificationUrl)
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status');
+
+    Event::assertDispatched(Verified::class);
+
+    expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
+    $this->assertGuest();
 });
 
 test('email is not verified with invalid hash', function () {
@@ -64,7 +85,33 @@ test('email is not verified with invalid hash', function () {
         ['id' => $user->id, 'hash' => sha1('wrong-email')]
     );
 
-    $this->actingAs($user)->get($verificationUrl);
+    $this->get($verificationUrl)->assertForbidden();
+
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});
+
+test('verification links with a tampered signature are rejected', function () {
+    $user = User::factory()->unverified()->create();
+
+    $verificationUrl = route('verification.verify', ['id' => $user->id, 'hash' => sha1($user->email)]);
+
+    $this->get($verificationUrl)->assertForbidden();
+
+    expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
+});
+
+test('a link sent to an old email stops working after the email changes', function () {
+    $user = User::factory()->unverified()->create(['email' => 'old@example.com']);
+
+    $verificationUrl = URL::temporarySignedRoute(
+        'verification.verify',
+        now()->addMinutes(60),
+        ['id' => $user->id, 'hash' => sha1('old@example.com')]
+    );
+
+    $user->update(['email' => 'new@example.com']);
+
+    $this->get($verificationUrl)->assertForbidden();
 
     expect($user->fresh()->hasVerifiedEmail())->toBeFalse();
 });
