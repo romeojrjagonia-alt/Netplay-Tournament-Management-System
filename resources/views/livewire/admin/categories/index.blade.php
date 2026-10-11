@@ -228,11 +228,11 @@ new #[Layout('components.layouts.admin', ['title' => 'Create Categories'])] clas
         @endif
     </div>
 
-    <flux:modal wire:model.self="showDuplicateWarning" class="max-w-md">
+    <flux:modal wire:model.self="showDuplicateWarning" class="max-w-md dark:bg-white! dark:ring-black/5!">
         <div class="flex flex-col gap-5">
             <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Duplicate category</flux:heading>
-                <flux:text>A category with the same gender, player level and age already exists. It was not saved again.</flux:text>
+                <h2 class="text-base font-bold text-black">Duplicate category</h2>
+                <p class="text-sm text-black/70">A category with the same gender, player level and age already exists. It was not saved again.</p>
             </div>
 
             <div class="flex justify-end">

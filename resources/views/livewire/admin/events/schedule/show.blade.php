@@ -6,6 +6,7 @@ use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
+use App\Support\Bracket\BracketsViewerData;
 use App\Support\Scheduling\RoundRobinScheduler;
 use App\Support\Scheduling\SingleEliminationScheduler;
 use App\Support\Standings\RoundRobinStandings;
@@ -74,6 +75,41 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         $this->cancelReroute();
         $this->say("Schedule generated: {$count} matches created.");
+    }
+
+    /**
+     * Swap two round-1 slots in the pre-generation bracket editor.
+     */
+    public function swapSlots(int $from, int $to, SingleEliminationScheduler $singleElimination): void
+    {
+        abort_unless($this->tournament->format === 'single_elimination', 403);
+
+        try {
+            $singleElimination->swap($this->tournamentCategory, $from, $to);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+        }
+
+        unset($this->bracketSlots, $this->entries);
+    }
+
+    /**
+     * Drop the admin's arrangement and return to the seeded default.
+     */
+    public function resetArrangement(SingleEliminationScheduler $singleElimination): void
+    {
+        abort_unless($this->tournament->format === 'single_elimination', 403);
+
+        try {
+            $singleElimination->resetArrangement($this->tournamentCategory);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
+        }
+
+        unset($this->bracketSlots, $this->entries);
+        $this->say('Bracket reset to the seeded order.');
     }
 
     /**
@@ -234,6 +270,39 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     }
 
     /**
+     * The round-1 line-up shown in the bracket editor: slots `2n` and
+     * `2n + 1` meet in match `n + 1`; a null `id` is a BYE.
+     *
+     * @return list<array{index: int, id: int|null, name: string|null}>
+     */
+    #[Computed]
+    public function bracketSlots(): array
+    {
+        $entries = $this->entries->keyBy('id');
+
+        return collect(app(SingleEliminationScheduler::class)->arrangement($this->tournamentCategory))
+            ->map(fn (?int $id, int $index): array => [
+                'index' => $index,
+                'id' => $id,
+                'name' => $id !== null
+                    ? $entries[$id]->applicationPlayers->map->player->filter()->pluck('name')->implode(' / ')
+                    : null,
+            ])
+            ->all();
+    }
+
+    /**
+     * The generated bracket in brackets-viewer.js's data format.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function viewerData(): array
+    {
+        return app(BracketsViewerData::class)->for($this->tournamentCategory);
+    }
+
+    /**
      * @return Collection<int, User>
      */
     #[Computed]
@@ -372,7 +441,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             <div class="flex items-center justify-between gap-4">
                 <div class="flex flex-col">
                     <span class="text-lg font-bold text-black">Confirmed Entries</span>
-                    <span class="text-xs text-black/60">{{ $this->entries->count() }} {{ Str::plural('entry', $this->entries->count()) }} · matches are generated in approval order</span>
+                    <span class="text-xs text-black/60">
+                        {{ $this->entries->count() }} {{ Str::plural('entry', $this->entries->count()) }} ·
+                        {{ $tournament->format === 'single_elimination' ? 'arrange the pairings, then generate' : 'matches are generated in approval order' }}
+                    </span>
                 </div>
 
                 <button
@@ -446,6 +518,71 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                 </div>
             @endif
 
+            @if ($tournament->format === 'single_elimination' && $this->entries->count() >= 2)
+                <div
+                    x-data="{
+                        picked: null,
+                        dragging: null,
+                        move(from, to) {
+                            this.picked = null
+                            this.dragging = null
+                            if (from === null || from === to) { return }
+                            $wire.swapSlots(from, to)
+                        },
+                        pick(index) {
+                            if (this.picked === null) { this.picked = index } else { this.move(this.picked, index) }
+                        },
+                    }"
+                    class="flex flex-col gap-4"
+                >
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-xs text-black/60">
+                            Drag a name onto another slot, or click one name and then another, to swap them. An entry paired with a BYE skips round 1.
+                        </p>
+                        <button type="button" wire:click="resetArrangement" class="cursor-pointer text-xs font-medium text-[#3e948d] underline">
+                            Reset to seeded order
+                        </button>
+                    </div>
+
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach (collect($this->bracketSlots)->chunk(2) as $pair)
+                            <div wire:key="slot-pair-{{ $loop->index }}" class="flex flex-col gap-2 rounded-[10px] border border-black/10 p-3">
+                                <span class="text-[11px] font-bold tracking-wide text-black/60 uppercase">Round 1 · Match {{ $loop->iteration }}</span>
+
+                                @foreach ($pair as $slot)
+                                    <div
+                                        wire:key="slot-{{ $slot['index'] }}"
+                                        draggable="true"
+                                        x-on:dragstart="dragging = {{ $slot['index'] }}; $event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', '{{ $slot['index'] }}')"
+                                        x-on:dragover.prevent
+                                        x-on:drop.prevent="move(dragging, {{ $slot['index'] }})"
+                                        x-on:dragend="dragging = null"
+                                        x-on:click="pick({{ $slot['index'] }})"
+                                        x-bind:class="{
+                                            'ring-2 ring-[#3e948d]': picked === {{ $slot['index'] }},
+                                            'opacity-50': dragging === {{ $slot['index'] }},
+                                        }"
+                                        class="flex cursor-grab items-center gap-3 rounded-[8px] px-4 py-2.5 select-none active:cursor-grabbing {{ $slot['id'] ? 'bg-[#eaf4f3]' : 'border border-dashed border-black/20 bg-white' }}"
+                                    >
+                                        <flux:icon.bars-2 class="size-4 shrink-0 text-black/40" />
+
+                                        @if ($slot['id'])
+                                            <span class="flex-1 text-sm font-bold text-black">{{ $slot['name'] }}</span>
+                                            @if ($this->categories->count() > 1)
+                                                <button type="button" x-on:click.stop wire:click="startReroute({{ $slot['id'] }})" class="cursor-pointer text-xs font-medium text-[#3e948d] underline">
+                                                    Reroute
+                                                </button>
+                                            @endif
+                                        @else
+                                            <span class="flex-1 text-sm text-black/50 italic">BYE</span>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @else
             @forelse ($this->entries as $entry)
                 <div wire:key="entry-{{ $entry->id }}" class="flex items-center gap-4 rounded-[10px] bg-[#eaf4f3] px-5 py-3">
                     <span class="flex size-6 items-center justify-center rounded-full bg-[#3e948d] text-[11px] font-bold text-white">{{ $loop->iteration }}</span>
@@ -462,8 +599,58 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @empty
                 <p class="py-10 text-center text-[22px] text-black/70 italic">No confirmed entries yet</p>
             @endforelse
+            @endif
         </div>
     @else
+        @if ($tournament->format === 'single_elimination')
+            <div
+                wire:ignore
+                wire:key="bracket-viewer-{{ md5(json_encode($this->viewerData)) }}"
+                x-data="{
+                    data: @js($this->viewerData),
+                    async init() {
+                        const version = '1.9.1'
+                        const base = `https://cdn.jsdelivr.net/npm/brackets-viewer@${version}/dist/`
+
+                        if (! document.getElementById('brackets-viewer-css')) {
+                            const link = document.createElement('link')
+                            link.id = 'brackets-viewer-css'
+                            link.rel = 'stylesheet'
+                            link.href = base + 'brackets-viewer.min.css'
+                            document.head.appendChild(link)
+                        }
+
+                        window.bracketsViewerReady ??= new Promise((resolve, reject) => {
+                            const script = document.createElement('script')
+                            script.src = base + 'brackets-viewer.min.js'
+                            script.onload = resolve
+                            script.onerror = reject
+                            document.head.appendChild(script)
+                        })
+
+                        try {
+                            await window.bracketsViewerReady
+                        } catch (error) {
+                            this.$refs.status.textContent = 'The bracket display could not be loaded. Check your internet connection and refresh.'
+                            window.bracketsViewerReady = undefined
+                            return
+                        }
+
+                        this.$refs.status.remove()
+                        window.bracketsViewer.render(this.data, {
+                            selector: '#bracket-viewer',
+                            participantOriginPlacement: 'before',
+                            highlightParticipantOnHover: true,
+                        })
+                    },
+                }"
+                class="overflow-x-auto rounded-[10px] bg-white p-4"
+            >
+                <p x-ref="status" class="text-xs text-black/60">Loading bracket…</p>
+                <div id="bracket-viewer" class="brackets-viewer"></div>
+            </div>
+        @endif
+
         <div class="flex flex-col gap-8">
             @foreach ($this->rounds as $round => $matches)
                 <section wire:key="round-{{ $round }}" class="flex flex-col gap-3">

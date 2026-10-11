@@ -4,10 +4,17 @@ use App\Models\Player;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
+use App\Mail\UmpireSignupCode;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Str;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
+use Livewire\Attributes\Locked;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
@@ -38,6 +45,29 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public string $province = '';
     public string $club = '';
     public $profilePhoto = null;
+
+    /**
+     * Umpire sign-up is only completed after the visitor proves they own the
+     * email address. Until then nothing is stored in the database; the
+     * code's hash lives in the cache under `$verificationToken`.
+     */
+    #[Locked]
+    public bool $awaitingCode = false;
+
+    #[Locked]
+    public string $verificationToken = '';
+
+    /** Unix time after which a new code may be requested. */
+    #[Locked]
+    public int $resendAvailableAt = 0;
+
+    public string $verificationCode = '';
+
+    public const CODE_TTL_MINUTES = 10;
+
+    public const RESEND_COOLDOWN_SECONDS = 60;
+
+    public const MAX_CODE_ATTEMPTS = 5;
 
     /**
      * Pre-fill from a pending Google sign-up, if there is one.
@@ -78,7 +108,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     {
         if ($this->step === 1) {
             $this->validate([
-                'userType' => ['required', 'in:player'],
+                'userType' => ['required', 'in:player,umpire'],
             ], [
                 'userType.required' => "Please choose how you'll use NetPlay.",
             ]);
@@ -130,7 +160,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         }
 
         $this->validate([
-            'userType' => ['required', 'in:player'],
+            'userType' => ['required', 'in:player,umpire'],
             'firstName' => ['required', 'string', 'max:255'],
             'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
             'middleInitial' => ['nullable', 'string', 'max:5'],
@@ -151,16 +181,175 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             $this->lastName,
         ])->filter()->implode(' ');
 
+        // Umpires get a code by email first; no account exists until it is
+        // entered. (Google already verified its address.)
+        if ($this->userType === 'umpire' && $google === null) {
+            $this->sendVerificationCode($fullName);
+
+            return;
+        }
+
+        $this->createAccount($fullName, $google, emailVerified: false);
+    }
+
+    /**
+     * Check the emailed code and, only then, create the umpire account.
+     */
+    public function verifyCode(): void
+    {
+        abort_unless($this->awaitingCode, 403);
+
+        $this->validate(['verificationCode' => ['required', 'digits:6']], [
+            'verificationCode.digits' => 'Enter the 6-digit code from your email.',
+        ]);
+
+        $entry = Cache::get($this->cacheKey());
+
+        if (! $entry || $entry['email'] !== Str::lower($this->email)) {
+            $this->abandonSignup('Your verification expired, so no account was created. Please sign up again.');
+
+            return;
+        }
+
+        if (now()->timestamp > $entry['expires_at']) {
+            $this->addError('verificationCode', 'That code has expired. Request a new one.');
+
+            return;
+        }
+
+        if (! Hash::check($this->verificationCode, $entry['code'])) {
+            $entry['attempts']++;
+
+            if ($entry['attempts'] >= self::MAX_CODE_ATTEMPTS) {
+                $this->abandonSignup('Too many incorrect codes, so no account was created. Please sign up again.');
+
+                return;
+            }
+
+            Cache::put($this->cacheKey(), $entry, now()->addMinutes(30));
+
+            $this->addError('verificationCode', 'That code is incorrect. '.(self::MAX_CODE_ATTEMPTS - $entry['attempts']).' attempts left.');
+
+            return;
+        }
+
+        Cache::forget($this->cacheKey());
+        $this->awaitingCode = false;
+
+        $this->createAccount($this->fullName(), null, emailVerified: true);
+    }
+
+    /**
+     * Email a fresh code, no sooner than 60 seconds after the last one.
+     */
+    public function resendCode(): void
+    {
+        abort_unless($this->awaitingCode, 403);
+
+        $entry = Cache::get($this->cacheKey());
+
+        if (! $entry) {
+            $this->abandonSignup('Your verification expired, so no account was created. Please sign up again.');
+
+            return;
+        }
+
+        $wait = $entry['resend_at'] - now()->timestamp;
+
+        if ($wait > 0) {
+            $this->addError('verificationCode', "Please wait {$wait} seconds before requesting another code.");
+
+            return;
+        }
+
+        $this->sendVerificationCode($this->fullName());
+    }
+
+    /**
+     * The visitor backed out: discard the pending sign-up, nothing was saved.
+     */
+    public function cancelVerification(): void
+    {
+        $this->abandonSignup('Verification cancelled. No account was created — sign up again to continue.');
+    }
+
+    private function fullName(): string
+    {
+        return collect([
+            $this->firstName,
+            $this->middleInitial !== '' ? $this->middleInitial.'.' : null,
+            $this->lastName,
+        ])->filter()->implode(' ');
+    }
+
+    private function cacheKey(): string
+    {
+        return 'umpire-signup:'.$this->verificationToken;
+    }
+
+    private function sendVerificationCode(string $fullName): void
+    {
+        $throttleKey = 'umpire-code:'.Str::lower($this->email).'|'.request()->ip();
+
+        if (RateLimiter::tooManyAttempts($throttleKey, 5)) {
+            $this->dispatch('system-message', title: 'Too many codes requested', message: 'Please try again in a little while.', variant: 'danger');
+
+            return;
+        }
+
+        RateLimiter::hit($throttleKey, 3600);
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        if ($this->verificationToken === '') {
+            $this->verificationToken = Str::random(40);
+        }
+
+        Cache::put($this->cacheKey(), [
+            'email' => Str::lower($this->email),
+            'code' => Hash::make($code),
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes(self::CODE_TTL_MINUTES)->timestamp,
+            'resend_at' => now()->addSeconds(self::RESEND_COOLDOWN_SECONDS)->timestamp,
+        ], now()->addMinutes(30));
+
+        Mail::to($this->email)->send(new UmpireSignupCode($code, $fullName, self::CODE_TTL_MINUTES));
+
+        $this->resendAvailableAt = now()->addSeconds(self::RESEND_COOLDOWN_SECONDS)->timestamp;
+        $this->verificationCode = '';
+        $this->awaitingCode = true;
+        $this->resetErrorBag('verificationCode');
+    }
+
+    /**
+     * Drop the pending sign-up and return to a blank form.
+     */
+    private function abandonSignup(string $message): void
+    {
+        if ($this->verificationToken !== '') {
+            Cache::forget($this->cacheKey());
+        }
+
+        $this->reset();
+        $this->resetErrorBag();
+        $this->dispatch('system-message', title: 'Sign-up not completed', message: $message, variant: 'danger');
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $google
+     */
+    private function createAccount(string $fullName, ?array $google, bool $emailVerified): void
+    {
         $photoPath = $this->profilePhoto?->store('player-photos', 'public');
 
-        $user = DB::transaction(function () use ($fullName, $photoPath, $google) {
+        $user = DB::transaction(function () use ($fullName, $photoPath, $google, $emailVerified) {
             $user = User::create([
                 'name' => $fullName,
                 'email' => $this->email,
                 'role' => $this->userType,
                 ...($google !== null
                     ? ['google_id' => $google['id'], 'email_verified_at' => now()]
-                    : ['password' => $this->password]),
+                    : ['password' => $this->password, 'email_verified_at' => $emailVerified ? now() : null]),
             ]);
 
             Player::create([
@@ -180,7 +369,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         Session::regenerate();
         Session::forget('google_signup');
 
-        if ($google === null) {
+        if ($google === null && ! $emailVerified) {
             Session::put('verification_prompt', 'signup');
         }
 
@@ -245,6 +434,26 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 </div>
                                 <p class="text-xs font-bold text-black">Player</p>
                                 <p class="mt-1 text-[9px] text-black">Register for tournaments and track your matches</p>
+                            </button>
+
+                            <button type="button" wire:click="selectUserType('umpire')"
+                                    @class([
+                                        'w-[153px] cursor-pointer rounded-[20px] border px-[30px] py-[35px] text-center transition',
+                                        'border-emerald-700 bg-emerald-700/25 ring-1 ring-emerald-700' => $userType === 'umpire',
+                                        'border-[#81bfba] bg-[#82c0bb]/25 hover:border-emerald-700' => $userType !== 'umpire',
+                                    ])>
+                                <div class="relative mx-auto h-[71px] w-[93px]">
+                                    <div class="absolute inset-[32.9%_0_0_36.59%] flex items-center justify-center">
+                                        <img src="{{ asset('images/auth/umpire-icon-1.svg') }}" alt=""
+                                             class="h-[31px] w-[51px] rotate-[159.1deg]">
+                                    </div>
+                                    <div class="absolute inset-[0_38.01%_21.93%_0] flex items-center justify-center">
+                                        <img src="{{ asset('images/auth/umpire-icon-2.svg') }}" alt=""
+                                             class="h-[42px] w-[47px] rotate-[19.31deg]">
+                                    </div>
+                                </div>
+                                <p class="text-xs font-bold text-black">Umpire</p>
+                                <p class="mt-1 text-[9px] text-black">Officiate matches and manage live scoring</p>
                             </button>
 
                         </div>
@@ -411,4 +620,51 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             @endif
         </div>
     </div>
+
+    @if ($awaitingCode)
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="verify-title">
+            <div class="absolute inset-0 bg-black/60"></div>
+
+            <form wire:submit="verifyCode"
+                  class="relative flex w-full max-w-sm flex-col gap-4 rounded-[20px] bg-white p-8 shadow-2xl">
+                <div class="flex flex-col gap-1">
+                    <h2 id="verify-title" class="text-xl font-bold text-black">Verify your email</h2>
+                    <p class="text-xs text-black/70">
+                        We sent a 6-digit code to <span class="font-bold">{{ $email }}</span>.
+                        Enter it to finish creating your umpire account. It expires in {{ $this::CODE_TTL_MINUTES }} minutes.
+                    </p>
+                </div>
+
+                <div class="flex flex-col gap-1">
+                    <label for="verification-code" class="text-xs text-black">Verification code</label>
+                    <input id="verification-code" wire:model="verificationCode" type="text" inputmode="numeric"
+                           autocomplete="one-time-code" maxlength="6" placeholder="000000" autofocus
+                           class="rounded-[5px] bg-[#11776e]/15 px-3 py-2.5 text-center text-lg tracking-[0.5em] text-black placeholder:text-black/30 focus:outline-none">
+                    @error('verificationCode')
+                        <p class="text-[11px] text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <button type="submit"
+                        class="flex h-9 w-full cursor-pointer items-center justify-center rounded-[69px] bg-[#096] text-sm font-bold text-white transition hover:bg-[#007a52]">
+                    Verify and create account
+                </button>
+
+                <div class="flex items-center justify-between gap-3 text-xs"
+                     wire:key="resend-{{ $resendAvailableAt }}"
+                     x-data="{ remaining: {{ max(0, $resendAvailableAt - now()->timestamp) }} }"
+                     x-init="setInterval(() => { if (remaining > 0) remaining-- }, 1000)">
+                    <button type="button" wire:click="cancelVerification" class="cursor-pointer text-black/60 underline">
+                        Cancel
+                    </button>
+
+                    <button type="button" wire:click="resendCode" x-bind:disabled="remaining > 0"
+                            class="cursor-pointer font-bold text-[#138177] disabled:cursor-not-allowed disabled:opacity-50">
+                        <span x-show="remaining <= 0">Resend code</span>
+                        <span x-show="remaining > 0" x-cloak x-text="'Resend code in ' + remaining + 's'"></span>
+                    </button>
+                </div>
+            </form>
+        </div>
+    @endif
 </div>

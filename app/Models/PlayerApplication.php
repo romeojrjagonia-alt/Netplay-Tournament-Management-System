@@ -18,6 +18,7 @@ class PlayerApplication extends Model
         'reference_code',
         'tournament_category_id',
         'status',
+        'draw_position',
         'rejection_reason',
     ];
 

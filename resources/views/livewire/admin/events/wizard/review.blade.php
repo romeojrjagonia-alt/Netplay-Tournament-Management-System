@@ -126,13 +126,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         </button>
     </div>
 
-    <flux:modal wire:model.self="showCategoryPrompt" :dismissible="false" :closable="false" class="max-w-md">
+    <flux:modal wire:model.self="showCategoryPrompt" :dismissible="false" :closable="false" class="max-w-md dark:bg-white! dark:ring-black/5!">
         <div class="flex flex-col gap-5">
             <div class="flex flex-col gap-2">
-                <flux:heading size="lg">Event created</flux:heading>
-                <flux:text>
+                <h2 class="text-base font-bold text-black">Event created</h2>
+                <p class="text-sm text-black/70">
                     "{{ $tournament->name }}" was saved as a draft. Would you like to add categories to it now, or add them later from the event page?
-                </flux:text>
+                </p>
             </div>
 
             <div class="flex justify-end gap-3">

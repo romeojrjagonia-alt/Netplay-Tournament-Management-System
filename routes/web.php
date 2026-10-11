@@ -69,6 +69,10 @@ Volt::route('admin/events/{tournament}/categories/{tournamentCategory}/schedule'
     ->middleware('auth')
     ->name('admin.events.schedule.show');
 
+Volt::route('admin/events/{tournament}/officials', 'admin.events.officials')
+    ->middleware('auth')
+    ->name('admin.events.officials');
+
 Volt::route('admin/events/{tournament}', 'admin.events.show')
     ->middleware('auth')
     ->name('admin.events.show');

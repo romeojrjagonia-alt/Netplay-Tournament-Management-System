@@ -41,9 +41,9 @@
 >
     <template x-if="open">
         <div class="fixed inset-0 z-[9999] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="system-modal-title">
-            <div class="absolute inset-0 bg-black/50" x-on:click="close()"></div>
+            <div class="absolute inset-0 bg-black/70" x-on:click="close()"></div>
 
-            <div class="relative flex w-full max-w-md flex-col gap-4 rounded-[10px] bg-white p-6 shadow-xl">
+            <div class="relative flex w-full max-w-md flex-col gap-4 rounded-[20px] bg-white p-6 shadow-xl">
                 <div class="flex items-start gap-3">
                     <span
                         class="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white"

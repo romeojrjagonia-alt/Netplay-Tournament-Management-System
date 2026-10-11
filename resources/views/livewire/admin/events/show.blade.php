@@ -343,11 +343,11 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     </div>
 
     @unless ($tournament->is_published)
-        <flux:modal wire:model.self="showCategoryModal" class="w-full md:w-[760px] max-w-[95vw]">
+        <flux:modal wire:model.self="showCategoryModal" class="w-full md:w-[760px] max-w-[95vw] dark:bg-white! dark:ring-black/5!">
             <div class="flex flex-col gap-5">
                 <div class="flex flex-col gap-1">
-                    <flux:heading size="lg">Event Categories</flux:heading>
-                    <flux:text>Add categories to "{{ $tournament->name }}" and set each one's registration fee and maximum players. Need a new category? <a href="{{ route('admin.categories.index') }}" wire:navigate class="font-medium underline">Create one here</a>.</flux:text>
+                    <h2 class="text-base font-bold text-black">Event Categories</h2>
+                    <p class="text-sm text-black/70">Add categories to "{{ $tournament->name }}" and set each one's registration fee and maximum players. Need a new category? <a href="{{ route('admin.categories.index') }}" wire:navigate class="font-medium underline">Create one here</a>.</p>
                 </div>
 
                 <div class="flex flex-col gap-2">

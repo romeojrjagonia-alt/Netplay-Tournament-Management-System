@@ -72,3 +72,16 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+
+/* Shared modal look: a solid white card over a dimmed (not blurred) page,
+   matching the login / sign-up modal. */
+[data-flux-modal] > dialog {
+    background-color: #fff;
+    border-radius: 20px;
+}
+
+[data-flux-modal] > dialog::backdrop {
+    background-color: rgb(0 0 0 / 0.7);
+    backdrop-filter: none;
+}

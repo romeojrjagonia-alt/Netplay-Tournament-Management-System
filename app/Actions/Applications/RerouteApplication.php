@@ -50,7 +50,8 @@ class RerouteApplication
             throw new InvalidArgumentException('Some players are not eligible for the destination category: '.$this->names($issues['ineligible_players']).'.');
         }
 
-        $application->update(['tournament_category_id' => $destination->id]);
+        // A slot in the old category's draw means nothing in the new one.
+        $application->update(['tournament_category_id' => $destination->id, 'draw_position' => null]);
 
         return [
             'fee_changed' => (float) $source->registration_fee !== (float) $destination->registration_fee,

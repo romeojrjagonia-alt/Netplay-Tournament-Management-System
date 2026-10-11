@@ -214,6 +214,27 @@ class Matches extends Model
     }
 
     /**
+     * The side ('A' or 'B') of the entry that won this match, or null while
+     * it has no winner.
+     *
+     * @return 'A'|'B'|null
+     */
+    public function winnerSide(): ?string
+    {
+        if ($this->winner_application_id === null) {
+            return null;
+        }
+
+        foreach (['A', 'B'] as $side) {
+            if ($this->applicationForSide($side)?->id === $this->winner_application_id) {
+                return $side;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * @return 'A'|'B'
      */
     private function sideOf(MatchApplication $matchApplication, int $index): string

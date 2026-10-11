@@ -16,13 +16,8 @@
         Schedule Matches
     </a>
 
-    <span title="Per-event applications are coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
-        <flux:icon.folder class="size-5 shrink-0" />
-        Applications
-    </span>
-
-    <span title="Officials management is coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
+    <a href="{{ route('admin.events.officials', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'officials', $linkClasses => $active !== 'officials'])>
         <flux:icon.users class="size-5 shrink-0" />
         Officials
-    </span>
+    </a>
 </div>

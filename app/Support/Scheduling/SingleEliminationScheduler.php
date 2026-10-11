@@ -4,6 +4,7 @@ namespace App\Support\Scheduling;
 
 use App\Models\MatchApplication;
 use App\Models\Matches;
+use App\Models\PlayerApplication;
 use App\Models\TournamentCategory;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
@@ -21,8 +22,9 @@ class SingleEliminationScheduler
     public const BRACKET_TYPE = 'single_elimination';
 
     /**
-     * Insert the whole bracket for the category's approved entries, seeded in
-     * approval order.
+     * Insert the whole bracket for the category's approved entries. Entries an
+     * admin has placed (`draw_position`) go exactly where they were put; the
+     * rest are seeded in approval order into the remaining slots.
      *
      * @return int the number of matches created (byes included)
      *
@@ -35,19 +37,14 @@ class SingleEliminationScheduler
                 throw new InvalidArgumentException('A schedule has already been generated for this category.');
             }
 
-            $entryIds = $tournamentCategory->playerApplications()
-                ->where('status', 'approved')
-                ->orderBy('created_at')
-                ->orderBy('id')
-                ->pluck('id')
-                ->all();
+            $slots = $this->arrangement($tournamentCategory);
+            $entryCount = count(array_filter($slots, fn (?int $id): bool => $id !== null));
 
-            if (count($entryIds) < self::MINIMUM_ENTRIES) {
+            if ($entryCount < self::MINIMUM_ENTRIES) {
                 throw new InvalidArgumentException('At least 2 confirmed entries are required to generate a schedule.');
             }
 
-            $size = $this->bracketSize(count($entryIds));
-            $seedOrder = $this->seedOrder($size);
+            $size = count($slots);
             $rounds = (int) log($size, 2);
 
             $created = 0;
@@ -77,8 +74,7 @@ class SingleEliminationScheduler
                 $entries = [];
 
                 foreach ([0, 1] as $index) {
-                    $seed = $seedOrder[($position - 1) * 2 + $index];
-                    $entries[$index] = $entryIds[$seed - 1] ?? null;
+                    $entries[$index] = $slots[($position - 1) * 2 + $index];
 
                     if ($entries[$index] !== null) {
                         MatchApplication::create([
@@ -101,6 +97,97 @@ class SingleEliminationScheduler
 
             return $created;
         });
+    }
+
+    /**
+     * The round-1 line-up: one application id (or null for a BYE) per slot,
+     * slots `2n` and `2n + 1` meeting in match `n + 1`. Placed entries keep
+     * their `draw_position`; everyone else fills the remaining slots in
+     * seed order, which with nothing placed is the default seeded bracket.
+     *
+     * @return list<int|null>
+     */
+    public function arrangement(TournamentCategory $tournamentCategory): array
+    {
+        $entries = $tournamentCategory->playerApplications()
+            ->where('status', 'approved')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['id', 'draw_position']);
+
+        if ($entries->count() < self::MINIMUM_ENTRIES) {
+            return $entries->pluck('id')->all();
+        }
+
+        $size = $this->bracketSize($entries->count());
+        $slots = array_fill(0, $size, null);
+        $unplaced = [];
+
+        foreach ($entries as $entry) {
+            $index = $entry->draw_position === null ? -1 : $entry->draw_position - 1;
+
+            if ($index >= 0 && $index < $size && $slots[$index] === null) {
+                $slots[$index] = $entry->id;
+            } else {
+                $unplaced[] = $entry->id;
+            }
+        }
+
+        $seedOrder = $this->seedOrder($size);
+
+        for ($seed = 1; $seed <= $size && $unplaced !== []; $seed++) {
+            $index = array_search($seed, $seedOrder, true);
+
+            if ($slots[$index] === null) {
+                $slots[$index] = array_shift($unplaced);
+            }
+        }
+
+        return $slots;
+    }
+
+    /**
+     * Swap the contents of two round-1 slots (0-based) and remember the whole
+     * line-up. Either slot may be a BYE, which moves an entry into or out of
+     * one.
+     *
+     * @throws InvalidArgumentException when the draw is already generated or a slot is out of range
+     */
+    public function swap(TournamentCategory $tournamentCategory, int $from, int $to): void
+    {
+        DB::transaction(function () use ($tournamentCategory, $from, $to): void {
+            if ($tournamentCategory->hasGeneratedDraw()) {
+                throw new InvalidArgumentException('The bracket is locked because the schedule has already been generated.');
+            }
+
+            $slots = $this->arrangement($tournamentCategory);
+
+            if (! array_key_exists($from, $slots) || ! array_key_exists($to, $slots)) {
+                throw new InvalidArgumentException('That slot is not part of the bracket.');
+            }
+
+            [$slots[$from], $slots[$to]] = [$slots[$to], $slots[$from]];
+
+            foreach ($slots as $index => $applicationId) {
+                if ($applicationId !== null) {
+                    PlayerApplication::whereKey($applicationId)->update(['draw_position' => $index + 1]);
+                }
+            }
+        });
+    }
+
+    /**
+     * Forget the admin's arrangement and go back to the seeded default.
+     *
+     * @throws InvalidArgumentException when the draw is already generated
+     */
+    public function resetArrangement(TournamentCategory $tournamentCategory): void
+    {
+        if ($tournamentCategory->hasGeneratedDraw()) {
+            throw new InvalidArgumentException('The bracket is locked because the schedule has already been generated.');
+        }
+
+        $tournamentCategory->playerApplications()->update(['draw_position' => null]);
     }
 
     /**
