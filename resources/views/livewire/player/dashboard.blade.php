@@ -104,6 +104,8 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
 }; ?>
 
 <div class="flex flex-col gap-5">
+    <livewire:player.link-prompt />
+
     @if ($this->upcomingTournament)
         <a href="{{ $this->upcomingTournament['url'] }}" wire:navigate class="block">
         <x-player.tournament-card
@@ -150,6 +152,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
             @forelse ($this->applications as $application)
                 <x-player.application-row
                     wire:key="application-{{ $application->id }}"
+                    :href="route('player.events', ['tab' => 'applications', 'application' => $application->id])"
                     :name="$application->tournamentCategory->tournament->name.' — '.$application->tournamentCategory->category_label"
                     :status="$application->status_label"
                     :note="$this->noteFor($application)"

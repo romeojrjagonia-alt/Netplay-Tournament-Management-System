@@ -80,12 +80,23 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     /** Set when the page is opened from a dashboard card, to pop that tournament's details. */
     public bool $openDetailsOnLoad = false;
 
+    /** Set when opened from a dashboard application row, to pop that application's details. */
+    public bool $openApplicationOnLoad = false;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isPlayer(), 403);
 
         if (request()->query('tab') === 'applications') {
             $this->tab = 'applications';
+        }
+
+        $applicationId = (int) request()->query('application');
+
+        if ($applicationId > 0 && auth()->user()->player?->playerApplications()->whereKey($applicationId)->exists()) {
+            $this->tab = 'applications';
+            $this->viewingApplicationId = $applicationId;
+            $this->openApplicationOnLoad = true;
         }
 
         $tournamentId = (int) request()->query('tournament');
@@ -653,6 +664,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 <div class="flex flex-col gap-5">
     @if ($openDetailsOnLoad)
         <div x-data x-init="$nextTick(() => $dispatch('modal-show', { name: 'tournament-details' }))"></div>
+    @endif
+
+    @if ($openApplicationOnLoad)
+        <div x-data x-init="$nextTick(() => $dispatch('modal-show', { name: 'application-details' }))"></div>
     @endif
 
     <div class="flex flex-wrap items-center justify-between gap-4">

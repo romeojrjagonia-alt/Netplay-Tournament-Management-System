@@ -207,3 +207,38 @@ test('a full category is disabled in the registration dropdown', function () {
         ->assertSeeHtml('value="'.$full->id.'" disabled')
         ->assertSee('Full Singles (Full)');
 });
+
+test('dashboard application rows link to that application on the events page', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => $user->name]);
+    $tournamentCategory = eventsTournamentCategory(eventsTournament());
+
+    $application = PlayerApplication::create(['tournament_category_id' => $tournamentCategory->id, 'status' => 'payment_pending']);
+    ApplicationPlayer::create(['application_id' => $application->id, 'player_id' => $player->id, 'level_at_apply' => 'Beginner']);
+
+    $this->actingAs($user);
+
+    $url = route('player.events', ['tab' => 'applications', 'application' => $application->id]);
+
+    Volt::test('player.dashboard')->assertSee(e($url), false);
+
+    $this->get($url)
+        ->assertOk()
+        ->assertSee("name: 'application-details'", false)
+        ->assertSee('Proceed to payment');
+});
+
+test('an application belonging to another player is not opened from the url', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name]);
+    $tournamentCategory = eventsTournamentCategory(eventsTournament());
+
+    $other = Player::create(['name' => 'Someone Else']);
+    $application = PlayerApplication::create(['tournament_category_id' => $tournamentCategory->id, 'status' => 'payment_pending']);
+    ApplicationPlayer::create(['application_id' => $application->id, 'player_id' => $other->id, 'level_at_apply' => 'Beginner']);
+
+    $this->actingAs($user)
+        ->get(route('player.events', ['application' => $application->id]))
+        ->assertOk()
+        ->assertDontSee('Proceed to payment');
+});

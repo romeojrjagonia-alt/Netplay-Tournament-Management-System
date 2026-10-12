@@ -114,13 +114,13 @@ it('emails each player once about a scheduled match', function () {
         ->call('notifyPlayers')
         ->assertDispatched('system-message', message: 'Sent 1 email for 1 match. 1 player had no email address on file.');
 
-    Mail::assertSent(MatchScheduled::class, 1);
-    Mail::assertSent(MatchScheduled::class, fn (MatchScheduled $mail) => $mail->hasTo('mark@example.test'));
+    Mail::assertQueued(MatchScheduled::class, 1);
+    Mail::assertQueued(MatchScheduled::class, fn (MatchScheduled $mail) => $mail->hasTo('mark@example.test'));
     expect($match->fresh()->schedule_notified_at)->not->toBeNull();
 
     logisticsPage($match)->call('notifyPlayers')->assertDispatched('system-message', variant: 'danger');
 
-    Mail::assertSent(MatchScheduled::class, 1);
+    Mail::assertQueued(MatchScheduled::class, 1);
 });
 
 it('re-announces a match whose time changed', function () {
@@ -134,7 +134,7 @@ it('re-announces a match whose time changed', function () {
         ->call('saveMatch')
         ->call('notifyPlayers');
 
-    Mail::assertSent(MatchScheduled::class, 1);
+    Mail::assertQueued(MatchScheduled::class, 1);
 });
 
 it('renders the scheduled email', function () {

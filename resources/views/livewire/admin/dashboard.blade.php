@@ -1,5 +1,10 @@
 <?php
 
+use App\Actions\Applications\NotifyEntryPlayers;
+use App\Mail\ApplicationApproved;
+use App\Mail\ApplicationRejected;
+use App\Mail\PaymentRejected;
+use App\Mail\PaymentVerified;
 use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
@@ -52,9 +57,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
      */
     public function approveApplication(int $applicationId): void
     {
-        PlayerApplication::where('status', 'pending_verification')
-            ->findOrFail($applicationId)
-            ->update(['status' => 'payment_pending']);
+        $application = PlayerApplication::where('status', 'pending_verification')->findOrFail($applicationId);
+        $application->update(['status' => 'payment_pending']);
+
+        $this->notifyEntry($application, ApplicationApproved::class);
 
         $this->viewingApplicationId = null;
 
@@ -65,12 +71,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     {
         $this->validate(['rejectionReason' => ['nullable', 'string', 'max:500']]);
 
-        PlayerApplication::where('status', 'pending_verification')
-            ->findOrFail($applicationId)
-            ->update([
-                'status' => 'rejected',
-                'rejection_reason' => trim($this->rejectionReason) !== '' ? trim($this->rejectionReason) : null,
-            ]);
+        $application = PlayerApplication::where('status', 'pending_verification')->findOrFail($applicationId);
+        $application->update([
+            'status' => 'rejected',
+            'rejection_reason' => trim($this->rejectionReason) !== '' ? trim($this->rejectionReason) : null,
+        ]);
+
+        $this->notifyEntry($application, ApplicationRejected::class);
 
         $this->viewingApplicationId = null;
         $this->rejectionReason = '';
@@ -88,6 +95,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         $payment->update(['payment_status' => 'verified']);
         $payment->application->update(['status' => 'approved']);
 
+        $this->notifyEntry($payment->application, PaymentVerified::class);
+
         $this->viewingPaymentId = null;
 
         $this->closeModalAndNotify('payment-details', 'Payment verified. The application is now fully approved.');
@@ -99,13 +108,29 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
      */
     public function rejectPayment(int $paymentId): void
     {
-        PaymentDetail::where('payment_status', 'pending')
-            ->findOrFail($paymentId)
-            ->update(['payment_status' => 'rejected']);
+        $payment = PaymentDetail::where('payment_status', 'pending')->findOrFail($paymentId);
+        $payment->update(['payment_status' => 'rejected']);
+
+        $this->notifyEntry($payment->application, PaymentRejected::class);
 
         $this->viewingPaymentId = null;
 
         $this->closeModalAndNotify('payment-details', 'Payment rejected successfully. The applicant can resubmit proof of payment.');
+    }
+
+    /**
+     * Tell the entry's players about the decision. A mail problem must never
+     * undo or block the admin's decision, so it is only logged.
+     *
+     * @param  class-string<\Illuminate\Mail\Mailable>  $mailable
+     */
+    private function notifyEntry(PlayerApplication $application, string $mailable): void
+    {
+        try {
+            app(NotifyEntryPlayers::class)->handle($application, $mailable);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function closeModalAndNotify(string $modal, string $message, string $variant = 'success'): void
