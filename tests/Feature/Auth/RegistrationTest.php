@@ -121,6 +121,7 @@ test('completing the wizard creates a user and player and logs them in', functio
 
     expect($player)->not->toBeNull();
     expect($player->address)->toBe('Purok 5, Ozamiz City, Misamis Occidental');
+    expect($player->email)->toBe('juan@example.com');
     expect($player->club)->toBe('OBC Badminton Club');
     expect($player->age)->toBeGreaterThan(20);
 

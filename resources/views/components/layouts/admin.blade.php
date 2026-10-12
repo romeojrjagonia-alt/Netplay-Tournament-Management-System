@@ -6,6 +6,7 @@
     role-name="Administrator"
     role-label="ADMIN USER"
     suffix="NetPlay Admin"
+    :show-header="request()->routeIs('admin.dashboard', 'admin.events.create', 'admin.events.wizard.*')"
 >
     <x-slot:nav>
         <x-portal.sidebar-link icon="layout-grid" :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')" wire:navigate>

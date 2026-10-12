@@ -17,10 +17,10 @@ function dashboardTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-07-01',
-        'date_end' => '2026-07-31',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -203,7 +203,7 @@ test('rejecting an application marks it rejected', function () {
     Volt::test('admin.dashboard')
         ->call('rejectApplication', $application->id)
         ->assertDispatched('modal-close', name: 'application-details')
-        ->assertDispatched('system-message', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($application->fresh()->status)->toBe('rejected');
 });
@@ -267,7 +267,7 @@ test('rejecting a payment keeps the application in payment pending', function ()
         ->set('activeTab', 'payments')
         ->call('rejectPayment', $payment->id)
         ->assertDispatched('modal-close', name: 'payment-details')
-        ->assertDispatched('system-message', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($payment->fresh()->payment_status)->toBe('rejected');
     expect($application->fresh()->status)->toBe('payment_pending');

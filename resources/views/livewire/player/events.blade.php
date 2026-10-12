@@ -77,9 +77,23 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         'birth_certificate' => 'Birth Certificate',
     ];
 
+    /** Set when the page is opened from a dashboard card, to pop that tournament's details. */
+    public bool $openDetailsOnLoad = false;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isPlayer(), 403);
+
+        if (request()->query('tab') === 'applications') {
+            $this->tab = 'applications';
+        }
+
+        $tournamentId = (int) request()->query('tournament');
+
+        if ($tournamentId > 0 && Tournament::acceptingRegistrations()->whereKey($tournamentId)->exists()) {
+            $this->viewingTournamentId = $tournamentId;
+            $this->openDetailsOnLoad = true;
+        }
     }
 
     public function selectTab(string $tab): void
@@ -89,7 +103,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
     public function viewTournament(int $tournamentId): void
     {
-        $this->viewingTournamentId = $tournamentId;
+        // Concluded or closed events can't be opened (or registered for).
+        $this->viewingTournamentId = Tournament::acceptingRegistrations()->whereKey($tournamentId)->value('id');
     }
 
     public function viewApplication(int $applicationId): void
@@ -104,6 +119,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     public function startRegistration(): void
     {
+        abort_unless($this->viewingTournament && Tournament::acceptingRegistrations()->whereKey($this->viewingTournamentId)->exists(), 404);
+
         $this->resetRegistrationForm();
 
         $this->dispatch('modal-close', name: 'tournament-details');
@@ -327,6 +344,20 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     }
 
     /**
+     * Whether the viewed application has been verified and is waiting for
+     * a (new) payment proof — i.e. the payment page will accept one.
+     */
+    #[Computed]
+    public function canPayForViewingApplication(): bool
+    {
+        $application = $this->viewingApplication;
+
+        return $application
+            && $application->status === 'payment_pending'
+            && $application->paymentDetails->where('payment_status', 'pending')->isEmpty();
+    }
+
+    /**
      * The currently viewed application, scoped to this player so a viewer
      * can never load another player's application by guessing an ID.
      */
@@ -368,6 +399,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->with('category')
             ->eligibleFor($this->regGender !== '' ? $this->regGender : null, $this->regAge)
             ->get();
+    }
+
+    /**
+     * Ids of the eligible categories that have no entry slot left.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    #[Computed]
+    public function fullCategoryIds()
+    {
+        return $this->eligibleCategories->filter->isFull()->pluck('id');
     }
 
     #[Computed]
@@ -609,6 +651,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 }; ?>
 
 <div class="flex flex-col gap-5">
+    @if ($openDetailsOnLoad)
+        <div x-data x-init="$nextTick(() => $dispatch('modal-show', { name: 'tournament-details' }))"></div>
+    @endif
+
     <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
             <button type="button" wire:click="selectTab('accepting')"
@@ -760,6 +806,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         <p class="text-black/70">{{ $this->viewingApplication->paymentDetails->last()?->payment_status ?? 'No payment submitted yet' }}</p>
                     </div>
                 </div>
+
+                @if ($this->canPayForViewingApplication)
+                    <a href="{{ route('applications.payment', $this->viewingApplication->reference_code) }}"
+                       class="w-full rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
+                        {{ $this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected' ? 'Resubmit payment' : 'Proceed to payment' }}
+                    </a>
+                @endif
             </div>
         @endif
     </flux:modal>
@@ -809,16 +862,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         <x-player.registration-select
                             label="Category"
                             model="regTournamentCategoryId"
-                            placeholder="Select Category"
+                            placeholder="Select category"
                             :live="true"
-                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '').($tc->isFull() ? ' (Full)' : '')])"
+                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '').($this->fullCategoryIds->contains($tc->id) ? ' (Full)' : '')])"
+                            :disabled-options="$this->fullCategoryIds->all()"
                         />
 
                         @if ($this->isDoublesRegistration)
                             <x-player.registration-select
                                 label="Does player pair have an account?"
                                 model="pairHasAccount"
-                                placeholder="Yes/ No"
+                                placeholder="Select"
                                 :live="true"
                                 :options="['yes' => 'Yes', 'no' => 'No']"
                             />
@@ -827,7 +881,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 <x-player.registration-select
                                     label="Has your pair played a tournament hosted by this organization before?"
                                     model="pairPlayedBefore"
-                                    placeholder="Yes/ No"
+                                    placeholder="Select"
                                     :live="true"
                                     :options="['yes' => 'Yes', 'no' => 'No']"
                                 />
@@ -912,7 +966,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                     @else
                         <div class="flex flex-col gap-[10px]">
                             <p class="text-[12px] font-bold text-black">Your valid document</p>
-                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Philippine National ID/ Passport/ Birth Certificate" :options="$this->documentTypeOptions()" />
+                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label class="text-[12px] text-black">Upload attach</label>
@@ -931,7 +985,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         @if ($this->isDoublesRegistration)
                             <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
                                 <p class="text-[12px] font-bold text-black">Pair's valid document</p>
-                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Philippine National ID/ Passport/ Birth Certificate" :options="$this->documentTypeOptions()" />
+                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                                 <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                     <label class="text-[12px] text-black">Upload attach</label>

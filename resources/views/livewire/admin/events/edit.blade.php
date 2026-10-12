@@ -31,6 +31,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Edit Event'])] class exten
 }; ?>
 
 <div class="flex flex-col items-center gap-5">
+    <h2 class="w-full max-w-[814px] border-b border-white/50 pb-4 text-2xl font-bold text-white">Edit Event</h2>
+
     @include('livewire.admin.events.wizard._details-fields')
 
     <div class="flex w-full max-w-[814px] items-center justify-end gap-6">

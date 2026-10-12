@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\EventReportController;
 use App\Http\Controllers\Umpire\MatchScoresheetController;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
@@ -72,6 +73,18 @@ Volt::route('admin/events/{tournament}/categories/{tournamentCategory}/schedule'
 Volt::route('admin/events/{tournament}/officials', 'admin.events.officials')
     ->middleware('auth')
     ->name('admin.events.officials');
+
+Volt::route('admin/events/{tournament}/reports', 'admin.events.reports')
+    ->middleware('auth')
+    ->name('admin.events.reports');
+
+Route::middleware('auth')->group(function () {
+    Route::get('admin/events/{tournament}/reports/sales.csv', [EventReportController::class, 'sales'])
+        ->name('admin.events.reports.sales');
+
+    Route::get('admin/events/{tournament}/reports/participation.csv', [EventReportController::class, 'participation'])
+        ->name('admin.events.reports.participation');
+});
 
 Volt::route('admin/events/{tournament}', 'admin.events.show')
     ->middleware('auth')

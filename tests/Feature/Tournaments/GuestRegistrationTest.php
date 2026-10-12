@@ -144,7 +144,10 @@ test('doubles registration collects a partner without an account', function () {
         ->call('nextStep')
         ->assertSet('regStep', 2)
         ->call('nextStep')
-        ->assertHasErrors(['pairFirstName', 'pairPhoneNumber'])
+        ->assertHasErrors('pairPlayerId')
+        ->call('enterPairManually')
+        ->call('nextStep')
+        ->assertHasErrors(['pairFirstName', 'pairPhoneNumber', 'pairEmail'])
         ->set('pairFirstName', 'Pedro')
         ->set('pairLastName', 'Santos')
         ->set('pairBirthDate', '1997-05-05')
@@ -169,6 +172,7 @@ test('a doubles partner cannot be the applicant themselves', function () {
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
         ->call('nextStep')
+        ->call('enterPairManually')
         ->set('pairFirstName', 'Juan')
         ->set('pairLastName', 'Cruz')
         ->set('pairBirthDate', '1998-03-01')
@@ -183,13 +187,116 @@ test('a doubles partner cannot be the applicant themselves', function () {
     expect(PlayerApplication::count())->toBe(0);
 });
 
-test('a phone number is required', function () {
+test('a phone number or an email is required', function () {
     $tournament = openTournament();
     $category = openCategory($tournament);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => ''])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => ''])
         ->call('nextStep')
-        ->assertHasErrors(['regPhoneNumber' => 'required']);
+        ->assertHasErrors(['regPhoneNumber', 'regEmail']);
+});
+
+test('an email alone is enough to register', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'juan@example.com'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(Player::firstOrFail())
+        ->email->toBe('juan@example.com')
+        ->phone_number->toBeNull();
+});
+
+test('an email-only registration does not collide with an unrelated player without a phone', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    $bystander = Player::create(['name' => 'Bystander']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'new@example.com'])
+        ->call('nextStep')
+        ->call('submit');
+
+    expect(Player::count())->toBe(2)
+        ->and(ApplicationPlayer::where('player_id', $bystander->id)->exists())->toBeFalse();
+});
+
+test('a guest is matched to an account holder by the email on the account', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    $user = User::factory()->create(['role' => 'player', 'email' => 'member@example.com']);
+    $member = Player::create(['user_id' => $user->id, 'name' => 'Member Player']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'MEMBER@example.com', 'first' => 'Someone', 'last' => 'Else'])
+        ->call('nextStep')
+        ->call('submit');
+
+    expect(Player::count())->toBe(1)
+        ->and(ApplicationPlayer::where('player_id', $member->id)->exists())->toBeTrue()
+        ->and($member->fresh()->name)->toBe('Member Player');
+});
+
+test('a doubles partner is found by name search and only the name is exposed', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, teamSize: 2);
+
+    $partner = Player::create([
+        'name' => 'Pedro Santos',
+        'phone_number' => '09181112222',
+        'email' => 'pedro@example.com',
+        'address' => 'Secret Street 9',
+        'level' => 'Level B',
+    ]);
+
+    $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->call('nextStep')
+        ->set('pairSearch', 'Pedro')
+        ->assertSee('Pedro Santos')
+        ->assertDontSee('09181112222')
+        ->assertDontSee('pedro@example.com')
+        ->assertDontSee('Secret Street')
+        ->call('selectPairPlayer', $partner->id)
+        ->assertSet('pairPlayerId', $partner->id)
+        ->call('nextStep')
+        ->assertSet('regStep', 3)
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    $application = PlayerApplication::firstOrFail();
+
+    expect($application->applicationPlayers->pluck('player_id')->all())->toContain($partner->id)
+        ->and(Player::count())->toBe(2);
+
+    expect($application->applicationPlayers->firstWhere('player_id', $partner->id)->level_at_apply)->toBe('Level B');
+});
+
+test('a doubles partner entered by email is matched to an existing account holder', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, teamSize: 2);
+
+    $user = User::factory()->create(['role' => 'player', 'email' => 'pedro@example.com']);
+    $partner = Player::create(['user_id' => $user->id, 'name' => 'Pedro Santos']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->call('nextStep')
+        ->call('enterPairManually')
+        ->set('pairFirstName', 'Pete')
+        ->set('pairLastName', 'Santos')
+        ->set('pairBirthDate', '1997-05-05')
+        ->set('pairGender', 'male')
+        ->set('pairAddress', 'Ozamiz City')
+        ->set('pairSkillLevel', 'Beginner')
+        ->set('pairEmail', 'pedro@example.com')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(Player::count())->toBe(2)
+        ->and(ApplicationPlayer::where('player_id', $partner->id)->exists())->toBeTrue();
 });
 
 test('the reference code is emailed when an email is given', function () {

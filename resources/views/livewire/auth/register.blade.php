@@ -360,6 +360,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'address' => "{$this->purok}, {$this->city}, {$this->province}",
                 'club' => $this->club !== '' ? $this->club : null,
                 'photo_path' => $photoPath,
+                'email' => $user->email,
             ]);
 
             return $user;

@@ -129,11 +129,11 @@ it('searches users by name or email', function () {
         ->test('admin.users.index')
         ->set('search', 'findme');
 
-    expect($component->get('users')->total())->toBe(1);
+    expect($component->get('users'))->toHaveCount(1);
 
     $component->set('search', 'else@example');
 
-    expect($component->get('users')->total())->toBe(1);
+    expect($component->get('users'))->toHaveCount(1);
 });
 
 it('keeps the users page away from non-admins', function (string $role) {
@@ -142,20 +142,16 @@ it('keeps the users page away from non-admins', function (string $role) {
         ->assertForbidden();
 })->with(['player', 'umpire']);
 
-it('lists ten accounts per page and resets to page one when the role filter changes', function () {
+it('lists every account in one scrollable list and narrows it by role', function () {
     User::factory()->count(14)->create(['role' => 'player']);
 
     $component = Volt::actingAs(actingAsAdmin())
         ->test('admin.users.index')
         ->assertSee('All Users');
 
-    expect($component->get('users')->items())->toHaveCount(10)
-        ->and($component->get('users')->total())->toBe(15)
-        ->and($component->get('users')->lastPage())->toBe(2);
+    expect($component->get('users'))->toHaveCount(15);
 
-    $component->call('gotoPage', 2)->set('roleFilter', 'player');
+    $component->set('roleFilter', 'player');
 
-    expect($component->get('users')->currentPage())->toBe(1)
-        ->and($component->get('users')->total())->toBe(14)
-        ->and($component->get('users')->items())->toHaveCount(10);
+    expect($component->get('users'))->toHaveCount(14);
 });

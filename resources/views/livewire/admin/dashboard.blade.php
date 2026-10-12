@@ -75,7 +75,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         $this->viewingApplicationId = null;
         $this->rejectionReason = '';
 
-        $this->closeModalAndNotify('application-details', 'Application rejected.', 'danger');
+        $this->closeModalAndNotify('application-details', 'Application rejected successfully.');
     }
 
     /**
@@ -105,7 +105,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
         $this->viewingPaymentId = null;
 
-        $this->closeModalAndNotify('payment-details', 'Payment rejected. The applicant can resubmit proof of payment.', 'danger');
+        $this->closeModalAndNotify('payment-details', 'Payment rejected successfully. The applicant can resubmit proof of payment.');
     }
 
     private function closeModalAndNotify(string $modal, string $message, string $variant = 'success'): void

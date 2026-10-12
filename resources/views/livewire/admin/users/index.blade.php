@@ -1,19 +1,14 @@
 <?php
 
 use App\Models\User;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
-use Livewire\WithPagination;
 
 new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Component {
-    use WithPagination;
-
-    public const PER_PAGE = 10;
-
     public const ROLES = ['admin', 'umpire', 'player'];
 
     public bool $showFormModal = false;
@@ -122,21 +117,11 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         $this->dispatch('system-message', title: 'User deleted', message: "{$user->email} was deleted.", variant: 'success');
     }
 
-    public function updatedSearch(): void
-    {
-        $this->resetPage();
-    }
-
-    public function updatedRoleFilter(): void
-    {
-        $this->resetPage();
-    }
-
     /**
-     * @return LengthAwarePaginator<int, User>
+     * @return Collection<int, User>
      */
     #[Computed]
-    public function users(): LengthAwarePaginator
+    public function users(): Collection
     {
         $search = trim($this->search);
 
@@ -149,7 +134,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
             ->orderBy('role')
             ->orderBy('name')
             ->orderBy('id')
-            ->paginate(self::PER_PAGE);
+            ->get();
     }
 
     private function resetForm(): void
@@ -167,7 +152,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
     <div class="flex flex-wrap items-center justify-between gap-3">
         <div class="flex items-center gap-2">
             <span class="text-xl font-bold text-white">All Users</span>
-            <span class="text-xl font-bold text-white/70">{{ $this->users->total() }}</span>
+            <span class="text-xl font-bold text-white/70">{{ $this->users->count() }}</span>
         </div>
 
         <div class="flex flex-wrap items-center gap-3">
@@ -205,7 +190,14 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
     </div>
 
     <div class="flex w-full flex-col rounded-[10px] bg-white px-4 py-3 sm:px-[19px]">
-        <div class="hidden items-center gap-3 px-3 pb-2 text-[10px] text-black/60 md:flex">
+      {{-- Roughly seven rows tall; everything beyond that scrolls. --}}
+      <div
+          class="max-h-[480px] overflow-y-auto [scrollbar-width:thin]"
+          x-data="{ scrolling: false, timer: null }"
+          x-on:scroll.passive="scrolling = true; clearTimeout(timer); timer = setTimeout(() => scrolling = false, 800)"
+          x-bind:style="{ scrollbarColor: scrolling ? 'rgba(0, 0, 0, 0.35) transparent' : 'transparent transparent' }"
+      >
+        <div class="sticky top-0 z-10 hidden items-center gap-3 bg-white px-3 pb-2 text-[10px] text-black/60 md:flex">
             <span class="flex-1 pl-14">User name</span>
             <span class="w-28 text-center">Role</span>
             <span class="w-36">Date Added</span>
@@ -227,12 +219,18 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
                 <span class="hidden w-36 text-[11px] text-black/70 md:block">{{ $user->created_at?->format('F j, Y') }}</span>
 
-                <div class="relative w-6" x-data="{ open: false }" x-on:click.outside="open = false" x-on:keydown.escape.window="open = false">
-                    <button type="button" x-on:click="open = !open" class="flex size-6 cursor-pointer items-center justify-center text-black" aria-label="Actions for {{ $user->name }}">
+                {{-- Fixed positioning so the menu isn't clipped by the scrolling list. --}}
+                <div class="w-6" x-data="{ open: false, top: 0, right: 0 }" x-on:click.outside="open = false" x-on:keydown.escape.window="open = false" x-on:scroll.window.capture="open = false">
+                    <button
+                        type="button"
+                        x-on:click="const rect = $el.getBoundingClientRect(); top = rect.bottom + 4; right = window.innerWidth - rect.right; open = !open"
+                        class="flex size-6 cursor-pointer items-center justify-center text-black"
+                        aria-label="Actions for {{ $user->name }}"
+                    >
                         <flux:icon.ellipsis-vertical class="size-4" />
                     </button>
 
-                    <div x-show="open" x-cloak class="absolute right-0 z-20 mt-1 flex w-36 flex-col rounded-[5px] bg-white p-1 text-xs text-black shadow-lg ring-1 ring-black/10">
+                    <div x-show="open" x-cloak x-bind:style="`top: ${top}px; right: ${right}px`" class="fixed z-50 flex w-36 flex-col rounded-[5px] bg-white p-1 text-xs text-black shadow-lg ring-1 ring-black/10">
                         <button type="button" wire:click="openEditModal({{ $user->id }})" x-on:click="open = false" class="flex cursor-pointer items-center gap-2 rounded-[5px] px-3 py-2 text-left hover:bg-[#e7f0ef]">
                             <flux:icon.pencil-square class="size-4" />
                             Edit
@@ -253,10 +251,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         @empty
             <p class="py-6 text-center text-xs text-black/50">No users found.</p>
         @endforelse
-
-        @if ($this->users->hasPages())
-            <div class="pt-3">{{ $this->users->links() }}</div>
-        @endif
+      </div>
     </div>
 
     <flux:modal wire:model.self="showFormModal" class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">

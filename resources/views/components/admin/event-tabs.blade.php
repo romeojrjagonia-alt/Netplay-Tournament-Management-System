@@ -1,7 +1,9 @@
 @props(['tournament', 'active' => 'dashboard'])
 
 @php
-    $activeClasses = 'bg-white/50 text-[#9cee69] mix-blend-soft-light';
+    // No blend mode here: `mix-blend-soft-light` on the tab itself blends its
+    // own label into the background and makes the active tab unreadable.
+    $activeClasses = 'bg-white/20 text-[#9cee69] font-bold';
     $linkClasses = 'text-white';
 @endphp
 
@@ -20,4 +22,11 @@
         <flux:icon.users class="size-5 shrink-0" />
         Officials
     </a>
+
+    @if ($tournament->is_concluded)
+        <a href="{{ route('admin.events.reports', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'reports', $linkClasses => $active !== 'reports'])>
+            <flux:icon.document-chart-bar class="size-5 shrink-0" />
+            Reports
+        </a>
+    @endif
 </div>

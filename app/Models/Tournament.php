@@ -28,6 +28,7 @@ class Tournament extends Model
         'registration_start',
         'registration_end',
         'status',
+        'concluded_at',
         'tiebreaker_rules',
     ];
 
@@ -55,6 +56,7 @@ class Tournament extends Model
             'registration_start' => 'date',
             'registration_end' => 'date',
             'tiebreaker_rules' => 'array',
+            'concluded_at' => 'datetime',
         ];
     }
 
@@ -85,18 +87,34 @@ class Tournament extends Model
     }
 
     /**
-     * Published tournaments currently within their registration window.
+     * Published, not-yet-concluded tournaments currently within their
+     * registration window.
      */
     public function scopeAcceptingRegistrations(Builder $query): void
     {
         $query->where('status', 'published')
+            ->whereNull('concluded_at')
             ->whereDate('registration_start', '<=', now())
-            ->whereDate('registration_end', '>=', now());
+            ->whereDate('registration_end', '>=', now())
+            ->whereDate('date_end', '>=', now());
     }
 
     public function scopePublished(Builder $query): void
     {
         $query->where('status', 'published');
+    }
+
+    /**
+     * Concluded by an admin, or past its end date. Mirrors isConcluded.
+     */
+    public function scopeConcluded(Builder $query): void
+    {
+        $query->where(fn (Builder $q) => $q->whereNotNull('concluded_at')->orWhereDate('date_end', '<', now()));
+    }
+
+    public function scopeNotConcluded(Builder $query): void
+    {
+        $query->whereNull('concluded_at')->whereDate('date_end', '>=', now());
     }
 
     protected function isPublished(): Attribute
@@ -105,11 +123,13 @@ class Tournament extends Model
     }
 
     /**
-     * A published tournament whose date range has already passed.
+     * A published tournament an admin concluded, or whose end date has
+     * passed (from the day after it ends).
      */
     protected function isConcluded(): Attribute
     {
-        return Attribute::get(fn (): bool => $this->isPublished && $this->date_end->isPast());
+        return Attribute::get(fn (): bool => $this->isPublished
+            && ($this->concluded_at !== null || $this->date_end->lt(today())));
     }
 
     /**

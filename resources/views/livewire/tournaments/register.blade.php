@@ -34,6 +34,13 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
     public string $regEmail = '';
     public string $regPhoneNumber = '';
 
+    /** 'search' picks an existing player by name; 'manual' enters a new partner by hand. */
+    public string $pairMode = 'search';
+
+    public string $pairSearch = '';
+
+    public ?int $pairPlayerId = null;
+
     public string $pairFirstName = '';
     public string $pairLastName = '';
     public string $pairMiddleInitial = '';
@@ -88,6 +95,24 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         $this->regStep = min($this->regStep + 1, $this->totalSteps);
     }
 
+    public function selectPairPlayer(int $playerId): void
+    {
+        $this->pairPlayerId = Player::query()->whereKey($playerId)->value('id');
+    }
+
+    public function enterPairManually(): void
+    {
+        $this->pairMode = 'manual';
+        $this->pairPlayerId = null;
+        $this->resetValidation();
+    }
+
+    public function searchPairAgain(): void
+    {
+        $this->pairMode = 'search';
+        $this->resetValidation();
+    }
+
     public function previousStep(): void
     {
         $this->regStep = max($this->regStep - 1, 1);
@@ -132,16 +157,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                 $partner = null;
 
                 if ($this->isDoublesRegistration) {
-                    $partner = $this->findOrCreatePlayer([
-                        'name' => $this->combineName($this->pairFirstName, $this->pairMiddleInitial, $this->pairLastName),
-                        'birth_date' => $this->pairBirthDate,
-                        'gender' => $this->pairGender,
-                        'address' => $this->pairAddress,
-                        'club' => $this->pairClub !== '' ? $this->pairClub : null,
-                        'level' => $this->pairSkillLevel,
-                        'email' => $this->pairEmail !== '' ? $this->pairEmail : null,
-                        'phone_number' => $this->normalizePhone($this->pairPhoneNumber),
-                    ]);
+                    $partner = $this->resolvePartnerPlayer();
 
                     if ($partner->is($applicant)) {
                         throw new \RuntimeException('Your partner must be a different player.');
@@ -165,7 +181,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                     ApplicationPlayer::create([
                         'application_id' => $application->id,
                         'player_id' => $partner->id,
-                        'level_at_apply' => $this->pairSkillLevel,
+                        'level_at_apply' => $this->pairMode === 'search' ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
                     ]);
                 }
 
@@ -181,6 +197,36 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         $this->sendReferenceCodeEmail($application);
 
         $this->submittedReferenceCode = $application->reference_code;
+    }
+
+    /**
+     * Existing players matching the partner search. Only ids and names are
+     * loaded, so nothing else about a player is exposed on the public form.
+     *
+     * @return \Illuminate\Support\Collection<int, Player>
+     */
+    #[Computed]
+    public function pairSearchResults()
+    {
+        if (mb_strlen(trim($this->pairSearch)) < 2) {
+            return collect();
+        }
+
+        return Player::query()
+            ->select(['id', 'name'])
+            ->where('name', 'like', '%'.trim($this->pairSearch).'%')
+            ->when($this->applicantUser()?->player, fn ($query, $player) => $query->where('id', '!=', $player->id))
+            ->orderBy('name')
+            ->limit(10)
+            ->get();
+    }
+
+    #[Computed]
+    public function selectedPairPlayer(): ?Player
+    {
+        return $this->pairPlayerId
+            ? Player::query()->select(['id', 'name'])->find($this->pairPlayerId)
+            : null;
     }
 
     #[Computed]
@@ -203,6 +249,17 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             ->with('category')
             ->eligibleFor($this->regGender !== '' ? $this->regGender : null, $this->regAge)
             ->get();
+    }
+
+    /**
+     * Ids of the eligible categories that have no entry slot left.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    #[Computed]
+    public function fullCategoryIds()
+    {
+        return $this->eligibleCategories->filter->isFull()->pluck('id');
     }
 
     #[Computed]
@@ -263,8 +320,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             'regAddress' => ['required', 'string', 'max:255'],
             'regSkillLevel' => ['required', 'string', 'max:255'],
             'regClub' => ['nullable', 'string', 'max:255'],
-            'regEmail' => ['nullable', 'email', 'max:255'],
-            'regPhoneNumber' => ['required', 'string', 'max:255'],
+            'regEmail' => ['nullable', 'email', 'max:255', 'required_without:regPhoneNumber'],
+            'regPhoneNumber' => ['nullable', 'string', 'max:255', 'required_without:regEmail'],
         ];
     }
 
@@ -273,6 +330,12 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
      */
     private function pairStepRules(): array
     {
+        if ($this->pairMode === 'search') {
+            return [
+                'pairPlayerId' => ['required', 'integer', 'exists:players,id'],
+            ];
+        }
+
         return [
             'pairFirstName' => ['required', 'string', 'max:255'],
             'pairLastName' => ['required', 'string', 'max:255'],
@@ -282,8 +345,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             'pairAddress' => ['required', 'string', 'max:255'],
             'pairSkillLevel' => ['required', 'string', 'max:255'],
             'pairClub' => ['nullable', 'string', 'max:255'],
-            'pairEmail' => ['nullable', 'email', 'max:255'],
-            'pairPhoneNumber' => ['required', 'string', 'max:255'],
+            'pairEmail' => ['nullable', 'email', 'max:255', 'required_without:pairPhoneNumber'],
+            'pairPhoneNumber' => ['nullable', 'string', 'max:255', 'required_without:pairEmail'],
         ];
     }
 
@@ -335,6 +398,28 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
     }
 
     /**
+     * The partner is either an existing player picked from the name search,
+     * or a new player entered by hand (still matched by phone/email).
+     */
+    private function resolvePartnerPlayer(): Player
+    {
+        if ($this->pairMode === 'search') {
+            return Player::query()->findOrFail($this->pairPlayerId);
+        }
+
+        return $this->findOrCreatePlayer([
+            'name' => $this->combineName($this->pairFirstName, $this->pairMiddleInitial, $this->pairLastName),
+            'birth_date' => $this->pairBirthDate,
+            'gender' => $this->pairGender,
+            'address' => $this->pairAddress,
+            'club' => $this->pairClub !== '' ? $this->pairClub : null,
+            'level' => $this->pairSkillLevel,
+            'email' => $this->pairEmail !== '' ? $this->pairEmail : null,
+            'phone_number' => $this->normalizePhone($this->pairPhoneNumber),
+        ]);
+    }
+
+    /**
      * Reuse the player who already has this phone number (or email) so match
      * history and skill level stay in one place; only blank fields on the
      * existing record are filled in.
@@ -343,14 +428,18 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
      */
     private function findOrCreatePlayer(array $attributes): Player
     {
-        $existing = Player::query()
-            ->when($attributes['phone_number'], fn ($query, $phone) => $query->where('phone_number', $phone))
-            ->first();
+        $existing = null;
+
+        if ($attributes['phone_number']) {
+            $existing = Player::query()->where('phone_number', $attributes['phone_number'])->first();
+        }
 
         if (! $existing && $attributes['email']) {
-            $existing = Player::query()
-                ->whereRaw('lower(email) = ?', [mb_strtolower($attributes['email'])])
-                ->first();
+            $email = mb_strtolower($attributes['email']);
+
+            // Account holders keep their email on the user, so check it too.
+            $existing = Player::query()->whereRaw('lower(email) = ?', [$email])->first()
+                ?? Player::query()->whereHas('user', fn ($query) => $query->whereRaw('lower(email) = ?', [$email]))->first();
         }
 
         if (! $existing) {
@@ -504,38 +593,90 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         <x-player.registration-field label="Club (optional)" model="regClub" placeholder="e.g. OBC Badminton Club" />
                     </div>
                     <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                        <x-player.registration-field label="Phone Number" model="regPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
-                        <x-player.registration-field label="Email (optional — we'll send your reference code)" model="regEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                        <x-player.registration-field label="Phone Number (phone or email required)" model="regPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
+                        <x-player.registration-field label="Email (phone or email required — we'll send your reference code)" model="regEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
                     </div>
 
                     <x-player.registration-select
                         label="Category"
                         model="regTournamentCategoryId"
-                        placeholder="Select Category"
+                        placeholder="Select category"
                         :live="true"
-                        :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2).($tc->isFull() ? ' (Full)' : '')])"
+                        :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2).($this->fullCategoryIds->contains($tc->id) ? ' (Full)' : '')])"
+                        :disabled-options="$this->fullCategoryIds->all()"
                     />
                 @elseif ($this->isPairStep)
-                    <p class="text-xs text-black/60">Enter your partner's details. If they have played with us before, we'll match their phone number to their existing record.</p>
+                    @if ($pairMode === 'search')
+                        <p class="text-xs text-black/60">Search for your partner by name. Players who have joined before are already in our records.</p>
 
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
-                        <x-player.registration-field label="First Name" model="pairFirstName" placeholder="e.g. Juan" />
-                        <x-player.registration-field label="Last Name" model="pairLastName" placeholder="e.g. Cruz" />
-                        <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" />
-                    </div>
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
-                        <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" />
-                        <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" />
-                        <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
-                    </div>
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                        <x-player.registration-field label="Skill Level" model="pairSkillLevel" placeholder="e.g. Beginner" />
-                        <x-player.registration-field label="Club (optional)" model="pairClub" placeholder="e.g. OBC Badminton Club" />
-                    </div>
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                        <x-player.registration-field label="Phone Number" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
-                        <x-player.registration-field label="Email (optional)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
-                    </div>
+                        <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
+                            <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name"
+                                   class="flex-1 bg-transparent text-[12px] text-black placeholder:text-black/40 focus:outline-none">
+                            <div class="flex h-[30px] w-[36px] items-center justify-center">
+                                <flux:icon.magnifying-glass class="size-[17px] text-black/50" />
+                            </div>
+                        </div>
+
+                        <div class="flex max-h-[260px] flex-col gap-[8px] overflow-y-auto">
+                            @forelse ($this->pairSearchResults as $player)
+                                <button type="button" wire:click="selectPairPlayer({{ $player->id }})" wire:key="pair-{{ $player->id }}"
+                                        @class([
+                                            'flex items-center justify-between gap-3 rounded-[10px] border px-[15px] py-[10px] text-left text-[12px] font-bold text-black cursor-pointer',
+                                            'border-[#138177] bg-[#eaf4f3]' => $pairPlayerId === $player->id,
+                                            'border-[#d3d3d3] bg-white' => $pairPlayerId !== $player->id,
+                                        ])>
+                                    <span>{{ $player->name }}</span>
+                                    <span @class([
+                                        'size-[12px] shrink-0 rounded-full',
+                                        'bg-[#138177]' => $pairPlayerId === $player->id,
+                                        'bg-[#eaf4f3]' => $pairPlayerId !== $player->id,
+                                    ])></span>
+                                </button>
+                            @empty
+                                <p class="py-4 text-center text-[11px] text-black/50">
+                                    {{ mb_strlen(trim($pairSearch)) < 2 ? 'Type at least 2 characters to search.' : 'No matching players found.' }}
+                                </p>
+                            @endforelse
+                        </div>
+
+                        @error('pairPlayerId')
+                            <p class="text-[11px] text-red-600">Pick your partner from the list, or enter their details.</p>
+                        @enderror
+
+                        <button type="button" wire:click="enterPairManually"
+                                class="cursor-pointer self-start text-[12px] text-[#138177] underline">
+                            My partner isn't listed — enter their details
+                        </button>
+                    @else
+                        <p class="text-xs text-black/60">
+                            Enter your partner's details. If they've played with us before, we'll match their phone number
+                            or email to their existing record.
+                        </p>
+
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-field label="First Name" model="pairFirstName" placeholder="e.g. Juan" />
+                            <x-player.registration-field label="Last Name" model="pairLastName" placeholder="e.g. Cruz" />
+                            <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" />
+                            <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" />
+                            <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
+                            <x-player.registration-field label="Skill Level" model="pairSkillLevel" placeholder="e.g. Beginner" />
+                            <x-player.registration-field label="Club (optional)" model="pairClub" placeholder="e.g. OBC Badminton Club" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
+                            <x-player.registration-field label="Phone Number (phone or email required)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
+                            <x-player.registration-field label="Email (phone or email required)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                        </div>
+
+                        <button type="button" wire:click="searchPairAgain"
+                                class="cursor-pointer self-start text-[12px] text-[#138177] underline">
+                            Search existing players instead
+                        </button>
+                    @endif
                 @else
                     <dl class="flex flex-col gap-2 text-xs text-black">
                         <div class="flex justify-between gap-4">
@@ -548,12 +689,12 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         </div>
                         <div class="flex justify-between gap-4">
                             <dt class="text-black/60">Player</dt>
-                            <dd class="text-right font-bold">{{ $regFirstName }} {{ $regLastName }} · {{ $regPhoneNumber }}</dd>
+                            <dd class="text-right font-bold">{{ $regFirstName }} {{ $regLastName }} · {{ $regPhoneNumber !== '' ? $regPhoneNumber : $regEmail }}</dd>
                         </div>
                         @if ($this->isDoublesRegistration)
                             <div class="flex justify-between gap-4">
                                 <dt class="text-black/60">Partner</dt>
-                                <dd class="text-right font-bold">{{ $pairFirstName }} {{ $pairLastName }} · {{ $pairPhoneNumber }}</dd>
+                                <dd class="text-right font-bold">{{ $pairMode === 'search' ? $this->selectedPairPlayer?->name : trim($pairFirstName.' '.$pairLastName) }}</dd>
                             </div>
                         @endif
                     </dl>

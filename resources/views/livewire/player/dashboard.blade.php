@@ -23,11 +23,13 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     {
         $tournament = Tournament::query()
             ->whereIn('id', $this->applications->where('status', 'approved')->pluck('tournamentCategory.tournament_id'))
-            ->whereDate('date_end', '>=', now())
+            ->notConcluded()
             ->orderBy('date_start')
             ->first();
 
-        return $tournament ? $this->cardFor($tournament, 'UPCOMING TOURNAMENT', 'You are registered') : null;
+        return $tournament
+            ? $this->cardFor($tournament, 'UPCOMING TOURNAMENT', 'You are registered', route('player.events', ['tab' => 'applications']))
+            : null;
     }
 
     /**
@@ -47,6 +49,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
                 $tournament,
                 'OPEN FOR REGISTRATION',
                 'Accepting Registrations till '.$tournament->registration_end->format('F j, Y'),
+                route('player.events', ['tournament' => $tournament->id]),
             ));
     }
 
@@ -85,9 +88,11 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     /**
      * @return array<string, mixed>
      */
-    private function cardFor(Tournament $tournament, string $label, string $badge): array
+    private function cardFor(Tournament $tournament, string $label, string $badge, string $url): array
     {
         return [
+            'url' => $url,
+            'posterUrl' => $tournament->poster_url,
             'label' => $label,
             'name' => $tournament->name,
             'dates' => $tournament->date_range_label,
@@ -100,8 +105,10 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
 
 <div class="flex flex-col gap-5">
     @if ($this->upcomingTournament)
+        <a href="{{ $this->upcomingTournament['url'] }}" wire:navigate class="block">
         <x-player.tournament-card
             class="h-[204px] px-10"
+            :poster-url="$this->upcomingTournament['posterUrl']"
             :label="$this->upcomingTournament['label']"
             :name="$this->upcomingTournament['name']"
             :dates="$this->upcomingTournament['dates']"
@@ -109,6 +116,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
             :days="$this->upcomingTournament['days']"
             :badge="$this->upcomingTournament['badge']"
         />
+        </a>
     @endif
 
     <div class="flex flex-col gap-2.5">
@@ -116,9 +124,10 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
 
         <div class="grid gap-[30px] lg:grid-cols-2">
             @forelse ($this->openTournaments as $tournament)
+                <a href="{{ $tournament['url'] }}" wire:navigate wire:key="open-{{ $loop->index }}" class="block">
                 <x-player.tournament-card
-                    wire:key="open-{{ $loop->index }}"
                     class="h-[203px]"
+                    :poster-url="$tournament['posterUrl']"
                     badge-placement="top"
                     :label="$tournament['label']"
                     :name="$tournament['name']"
@@ -127,6 +136,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
                     :days="$tournament['days']"
                     :badge="$tournament['badge']"
                 />
+                </a>
             @empty
                 <p class="py-4 text-xs text-white">No tournaments are accepting registrations right now.</p>
             @endforelse

@@ -6,13 +6,19 @@
     'days' => [],
     'badge' => null,
     'badgePlacement' => 'inline',
+    'posterUrl' => null,
 ])
 
 {{-- Tournament banner. `badgePlacement` matches Figma's two arrangements:
      the wide hero keeps its status pill inline on the right, the narrower
      "open for registration" cards float it above the details. --}}
 <div {{ $attributes->class(['relative flex flex-col justify-end overflow-hidden rounded-[5px] p-5']) }}>
-    <div class="pointer-events-none absolute inset-0 rounded-[5px] bg-white mix-blend-soft-light"></div>
+    @if ($posterUrl)
+        <img src="{{ $posterUrl }}" alt="" class="pointer-events-none absolute inset-0 size-full object-cover">
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10"></div>
+    @else
+        <div class="pointer-events-none absolute inset-0 rounded-[5px] bg-white mix-blend-soft-light"></div>
+    @endif
 
     @if ($badge && $badgePlacement === 'top')
         <div class="relative mb-auto flex justify-end">

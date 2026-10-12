@@ -17,7 +17,7 @@ class RerouteApplication
     /**
      * Gender/age mismatches only block unless `$overrideEligibility` is
      * set; a team-size mismatch, a different tournament, or a destination
-     * that already has a draw always blocks.
+     * that already has a draw or is full always blocks.
      *
      * @return array{fee_changed: bool, from_fee: string, to_fee: string}
      *
@@ -44,6 +44,11 @@ class RerouteApplication
 
         if ($destination->hasGeneratedDraw()) {
             throw new InvalidArgumentException('The destination category already has a generated schedule.');
+        }
+
+        // A rejected application holds no slot, so only a live one needs room.
+        if ($application->status !== 'rejected' && $destination->isFull()) {
+            throw new InvalidArgumentException('The destination category is full.');
         }
 
         if (! $overrideEligibility && $issues['ineligible_players']->isNotEmpty()) {

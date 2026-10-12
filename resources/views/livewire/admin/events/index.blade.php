@@ -28,29 +28,36 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     public function tournaments(): Collection
     {
         return Tournament::query()
-            ->withSum('tournamentCategories as max_slots_sum', 'max_slots')
-            ->with(['tournamentCategories.playerApplications' => fn ($query) => $query->where('status', 'approved')->with('applicationPlayers')])
+            ->with(['tournamentCategories.playerApplications' => fn ($query) => $query->where('status', '!=', 'rejected')->with('applicationPlayers')])
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
-            ->when($this->tab === 'published', fn ($query) => $query->published()->whereDate('date_end', '>=', now()))
-            ->when($this->tab === 'concluded', fn ($query) => $query->published()->whereDate('date_end', '<', now()))
+            ->when($this->tab === 'published', fn ($query) => $query->published()->notConcluded())
+            ->when($this->tab === 'concluded', fn ($query) => $query->published()->concluded())
             ->latest('date_start')
             ->get();
     }
 
     /**
-     * @return array{max_slots: int, approved_entries: int, registered_players: int}
+     * Slots are entries (a doubles pair is one), so remaining slots are summed
+     * per category and a full category never offsets an open one.
+     *
+     * @return array{remaining_slots: int, registered_players: int}
      */
     public function stats(Tournament $tournament): array
     {
-        $approvedApplications = $tournament->tournamentCategories->flatMap->playerApplications;
+        $remaining = $tournament->tournamentCategories
+            ->sum(fn ($tournamentCategory) => max(0, $tournamentCategory->max_slots - $tournamentCategory->playerApplications->count()));
+
+        $registeredPlayers = $tournament->tournamentCategories
+            ->flatMap->playerApplications
+            ->where('status', 'approved')
+            ->flatMap->applicationPlayers
+            ->count();
 
         return [
-            'max_slots' => (int) ($tournament->max_slots_sum ?? 0),
-            'approved_entries' => $approvedApplications->count(),
-            'registered_players' => $approvedApplications->flatMap->applicationPlayers->count(),
+            'remaining_slots' => $remaining,
+            'registered_players' => $registeredPlayers,
         ];
     }
-
     public function formatDateRange(Tournament $tournament): string
     {
         if ($tournament->date_start->isSameMonth($tournament->date_end)) {
@@ -62,6 +69,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
 }; ?>
 
 <div class="flex flex-col gap-6">
+    <h2 class="border-b border-white/50 pb-4 text-2xl font-bold text-white">Event Tournaments</h2>
+
     <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
             <button type="button" wire:click="selectTab('all')" @class([
@@ -105,7 +114,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                     :days="$tournament->specific_days"
                     :time="$tournament->time"
                     :deadline="$tournament->is_published && ! $tournament->is_concluded ? $tournament->registration_end->format('F j, Y') : null"
-                    :remaining-slots="max(0, $stats['max_slots'] - $stats['approved_entries'])"
+                    :remaining-slots="$stats['remaining_slots']"
                     :registered-players="$stats['registered_players']"
                 />
             </a>

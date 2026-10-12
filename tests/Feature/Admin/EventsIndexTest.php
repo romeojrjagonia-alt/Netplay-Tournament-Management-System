@@ -16,10 +16,10 @@ function eventsIndexTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-09-01',
-        'date_end' => '2026-09-30',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -111,7 +111,7 @@ test('search filters tournaments by name', function () {
         ->assertDontSee('Barangay Cup');
 });
 
-test('remaining slots and registered players only count approved entries', function () {
+test('remaining slots count every non-rejected entry while registered players count approved ones', function () {
     $tournament = eventsIndexTournament();
     $tournamentCategory = eventsIndexCategory($tournament, ['max_slots' => 10]);
 
@@ -125,8 +125,8 @@ test('remaining slots and registered players only count approved entries', funct
 
     $this->actingAs(eventsIndexAdmin());
 
-    // 10 slots, 1 approved entry -> 9 remaining; only the approved player counts as registered.
+    // 10 slots, 1 approved + 1 pending entry -> 8 remaining; only the approved player counts as registered.
     Volt::test('admin.events.index')
-        ->assertSeeHtml('text-4xl font-bold text-white">9<')
+        ->assertSeeHtml('text-4xl font-bold text-white">8<')
         ->assertSeeHtml('text-4xl font-bold text-white">1<');
 });

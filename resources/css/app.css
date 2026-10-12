@@ -85,3 +85,26 @@ select:focus[data-flux-control] {
     background-color: rgb(0 0 0 / 0.7);
     backdrop-filter: none;
 }
+
+/* Browser autofill paints a gray background and (on dark themes) white text,
+   which made autofilled fields unreadable on our light inputs. Keep the
+   field's own look: a long background-color transition hides the UA fill and
+   the inset shadow + text-fill-color restore readable dark text. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+    -webkit-text-fill-color: #111827;
+    caret-color: #111827;
+    -webkit-box-shadow: 0 0 0 1000px #eaf4f3 inset;
+    box-shadow: 0 0 0 1000px #eaf4f3 inset;
+    transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+input:autofill,
+textarea:autofill,
+select:autofill {
+    color: #111827;
+    box-shadow: 0 0 0 1000px #eaf4f3 inset;
+}
