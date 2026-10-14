@@ -19,29 +19,18 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     }
 
     /**
-     * This player's matches that have not started yet, soonest first.
+     * This player's ongoing match(es) first, then those not started yet, soonest first.
      *
      * @return \Illuminate\Support\Collection<int, array<string, mixed>>
      */
     #[Computed]
     public function upcomingMatches()
     {
-        return $this->playerMatches(['scheduled'])
-            ->sortBy('scheduled_at')
-            ->map(fn (Matches $match) => $this->matchViewData($match))
-            ->values();
-    }
-
-    /**
-     * This player's matches an umpire is scoring right now, soonest first.
-     *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
-     */
-    #[Computed]
-    public function ongoingMatches()
-    {
-        return $this->playerMatches(['in_progress'])
-            ->sortBy('scheduled_at')
+        return $this->playerMatches(['in_progress', 'scheduled'])
+            ->sortBy([
+                fn (Matches $a, Matches $b) => ($b->status === 'in_progress') <=> ($a->status === 'in_progress'),
+                fn (Matches $a, Matches $b) => $a->scheduled_at <=> $b->scheduled_at,
+            ])
             ->map(fn (Matches $match) => $this->matchViewData($match))
             ->values();
     }
@@ -77,6 +66,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
             ->with([
                 'matchApplications.application.applicationPlayers.player',
                 'games.rallies',
+                'tournamentCategory.tournament',
             ])
             ->get();
     }
@@ -155,7 +145,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
 
 <div class="flex flex-col gap-5" wire:poll.5s.visible>
     <div class="flex h-10 w-fit max-w-full items-center gap-4 overflow-x-auto rounded-full bg-white px-2.5 py-1.5">
-        @foreach (['all' => 'All Matches', 'upcoming' => 'Upcoming Matches', 'ongoing' => 'Ongoing Matches', 'concluded' => 'Concluded Matches'] as $key => $label)
+        @foreach (['all' => 'All Matches', 'upcoming' => 'Upcoming Matches', 'concluded' => 'Concluded Matches'] as $key => $label)
             <button type="button" wire:click="selectTab('{{ $key }}')"
                     @class([
                         'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs',
@@ -167,12 +157,18 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
         @endforeach
     </div>
 
-    @if ($tab === 'ongoing' || ($tab === 'all' && $this->ongoingMatches->isNotEmpty()))
-        <div class="flex flex-col gap-2.5">
-            <h2 class="text-sm font-bold text-white">Ongoing Matches</h2>
+    @if ($tab === 'all' || $tab === 'upcoming')
+        @php
+            $ongoing = $this->upcomingMatches->filter(fn (array $match) => $match['live'] !== null);
+            $upcoming = $this->upcomingMatches->reject(fn (array $match) => $match['live'] !== null);
+        @endphp
 
-            <div class="flex flex-col gap-[17px]">
-                @forelse ($this->ongoingMatches as $match)
+        @if ($ongoing->isNotEmpty())
+            <div class="flex flex-col gap-2.5">
+                <h2 class="text-sm font-bold text-white">Ongoing Match</h2>
+
+                <div class="flex flex-col gap-[17px]">
+                    @foreach ($ongoing as $match)
                     <x-player.match-card
                         wire:key="ongoing-{{ $match['id'] }}"
                         :court="$match['court']"
@@ -185,19 +181,16 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
                         :team-b-players="$match['teamBPlayers']"
                         :live="$match['live']"
                     />
-                @empty
-                    <p class="py-10 text-center text-sm text-white">No matches are being played right now.</p>
-                @endforelse
+                    @endforeach
+                </div>
             </div>
-        </div>
-    @endif
+        @endif
 
-    @if ($tab === 'all' || $tab === 'upcoming')
         <div class="flex flex-col gap-2.5">
             <h2 class="text-sm font-bold text-white">Upcoming Matches</h2>
 
             <div class="flex flex-col gap-[17px]">
-                @forelse ($this->upcomingMatches as $match)
+                @forelse ($upcoming as $match)
                     <x-player.match-card
                         wire:key="upcoming-{{ $match['id'] }}"
                         :court="$match['court']"

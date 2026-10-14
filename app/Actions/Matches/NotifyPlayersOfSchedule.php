@@ -37,7 +37,7 @@ class NotifyPlayersOfSchedule
 
         foreach ($matches as $match) {
             foreach ($this->playersOf($match) as $player) {
-                $address = $player->email ?: $player->user?->email;
+                $address = $player->user?->email ?: $player->email;
 
                 if (! $address) {
                     $withoutEmail++;

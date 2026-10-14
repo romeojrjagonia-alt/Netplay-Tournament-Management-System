@@ -251,3 +251,57 @@ test('the rally score sheet is not rendered until the umpire opens it', function
         ->assertSet('showScoresheet', false)
         ->assertDontSee('UMPIRE');
 });
+
+test('in a 31-point tournament the first side to reach 31 wins the only set, and the match waits for confirmation', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, $applicationA, , $playerA, $playerB] = scoringMatchWithPlayers($umpire);
+    $match->tournamentCategory->tournament->update(['scoring_system' => '31-Point Single Set']);
+
+    $this->actingAs($umpire);
+
+    $component = Volt::test('umpire.matches.scoring', ['match' => $match->fresh()])
+        ->call('startMatch');
+    $game = MatchGame::where('match_id', $match->id)->first();
+
+    // 30-29: no 2-point-lead or deuce rule, so the game is still going.
+    for ($i = 1; $i <= 29; $i++) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $playerB->id, 'rally_number' => $i]);
+    }
+    for ($i = 30; $i <= 59; $i++) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $playerA->id, 'rally_number' => $i]);
+    }
+
+    $component->call('recordRally', $playerB->id) // 30-30
+        ->assertSet('canConfirmResults', false);
+
+    $component->call('recordRally', $playerA->id); // 31-30
+
+    expect($game->fresh()->winner_application_id)->toBe($applicationA->id);
+    expect($match->fresh()->status)->toBe('in_progress');
+
+    $component->assertSet('canAddSet', false)
+        ->assertSet('canConfirmResults', true)
+        ->call('confirmResults');
+
+    expect($match->fresh()->status)->toBe('completed');
+    expect($match->fresh()->winner_application_id)->toBe($applicationA->id);
+    expect(MatchGame::where('match_id', $match->id)->count())->toBe(1);
+});
+
+test('a 21-point tournament is unaffected by the single set rules', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, , , $playerA] = scoringMatchWithPlayers($umpire);
+
+    $this->actingAs($umpire);
+
+    $component = Volt::test('umpire.matches.scoring', ['match' => $match])->call('startMatch');
+    $game = MatchGame::where('match_id', $match->id)->first();
+
+    for ($i = 1; $i <= 21; $i++) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $playerA->id, 'rally_number' => $i]);
+    }
+
+    $component->call('recordRally', $playerA->id)
+        ->assertSet('canAddSet', true)
+        ->assertSet('canConfirmResults', false);
+});

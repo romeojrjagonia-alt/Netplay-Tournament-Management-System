@@ -63,7 +63,7 @@
                     </div>
                 @endunless
 
-                <header @class(['border-b border-white/50 px-4 py-4 sm:px-7', 'hidden' => ! $showHeader])>
+                <header @class(['sticky top-0 z-20 border-b border-white/50 bg-[#051c1a] px-4 py-4 sm:px-7', 'hidden' => ! $showHeader])>
                   <div class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <button type="button" class="cursor-pointer text-white lg:hidden" x-on:click="sidebarOpen = true" aria-label="Open menu">

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Tournaments\DeleteTournament;
 use App\Models\Category;
 use App\Models\PaymentDetail;
 use App\Models\PlayerApplication;
@@ -198,6 +199,31 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         $this->tournament->refresh();
     }
 
+    /**
+     * Hard-deletes the event. Refused once it holds finalized entries or
+     * played matches, so player history is never lost.
+     */
+    public function deleteEvent(DeleteTournament $deleteTournament): void
+    {
+        abort_if($this->tournament->is_concluded, 403);
+
+        try {
+            $deleteTournament->handle($this->tournament);
+        } catch (\InvalidArgumentException $exception) {
+            $this->dispatch('system-message', title: 'Cannot delete event', message: $exception->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->redirectRoute('admin.events.index', navigate: true);
+    }
+
+    #[Computed]
+    public function hasFinalizedRecords(): bool
+    {
+        return $this->tournament->hasFinalizedRecords();
+    }
+
     public function viewCategory(int $tournamentCategoryId): void
     {
         $this->viewingCategoryId = $this->tournament->tournamentCategories()->whereKey($tournamentCategoryId)->value('id');
@@ -299,6 +325,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 <button type="button" wire:click="togglePublish" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
                     {{ $tournament->is_published ? 'Unpublish Event' : 'Publish Event' }}
                 </button>
+
+                @if ($this->hasFinalizedRecords)
+                    <button type="button"
+                            x-on:click="$dispatch('system-message', { title: 'Cannot delete event', message: 'This event has finalized entries (approved and paid) or played matches. Deleting it would erase player match history.', variant: 'danger' })"
+                            class="cursor-not-allowed rounded-full border border-[#bd6b6c] bg-white px-4 py-2 text-xs text-[#bd6b6c] opacity-50">
+                        Delete Event
+                    </button>
+                @else
+                    <button type="button"
+                            x-on:click="$dispatch('system-confirm', { title: 'Delete this event?', message: 'This permanently deletes the event, its categories, applications, and uploaded payment proofs. Applicants will be emailed. This can\'t be undone.', variant: 'danger', confirmLabel: 'Delete', confirm: () => $wire.deleteEvent() })"
+                            class="cursor-pointer rounded-full border border-[#bd6b6c] bg-white px-4 py-2 text-xs text-[#bd6b6c]">
+                        Delete Event
+                    </button>
+                @endif
             @endunless
         </div>
 

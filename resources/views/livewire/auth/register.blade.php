@@ -2,7 +2,6 @@
 
 use App\Models\Player;
 use App\Models\User;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use App\Mail\UmpireSignupCode;
 use Illuminate\Support\Facades\Cache;
@@ -12,7 +11,6 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
-use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Attributes\Locked;
 use Livewire\Volt\Component;
@@ -39,6 +37,8 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public string $password_confirmation = '';
 
     public string $birthDate = '';
+
+    public string $phoneNumber = '';
     public string $gender = '';
     public string $purok = '';
     public string $city = '';
@@ -82,15 +82,6 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             $this->lastName = $google['last_name'];
             $this->email = $google['email'];
         }
-    }
-
-    /**
-     * Live-computed age preview, derived from the entered birth date.
-     */
-    #[Computed]
-    public function age(): ?int
-    {
-        return $this->birthDate !== '' ? Carbon::parse($this->birthDate)->age : null;
     }
 
     /**
@@ -167,7 +158,8 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', 'min:8', 'confirmed'],
             'birthDate' => ['required', 'date', 'before:today'],
-            'gender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'phoneNumber' => ['required', 'string', 'max:255'],
+            'gender' => ['required', 'in:male,female'],
             'purok' => ['required', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:255'],
             'province' => ['required', 'string', 'max:255'],
@@ -356,6 +348,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'user_id' => $user->id,
                 'name' => $fullName,
                 'birth_date' => $this->birthDate,
+                'phone_number' => $this->phoneNumber,
                 'gender' => $this->gender,
                 'address' => "{$this->purok}, {$this->city}, {$this->province}",
                 'club' => $this->club !== '' ? $this->club : null,
@@ -537,12 +530,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                         <div class="flex w-full gap-3">
                             <x-auth.field label="Birth Date" model="birthDate" type="date" class="flex-[2]" />
 
-                            <div class="flex w-20 shrink-0 flex-col gap-0.5">
-                                <label class="text-xs text-black">Age</label>
-                                <div class="flex items-center rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5 text-xs text-black/70">
-                                    {{ $this->age ?? '—' }}
-                                </div>
-                            </div>
+                            <x-auth.field label="Phone Number" model="phoneNumber" type="tel" placeholder="e.g. 09123456789" class="flex-[2]" />
 
                             <div class="flex w-28 shrink-0 flex-col gap-0.5">
                                 <label for="gender" class="text-xs text-black">Gender</label>
@@ -551,7 +539,6 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                     <option value="">Select</option>
                                     <option value="male">Male</option>
                                     <option value="female">Female</option>
-                                    <option value="prefer_not_to_say">Prefer not to say</option>
                                 </select>
                             </div>
                         </div>
@@ -559,6 +546,9 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
                         @enderror
                         @error('gender')
+                            <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
+                        @enderror
+                        @error('phoneNumber')
                             <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
                         @enderror
 

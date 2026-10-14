@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Observers\MatchObserver;
+use App\Support\Badminton\GameRules;
 use Illuminate\Database\Eloquent\Attributes\ObservedBy;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -60,6 +61,17 @@ class Matches extends Model
     public function assignedUmpire(): BelongsTo
     {
         return $this->belongsTo(User::class, 'assigned_umpire_id');
+    }
+
+    /**
+     * Whether this match is scored as a 31-point single set (first to 31
+     * wins, no 2-point lead) rather than best of 3 to 21.
+     */
+    public function usesSinglePointSystem(): bool
+    {
+        $this->loadMissing('tournamentCategory.tournament');
+
+        return GameRules::isSingleSet($this->tournamentCategory?->tournament?->scoring_system);
     }
 
     public function matchApplications(): HasMany
@@ -142,13 +154,14 @@ class Matches extends Model
         $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
 
         $playerSideMap = $this->playerSideMap();
+        $singleSet = $this->usesSinglePointSystem();
         $games = $this->games->sortBy('game_number')->values();
 
         if ($games->isEmpty()) {
             return [['number' => 1, 'winner' => null, 'scorers' => []]];
         }
 
-        return $games->map(function (MatchGame $game): array {
+        return $games->map(function (MatchGame $game) use ($playerSideMap, $singleSet): array {
             $scorers = $game->rallies
                 ->where('rally_number', '<=', self::SCORESHEET_RALLIES)
                 ->pluck('scoring_player_id', 'rally_number')
@@ -156,7 +169,7 @@ class Matches extends Model
 
             return [
                 'number' => $game->game_number,
-                'winner' => $game->winningSide($this->playerSideMap()),
+                'winner' => $game->winningSide($playerSideMap, $singleSet),
                 'scorers' => $scorers,
             ];
         })->all();
@@ -176,15 +189,16 @@ class Matches extends Model
         $playerSideMap = $this->playerSideMap();
         $applicationIdA = $this->applicationForSide('A')?->id;
         $applicationIdB = $this->applicationForSide('B')?->id;
+        $singleSet = $this->usesSinglePointSystem();
 
         return $this->games
             ->sortBy('game_number')
             ->values()
-            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB): array {
+            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB, $singleSet): array {
                 $scores = $game->scores($playerSideMap);
 
                 $winner = match (true) {
-                    $game->winner_application_id === null => $game->winningSide($playerSideMap),
+                    $game->winner_application_id === null => $game->winningSide($playerSideMap, $singleSet),
                     $game->winner_application_id === $applicationIdA => 'A',
                     $game->winner_application_id === $applicationIdB => 'B',
                     default => null,

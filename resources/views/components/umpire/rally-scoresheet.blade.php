@@ -48,7 +48,7 @@
 
                     <tr class="text-xs">
                         <td colspan="3" class="border border-black px-2 py-1.5"><span class="font-bold">GAME NO:</span> {{ $match->id }}</td>
-                        <td colspan="8" class="border border-black px-2 py-1.5">Set: {{ $set['number'] }}</td>
+                        <td colspan="8" class="border border-black px-2 py-1.5">{{ $match->usesSinglePointSystem() ? 'First to 31 points' : 'Set: '.$set['number'] }}</td>
                         <td colspan="11" class="border border-black px-2 py-1.5"><span class="font-bold">COURT:</span> {{ $match->court }}</td>
                         <td colspan="{{ $total - 22 }}" class="border border-black px-2 py-1.5"><span class="font-bold">BRACKET:</span> {{ str($match->bracket_type)->headline() }}</td>
                     </tr>

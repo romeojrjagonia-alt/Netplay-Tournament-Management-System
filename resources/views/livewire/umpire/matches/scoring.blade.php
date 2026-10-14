@@ -49,6 +49,16 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     }
 
     /**
+     * Whether this tournament scores a match as one 31-point set (first to
+     * 31 wins, no 2-point lead) instead of best of 3 to 21.
+     */
+    #[Computed]
+    public function singleSet(): bool
+    {
+        return $this->match->usesSinglePointSystem();
+    }
+
+    /**
      * @return \Illuminate\Support\Collection<int, MatchGame>
      */
     #[Computed]
@@ -64,7 +74,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     #[Computed]
     public function currentGame(): ?MatchGame
     {
-        return $this->games->first(fn (MatchGame $game) => $game->winningSide($this->playerSideMap) === null);
+        return $this->games->first(fn (MatchGame $game) => $game->winningSide($this->playerSideMap, $this->singleSet) === null);
     }
 
     /**
@@ -101,7 +111,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     #[Computed]
     public function matchWinnerSide(): ?string
     {
-        return GameRules::matchWinner($this->decidedGameWinners());
+        return GameRules::matchWinner($this->decidedGameWinners(), $this->singleSet);
     }
 
     /**
@@ -126,7 +136,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
             && $this->matchWinnerSide === null
             && $this->currentGame === null
             && $this->games->count() > 0
-            && $this->games->count() < 3;
+            && $this->games->count() < GameRules::maxGames($this->singleSet);
     }
 
     #[Computed]
@@ -320,7 +330,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
      */
     private function settleGameWinner(MatchGame $game): void
     {
-        $side = $game->winningSide($this->match->playerSideMap());
+        $side = $game->winningSide($this->match->playerSideMap(), $this->singleSet);
 
         if ($side === null) {
             return;
@@ -341,7 +351,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
         $map = $this->playerSideMap;
 
         return $this->games
-            ->map(fn (MatchGame $game) => $game->winningSide($map))
+            ->map(fn (MatchGame $game) => $game->winningSide($map, $this->singleSet))
             ->filter()
             ->values()
             ->all();
@@ -374,9 +384,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
         <div class="flex w-full flex-col gap-2.5 lg:w-[220px] lg:shrink-0">
             @foreach ($this->games as $game)
-                @php $side = $game->winningSide($this->playerSideMap); @endphp
+                @php $side = $game->winningSide($this->playerSideMap, $this->singleSet); @endphp
                 <div class="flex items-center gap-2.5 rounded-[5px] bg-white px-4 py-2.5 text-xs font-bold text-black">
-                    <span>SET {{ $game->game_number }}</span>
+                    <span>{{ $this->singleSet ? '31-POINT GAME' : 'SET '.$game->game_number }}</span>
                     <span class="text-black/60">
                         @if ($side === 'A')
                             Team A Won
@@ -400,7 +410,11 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
 
         <div class="flex w-full flex-col gap-5 rounded-[5px] bg-white/10 p-5">
             <div class="flex flex-wrap items-center justify-between gap-3">
-                <span class="text-xs text-white">Sets won — Team A: {{ $this->setsWon['A'] }} · Team B: {{ $this->setsWon['B'] }}</span>
+                @if ($this->singleSet)
+                    <span class="text-xs text-white">First to {{ GameRules::SINGLE_SET_POINTS_TO_WIN }} points wins</span>
+                @else
+                    <span class="text-xs text-white">Sets won — Team A: {{ $this->setsWon['A'] }} · Team B: {{ $this->setsWon['B'] }}</span>
+                @endif
 
                 <div class="flex items-center gap-2">
                     <button type="button" wire:click="undoLastRally" title="Undo last point"
@@ -490,13 +504,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <button type="button" wire:click="openScoresheet"
                 class="w-full cursor-pointer rounded-[5px] bg-[#0b4742] py-2.5 text-center text-xs font-bold text-white hover:bg-[#083530]">
-            View Rally Score Sheet
+            View Score Sheet
         </button>
 
         <button type="button" wire:click="confirmResults" @disabled(! $this->canConfirmResults)
                 wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
                 class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] py-2.5 text-center text-xs font-bold text-white hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-50">
-            Confirm Results
+            Confirm Match Results
         </button>
     </div>
 

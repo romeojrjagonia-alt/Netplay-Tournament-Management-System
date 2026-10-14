@@ -1,6 +1,11 @@
 @props(['applicationPlayer', 'index'])
 
-@php $player = $applicationPlayer->player; @endphp
+@php
+    $player = $applicationPlayer->player;
+    $documentUrl = $applicationPlayer->id_document_url;
+    $documentTypes = ['national_id' => 'Philippine National ID', 'passport' => 'Passport', 'birth_certificate' => 'Birth Certificate'];
+    $documentLabel = $documentTypes[$applicationPlayer->id_document_type] ?? 'Valid ID document';
+@endphp
 
 <div {{ $attributes->class(['flex w-full max-w-[284px] shrink-0 flex-col gap-[15px] rounded-[5px] border border-[#d3d3d3] px-5 pt-2.5 pb-5']) }}>
     <div class="flex w-full flex-col gap-[5px]">
@@ -37,5 +42,20 @@
             <span class="shrink-0">Address</span>
             <span class="min-w-0 text-right font-bold break-words">{{ $player->address ?? '—' }}</span>
         </div>
+    </div>
+
+    <div class="flex w-full flex-col gap-1.5 border-t border-[#ececec] pt-3 text-[11px] text-black">
+        <span class="text-black/60">Valid ID document</span>
+        @if ($documentUrl)
+            <a href="{{ $documentUrl }}" target="_blank" rel="noopener" class="flex items-center gap-3 rounded-[5px] border border-[#d3d3d3] p-2 hover:bg-[#f3faf9]">
+                <img src="{{ $documentUrl }}" alt="{{ $documentLabel }}" class="size-12 shrink-0 rounded-[3px] object-cover">
+                <span class="flex min-w-0 flex-col">
+                    <span class="font-bold">{{ $documentLabel }}</span>
+                    <span class="text-[#138177] underline">View document</span>
+                </span>
+            </a>
+        @else
+            <span class="text-black/50 italic">No document uploaded</span>
+        @endif
     </div>
 </div>

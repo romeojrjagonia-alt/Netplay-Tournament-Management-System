@@ -8,8 +8,12 @@ use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 function openTournament(array $overrides = []): Tournament
 {
@@ -54,7 +58,11 @@ function fillGuestDetails($component, TournamentCategory $category, array $overr
         ->set('regSkillLevel', 'Beginner')
         ->set('regPhoneNumber', $overrides['phone'] ?? '0917 123 4567')
         ->set('regEmail', $overrides['email'] ?? '')
-        ->set('regTournamentCategoryId', $category->id);
+        ->set('regTournamentCategoryId', $category->id)
+        ->set('ownDocumentType', 'national_id')
+        ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
+        ->set('pairDocumentType', 'passport')
+        ->set('pairDocument', UploadedFile::fake()->create('partner-id.jpg', 100, 'image/jpeg'));
 }
 
 test('a guest can open the public registration page without signing in', function () {
@@ -101,7 +109,7 @@ test('a guest registers for singles without an account and gets a reference code
     $component->assertSet('submittedReferenceCode', $application->reference_code);
 });
 
-test('a returning guest reuses their player record matched by phone number', function () {
+test('a returning guest reuses their player record matched by phone number and name', function () {
     $tournament = openTournament();
     $category = openCategory($tournament);
 
@@ -111,7 +119,7 @@ test('a returning guest reuses their player record matched by phone number', fun
         'level' => 'Level C',
     ]);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['first' => 'Someone', 'last' => 'Else'])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['first' => 'JUAN', 'last' => 'cruz'])
         ->call('nextStep')
         ->call('submit');
 
@@ -231,7 +239,7 @@ test('a guest is matched to an account holder by the email on the account', func
     $user = User::factory()->create(['role' => 'player', 'email' => 'member@example.com']);
     $member = Player::create(['user_id' => $user->id, 'name' => 'Member Player']);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'MEMBER@example.com', 'first' => 'Someone', 'last' => 'Else'])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'MEMBER@example.com', 'first' => 'Member', 'last' => 'Player'])
         ->call('nextStep')
         ->call('submit');
 
@@ -284,7 +292,7 @@ test('a doubles partner entered by email is matched to an existing account holde
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
         ->call('nextStep')
         ->call('enterPairManually')
-        ->set('pairFirstName', 'Pete')
+        ->set('pairFirstName', 'Pedro')
         ->set('pairLastName', 'Santos')
         ->set('pairBirthDate', '1997-05-05')
         ->set('pairGender', 'male')
@@ -408,4 +416,81 @@ test('a rejected application frees its slot', function () {
         ->assertHasNoErrors();
 
     expect(PlayerApplication::where('status', '!=', 'rejected')->count())->toBe(1);
+});
+
+test('the guest form stores each player\'s ID document with the entry', function () {
+    $category = openCategory(openTournament(), teamSize: 2, gender: 'mixed');
+
+    $component = Volt::test('tournaments.register', ['tournament' => $category->tournament]);
+
+    fillGuestDetails($component, $category)
+        ->call('nextStep')
+        ->call('enterPairManually')
+        ->set('pairFirstName', 'Maria')
+        ->set('pairLastName', 'Santos')
+        ->set('pairBirthDate', '1999-05-05')
+        ->set('pairGender', 'female')
+        ->set('pairAddress', 'Ozamiz City')
+        ->set('pairSkillLevel', 'Beginner')
+        ->set('pairPhoneNumber', '0918 765 4321')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    $documents = ApplicationPlayer::query()->orderBy('id')->get();
+
+    expect($documents)->toHaveCount(2)
+        ->and($documents[0]->id_document_type)->toBe('national_id')
+        ->and($documents[1]->id_document_type)->toBe('passport');
+
+    foreach ($documents as $document) {
+        Storage::disk('public')->assertExists($document->id_document_path);
+    }
+});
+
+test('the guest form requires an ID document for the player and the partner', function () {
+    $category = openCategory(openTournament());
+
+    $component = Volt::test('tournaments.register', ['tournament' => $category->tournament]);
+
+    fillGuestDetails($component, $category)
+        ->call('nextStep')
+        ->set('ownDocument', null)
+        ->set('ownDocumentType', '')
+        ->call('submit')
+        ->assertHasErrors(['ownDocumentType', 'ownDocument']);
+
+    expect(PlayerApplication::count())->toBe(0);
+});
+
+test('a different name on a shared phone number is a separate player and never exposes the owner', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, gender: 'mixed');
+
+    $owner = Player::create(['name' => 'Jane S. Doe', 'phone_number' => '09171234567']);
+    $application = PlayerApplication::create(['tournament_category_id' => $category->id, 'status' => 'approved']);
+    ApplicationPlayer::create(['application_id' => $application->id, 'player_id' => $owner->id, 'level_at_apply' => 'Beginner']);
+
+    $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['first' => 'Maria', 'last' => 'Reyes'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(Player::count())->toBe(2)
+        ->and(ApplicationPlayer::where('player_id', $owner->id)->count())->toBe(1)
+        ->and(Player::where('name', 'Maria Reyes')->exists())->toBeTrue()
+        ->and($component->get('submittedReferenceCode'))->not->toBeNull();
+});
+
+test('the already-entered error does not reveal the player name', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    foreach (range(1, 2) as $attempt) {
+        $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+            ->call('nextStep')
+            ->call('submit');
+    }
+
+    $component->assertDispatched('system-message', message: 'A player in this entry already has an active application for this category.');
 });

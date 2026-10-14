@@ -3,6 +3,7 @@
 namespace App\Support\Admin;
 
 use App\Models\Tournament;
+use App\Support\Badminton\GameRules;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -52,14 +53,15 @@ trait ManagesEventDetailsForm
     public $poster = null;
 
     /**
-     * The only pointing system currently supported — a dropdown rather than
-     * free text so every event scores the way GameRules implements it
-     * (best of 3 to 21). Extend this list when other systems are supported.
+     * The pointing systems GameRules implements — a dropdown rather than
+     * free text so every event scores one of the supported ways. Keys are
+     * the stored `scoring_system` values.
      *
      * @var array<string, string>
      */
     public array $scoringSystems = [
-        'Best of 3 to 21' => '21-Point Rally',
+        GameRules::SYSTEM_BEST_OF_THREE => '21-Point: Best of 3',
+        GameRules::SYSTEM_SINGLE_SET => '31-Point: Single Set (first to 31)',
     ];
 
     /** @var array<int, string> */

@@ -339,7 +339,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     public function rounds(): Collection
     {
         return $this->tournamentCategory->matches()
-            ->with(['games.rallies', 'assignedUmpire', 'matchApplications.application.applicationPlayers.player'])
+            ->with(['games.rallies', 'tournamentCategory.tournament', 'assignedUmpire', 'matchApplications.application.applicationPlayers.player'])
             ->orderBy('round')
             ->orderBy('position')
             ->get()

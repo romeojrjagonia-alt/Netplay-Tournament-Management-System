@@ -187,7 +187,7 @@ test('reports are only available for concluded events and only to admins', funct
     $this->get(route('admin.events.reports', $concluded))->assertOk();
 
     $this->actingAs(User::factory()->create(['role' => 'player']))
-        ->get(route('admin.events.reports.sales', $concluded))->assertForbidden();
+        ->get(route('admin.events.reports.sales', $concluded))->assertRedirect(route('player.dashboard'));
 });
 
 test('the sales report totals verified fees per category and lists a payment ledger', function () {

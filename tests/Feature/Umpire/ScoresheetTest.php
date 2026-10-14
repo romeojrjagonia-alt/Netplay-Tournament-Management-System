@@ -75,7 +75,7 @@ test('a non-umpire cannot view the scoresheet', function () {
     $player = User::factory()->create(['role' => 'player']);
     $this->actingAs($player);
 
-    $this->get(route('umpire.matches.scoresheet', $match))->assertForbidden();
+    $this->get(route('umpire.matches.scoresheet', $match))->assertRedirect(route('player.dashboard'));
 });
 
 test('an umpire not assigned to the match cannot view its scoresheet', function () {

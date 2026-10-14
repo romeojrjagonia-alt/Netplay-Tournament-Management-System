@@ -30,7 +30,8 @@
 
             <ul class="hidden items-center gap-10 text-sm text-white md:flex">
                 <li><a href="{{ route('home') }}" wire:navigate class="transition hover:text-lime-300">Home Page</a></li>
-                <li><a href="#tournaments" class="transition hover:text-lime-300">Tournaments</a></li>
+                <li><a href="#tournaments" data-scroll-center class="transition hover:text-lime-300">Tournaments</a></li>
+                <li><a href="#check-application" data-scroll-center class="transition hover:text-lime-300">Check Applications</a></li>
             </ul>
 
             <div class="flex items-center gap-3 sm:gap-5">
@@ -60,8 +61,8 @@
         </div>
         </nav>
 
-        {{-- Boxed page: content is capped and centered, with side margins on wide screens --}}
-        <div class="mx-auto w-full max-w-6xl overflow-hidden">
+        {{-- Full-width page: backgrounds span the screen; each section keeps its content aligned in a centered max-w-6xl column --}}
+        <div class="w-full overflow-hidden">
 
         {{-- ============ HERO ============ --}}
         <section class="relative w-full overflow-hidden bg-gradient-to-b from-green-950 to-emerald-950">
@@ -126,7 +127,7 @@
 
         {{-- ============ ACTIVE TOURNAMENTS ============ --}}
         <section id="tournaments" class="w-full bg-emerald-950 px-6 pt-8 pb-20 sm:px-10">
-            <div class="mx-auto flex max-w-6xl flex-col gap-8">
+            <div data-center-target class="mx-auto flex max-w-6xl flex-col gap-8">
                 <div class="flex items-end justify-between">
                     <div>
                         <p class="text-sm text-lime-300">Tournament List</p>
@@ -184,7 +185,7 @@
         </section>
 
         {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
-        <section id="check-application" class="w-full bg-emerald-700/60 px-6 py-12 sm:px-10 sm:py-16 lg:px-16">
+        <section id="check-application" data-center-target class=" sm:px-10 sm:py-16 lg:px-16">
             <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
                 <div class="flex max-w-sm flex-col gap-3 text-center lg:text-left">
                     <h2 class="text-3xl leading-tight font-bold text-white sm:text-5xl">
@@ -258,5 +259,45 @@
                 const syncNav = () => nav.classList.toggle('bg-emerald-950/95', window.scrollY > 24);
                 syncNav();
                 window.addEventListener('scroll', syncNav, { passive: true });
+
+                // Bring a section's content to the middle of the viewport (below the fixed
+                // navbar) instead of jamming its top edge against the screen.
+                const scrollToCentered = (hash, behavior = 'smooth') => {
+                    const section = hash ? document.querySelector(hash) : null;
+
+                    if (!section) {
+                        return false;
+                    }
+
+                    const target = section.matches('[data-center-target]')
+                        ? section
+                        : (section.querySelector('[data-center-target]') ?? section);
+                    const rect = target.getBoundingClientRect();
+                    const navHeight = nav.offsetHeight;
+                    const available = window.innerHeight - navHeight;
+                    const top = rect.height >= available
+                        ? rect.top + window.scrollY - navHeight - 16
+                        : rect.top + window.scrollY - navHeight - (available - rect.height) / 2;
+
+                    window.scrollTo({ top: Math.max(top, 0), behavior });
+
+                    return true;
+                };
+
+                document.querySelectorAll('a[data-scroll-center]').forEach((link) => {
+                    link.addEventListener('click', (event) => {
+                        if (scrollToCentered(link.getAttribute('href'))) {
+                            event.preventDefault();
+                            history.replaceState(null, '', link.getAttribute('href'));
+                        }
+                    });
+                });
+
+                // Arriving with a hash (e.g. from the application form's "check progress" link).
+                if (['#tournaments', '#check-application'].includes(location.hash)) {
+                    const jump = () => scrollToCentered(location.hash, 'auto');
+
+                    document.readyState === 'complete' ? jump() : window.addEventListener('load', jump, { once: true });
+                }
             })();
         </script>

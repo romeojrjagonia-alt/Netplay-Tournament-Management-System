@@ -74,3 +74,10 @@ test('signed in users see a dashboard link and sign out instead of sign in', fun
 test('the session lifetime defaults to 30 minutes', function () {
     expect((int) config('session.lifetime'))->toBe(30);
 });
+
+test('the navbar links to the active tournaments and the application progress check', function () {
+    $this->get('/')
+        ->assertSee('href="#tournaments"', false)
+        ->assertSee('href="#check-application"', false)
+        ->assertSee('Check Tournament Application');
+});

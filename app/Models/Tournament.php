@@ -147,6 +147,27 @@ class Tournament extends Model
         });
     }
 
+    /**
+     * Whether the event holds records that block deleting it: a
+     * finalized entry (approved with a verified payment) or a played match.
+     * A bye is not a played match, since it has a lone entry and no result
+     * worth keeping.
+     */
+    public function hasFinalizedRecords(): bool
+    {
+        $tournamentCategoryIds = $this->tournamentCategories()->select('id');
+
+        $hasFinalizedApplication = PlayerApplication::whereIn('tournament_category_id', $tournamentCategoryIds)
+            ->where('status', 'approved')
+            ->whereHas('paymentDetails', fn (Builder $query) => $query->where('payment_status', 'verified'))
+            ->exists();
+
+        return $hasFinalizedApplication || Matches::whereIn('tournament_category_id', $tournamentCategoryIds)
+            ->where('status', 'completed')
+            ->has('matchApplications', '>=', 2)
+            ->exists();
+    }
+
     public function tournamentCategories(): HasMany
     {
         return $this->hasMany(TournamentCategory::class);

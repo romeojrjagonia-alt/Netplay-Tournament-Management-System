@@ -29,57 +29,57 @@ Route::get('dashboard', function () {
     ->name('dashboard');
 
 Volt::route('admin/dashboard', 'admin.dashboard')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.dashboard');
 
 Volt::route('admin/events', 'admin.events.index')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.index');
 
 // Must be registered before admin/events/{tournament} — otherwise "create"
 // is greedily matched as a tournament route-key by the dynamic route below.
 Volt::route('admin/events/create', 'admin.events.wizard.details')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.create');
 
 Volt::route('admin/events/{tournament}/details', 'admin.events.wizard.details')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.wizard.details');
 
 Volt::route('admin/events/{tournament}/edit', 'admin.events.edit')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.edit');
 
 Volt::route('admin/users', 'admin.users.index')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.users.index');
 
 Volt::route('admin/categories', 'admin.categories.index')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.categories.index');
 
 Volt::route('admin/events/{tournament}/review', 'admin.events.wizard.review')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.wizard.review');
 
 Volt::route('admin/events/{tournament}/schedule', 'admin.events.schedule.index')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.schedule.index');
 
 Volt::route('admin/events/{tournament}/categories/{tournamentCategory}/schedule', 'admin.events.schedule.show')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.schedule.show');
 
 Volt::route('admin/events/{tournament}/officials', 'admin.events.officials')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.officials');
 
 Volt::route('admin/events/{tournament}/reports', 'admin.events.reports')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.reports');
 
-Route::middleware('auth')->group(function () {
-    Route::get('admin/events/{tournament}/reports/sales.csv', [EventReportController::class, 'sales'])
+Route::middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('admin//events/{tournament}/reports/sales.csv', [EventReportController::class, 'sales'])
         ->name('admin.events.reports.sales');
 
     Route::get('admin/events/{tournament}/reports/participation.csv', [EventReportController::class, 'participation'])
@@ -87,43 +87,43 @@ Route::middleware('auth')->group(function () {
 });
 
 Volt::route('admin/events/{tournament}', 'admin.events.show')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:admin'])
     ->name('admin.events.show');
 
 Volt::route('player/dashboard', 'player.dashboard')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:player'])
     ->name('player.dashboard');
 
 Volt::route('player/events', 'player.events')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:player'])
     ->name('player.events');
 
 Volt::route('player/matches', 'player.matches')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:player'])
     ->name('player.matches');
 
 Volt::route('umpire/dashboard', 'umpire.dashboard')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:umpire'])
     ->name('umpire.dashboard');
 
 Volt::route('umpire/matches', 'umpire.matches')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:umpire'])
     ->name('umpire.matches');
 
 Volt::route('umpire/events', 'umpire.events.index')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:umpire'])
     ->name('umpire.events.index');
 
 Volt::route('umpire/events/{tournament}', 'umpire.events.show')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:umpire'])
     ->name('umpire.events.show');
 
 Volt::route('umpire/matches/{match}/scoring', 'umpire.matches.scoring')
-    ->middleware('auth')
+    ->middleware(['auth', 'role:umpire'])
     ->name('umpire.matches.scoring');
 
-Route::middleware('auth')->group(function () {
-    Route::get('umpire/matches/{match}/scoresheet', [MatchScoresheetController::class, 'show'])
+Route::middleware(['auth', 'role:umpire'])->group(function () {
+    Route::get('umpire//matches/{match}/scoresheet', [MatchScoresheetController::class, 'show'])
         ->name('umpire.matches.scoresheet');
 
     Route::get('umpire/matches/{match}/scoresheet/download', [MatchScoresheetController::class, 'download'])

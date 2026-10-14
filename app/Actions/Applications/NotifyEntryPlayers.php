@@ -36,7 +36,7 @@ class NotifyEntryPlayers
                 continue;
             }
 
-            $address = $player->email ?: $player->user?->email;
+            $address = $player->user?->email ?: $player->email;
             $key = $address ? mb_strtolower($address) : null;
 
             if (! $address || in_array($key, $addresses, true)) {

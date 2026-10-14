@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ApplicationPlayer;
+use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
@@ -24,6 +25,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public ?int $viewingTournamentId = null;
 
     public ?int $viewingApplicationId = null;
+
+    public bool $confirmingDelete = false;
+
+    public string $paymentReferenceNumber = '';
+
+    public string $paymentDatePaid = '';
+
+    public $paymentProof = null;
 
     // Registration wizard state.
     public int $regStep = 1;
@@ -121,6 +130,78 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public function viewApplication(int $applicationId): void
     {
         $this->viewingApplicationId = $applicationId;
+        $this->confirmingDelete = false;
+    }
+
+    /**
+     * Swap the application details modal for the payment modal.
+     */
+    public function openPayment(): void
+    {
+        abort_unless($this->canPayForViewingApplication, 403);
+
+        $this->reset('paymentReferenceNumber', 'paymentProof');
+        $this->paymentDatePaid = now()->format('Y-m-d');
+        $this->resetValidation();
+
+        $this->dispatch('modal-close', name: 'application-details');
+        $this->dispatch('modal-show', name: 'application-payment');
+    }
+
+    /**
+     * Store a GCash payment proof for the viewed application, mirroring the
+     * public payment page (NETPLAY.md 4.8: one new row per proof).
+     */
+    public function submitPayment(): void
+    {
+        abort_unless($this->canPayForViewingApplication, 403);
+
+        $this->validate([
+            'paymentReferenceNumber' => ['required', 'string', 'max:255'],
+            'paymentDatePaid' => ['required', 'date', 'before_or_equal:today'],
+            'paymentProof' => ['required', 'image', 'max:4096'],
+        ], [
+            'paymentProof.required' => 'Upload a screenshot of your GCash payment.',
+        ]);
+
+        PaymentDetail::create([
+            'application_id' => $this->viewingApplication->id,
+            'date_of_payment_made' => $this->paymentDatePaid,
+            'reference_number' => $this->paymentReferenceNumber,
+            'payment_status' => 'pending',
+            'proof_of_payment' => $this->paymentProof->store('payment-proofs', 'public'),
+        ]);
+
+        $this->reset('paymentReferenceNumber', 'paymentProof');
+
+        $this->dispatch('modal-close', name: 'application-payment');
+    }
+
+    /**
+     * Whether the viewed application was rejected before any payment proof
+     * was uploaded — the only case a player may delete it.
+     */
+    #[Computed]
+    public function canDeleteViewingApplication(): bool
+    {
+        $application = $this->viewingApplication;
+
+        return $application
+            && $application->status === 'rejected'
+            && $application->paymentDetails->isEmpty();
+    }
+
+    public function deleteViewingApplication(): void
+    {
+        abort_unless($this->canDeleteViewingApplication, 403);
+
+        $this->viewingApplication->delete();
+
+        $this->viewingApplicationId = null;
+        $this->confirmingDelete = false;
+        unset($this->viewingApplication, $this->myApplications);
+
+        $this->dispatch('modal-close', name: 'application-details');
     }
 
     /**
@@ -176,7 +257,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             $this->regAddress = $player->address ?? '';
             $this->regSkillLevel = $player->level ?? '';
             $this->regClub = $player->club ?? '';
-            $this->regEmail = $player->email ?? auth()->user()->email;
+            $this->regEmail = auth()->user()->email;
             $this->regPhoneNumber = $player->phone_number ?? '';
         } else {
             $this->regFirstName = '';
@@ -521,7 +602,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'regLastName' => ['required', 'string', 'max:255'],
             'regMiddleInitial' => ['nullable', 'string', 'max:5'],
             'regBirthDate' => ['required', 'date', 'before:today'],
-            'regGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'regGender' => ['required', 'in:male,female'],
             'regAddress' => ['required', 'string', 'max:255'],
             'regSkillLevel' => ['required', 'string', 'max:255'],
             'regClub' => ['nullable', 'string', 'max:255'],
@@ -556,7 +637,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'pairLastName' => ['required', 'string', 'max:255'],
             'pairMiddleInitial' => ['nullable', 'string', 'max:5'],
             'pairBirthDate' => ['required', 'date', 'before:today'],
-            'pairGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'pairGender' => ['required', 'in:male,female'],
             'pairAddress' => ['required', 'string', 'max:255'],
             'pairSkillLevel' => ['required', 'string', 'max:255'],
             'pairClub' => ['nullable', 'string', 'max:255'],
@@ -627,7 +708,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->exists();
 
         if ($alreadyEntered) {
-            throw new \RuntimeException("{$player->name} already has an active application for this category.");
+            throw new \RuntimeException('A player in this entry already has an active application for this category.');
         }
     }
 
@@ -823,12 +904,82 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 </div>
 
                 @if ($this->canPayForViewingApplication)
-                    <a href="{{ route('applications.payment', $this->viewingApplication->reference_code) }}"
-                       class="w-full rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
+                    <button type="button" wire:click="openPayment"
+                            class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
                         {{ $this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected' ? 'Resubmit payment' : 'Proceed to payment' }}
-                    </a>
+                    </button>
+                @endif
+
+                @if ($this->canDeleteViewingApplication)
+                    @if ($confirmingDelete)
+                        <div class="flex flex-col gap-3 rounded-[5px] bg-[#f6d1d2] p-4">
+                            <p class="text-xs text-[#8a3b3c]">Delete this rejected application? This can't be undone.</p>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" wire:click="$set('confirmingDelete', false)"
+                                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-1.5 text-xs text-black">Cancel</button>
+                                <button type="button" wire:click="deleteViewingApplication"
+                                        class="cursor-pointer rounded-[5px] bg-[#bd3b3c] px-4 py-1.5 text-xs text-white">Delete</button>
+                            </div>
+                        </div>
+                    @else
+                        <button type="button" wire:click="$set('confirmingDelete', true)"
+                                class="w-full cursor-pointer rounded-[5px] border border-[#bd3b3c] px-[30px] py-[10px] text-center text-[12px] text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                            Delete application
+                        </button>
+                    @endif
                 @endif
             </div>
+        @endif
+    </flux:modal>
+
+    <flux:modal name="application-payment" class="w-full max-w-md dark:bg-white! dark:ring-black/5!">
+        @if ($this->viewingApplication)
+            <form wire:submit="submitPayment" class="flex flex-col gap-4">
+                <div>
+                    <p class="text-sm text-teal-800">Registration Payment</p>
+                    <h2 class="text-xl font-bold text-black">{{ $this->viewingApplication->tournamentCategory->tournament->name }}</h2>
+                    <p class="text-xs text-black/70">{{ $this->viewingApplication->tournamentCategory->category->name }} &middot; {{ $this->viewingApplication->reference_code }}</p>
+                </div>
+
+                <div class="flex items-center justify-between rounded-[5px] bg-[#eaf4f3] px-[15px] py-[12px] text-sm text-black">
+                    <span>Registration fee</span>
+                    <span class="text-lg font-bold">₱{{ number_format((float) $this->viewingApplication->tournamentCategory->registration_fee, 2) }}</span>
+                </div>
+
+                @if ($this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected')
+                    <p class="rounded-[5px] bg-[#f6d1d2] px-[15px] py-[10px] text-xs text-[#bd6b6c]">
+                        Your previous proof of payment was rejected. Please upload a new, clear screenshot.
+                    </p>
+                @endif
+
+                <p class="text-xs text-black/70">
+                    Pay the registration fee through GCash, then upload a screenshot of the payment and enter its reference number.
+                </p>
+
+                <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
+                    <x-player.registration-field label="GCash Reference Number" model="paymentReferenceNumber" placeholder="e.g. 1234 567 890123" />
+                    <x-player.registration-field label="Date Paid" model="paymentDatePaid" type="date" />
+                </div>
+
+                <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                    <label class="text-[12px] text-black">Screenshot of payment</label>
+                    <label for="paymentProof"
+                           class="flex h-[100px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                        <span x-text="fileName || 'Upload screenshot (image, up to 4 MB)'"></span>
+                    </label>
+                    <input id="paymentProof" type="file" wire:model="paymentProof" accept="image/*" class="hidden"
+                           x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                    @error('paymentProof')
+                        <p class="text-[10px] text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <button type="submit" wire:loading.attr="disabled" wire:target="submitPayment,paymentProof"
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-60">
+                    <span wire:loading.remove wire:target="submitPayment">Submit Payment Proof</span>
+                    <span wire:loading wire:target="submitPayment">Submitting…</span>
+                </button>
+            </form>
         @endif
     </flux:modal>
 
@@ -862,7 +1013,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         </div>
                         <div class="flex gap-[9px]">
                             <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" :live="true" class="flex-1" />
-                            <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" class="flex-1" />
+                            <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                             <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                         </div>
                         <div class="flex gap-[5px]">
@@ -954,7 +1105,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             </div>
                             <div class="flex gap-[9px]">
                                 <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" class="flex-1" />
-                                <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" class="flex-1" />
+                                <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                                 <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                             </div>
                             <div class="flex gap-[5px]">

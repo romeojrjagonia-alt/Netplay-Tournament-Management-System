@@ -103,6 +103,12 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
         if ($editing) {
             $editing->update($attributes);
+
+            // The player's contact email follows the account email.
+            if ($editing->wasChanged('email')) {
+                $editing->player?->update(['email' => $editing->email]);
+            }
+
             $message = "{$data['email']} was updated.";
             $title = 'User updated';
         } else {

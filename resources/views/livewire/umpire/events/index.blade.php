@@ -22,7 +22,8 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
     }
 
     /**
-     * Tournaments this umpire has at least one assigned match in.
+     * Tournaments this umpire has at least one assigned match in. Concluded
+     * events are archived and only visible to admins.
      *
      * @return Collection<int, Tournament>
      */
@@ -30,13 +31,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
     public function tournaments(): Collection
     {
         return Tournament::query()
+            ->notConcluded()
             ->whereHas(
                 'tournamentCategories.matches',
                 fn ($query) => $query->where('assigned_umpire_id', auth()->id())
             )
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->when($this->tab === 'upcoming', fn ($query) => $query->whereDate('date_end', '>=', now()))
-            ->when($this->tab === 'concluded', fn ($query) => $query->whereDate('date_end', '<', now()))
             ->latest('date_start')
             ->get();
     }
@@ -67,13 +68,6 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
                 'cursor-pointer text-[#0b4742]' => $tab !== 'upcoming',
             ])>
                 Upcoming Events
-            </button>
-            <button type="button" wire:click="selectTab('concluded')" @class([
-                'flex h-full items-center justify-center rounded-full px-4 text-xs',
-                'bg-[#0b4742] text-white' => $tab === 'concluded',
-                'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
-            ])>
-                Concluded Events
             </button>
         </div>
 

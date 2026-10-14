@@ -78,7 +78,7 @@ test('final step requires valid profile details before registering', function ()
         ->set('password_confirmation', 'password123')
         ->call('nextStep')
         ->call('register')
-        ->assertHasErrors(['birthDate', 'gender', 'purok', 'city', 'province'])
+        ->assertHasErrors(['birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province'])
         ->assertSet('step', 3);
 
     $this->assertGuest();
@@ -98,6 +98,7 @@ test('completing the wizard creates a user and player and logs them in', functio
         ->set('password_confirmation', 'password123')
         ->call('nextStep')
         ->set('birthDate', '2000-02-04')
+        ->set('phoneNumber', '09171234567')
         ->set('gender', 'male')
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')

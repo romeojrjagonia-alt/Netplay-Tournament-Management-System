@@ -122,6 +122,7 @@ test('a google signup skips the account step and creates a verified passwordless
         ->assertSet('step', 3)
         ->set('email', 'attacker@example.com')
         ->set('birthDate', '2000-02-04')
+        ->set('phoneNumber', '09171234567')
         ->set('gender', 'male')
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')

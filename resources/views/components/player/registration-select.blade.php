@@ -8,8 +8,10 @@
             wire:model{{ $live ? '.live' : '' }}="{{ $model }}"
             class="w-full bg-transparent text-[12px] text-black focus:outline-none"
         >
-            {{-- A prompt, not a choice: shown until something is picked and never listed in the dropdown. --}}
-            <option value="" disabled hidden>{{ $placeholder }}</option>
+            {{-- A prompt, not a choice: shown until something is picked and never listed in the dropdown.
+                 Hidden but NOT disabled: with no value the browser falls back to the first non-disabled
+                 option, and a disabled prompt would let it display a real option the form never received. --}}
+            <option value="" hidden>{{ $placeholder }}</option>
             @foreach ($options as $value => $optionLabel)
                 <option value="{{ $value }}" @disabled(in_array($value, (array) $disabledOptions, true))>{{ $optionLabel }}</option>
             @endforeach

@@ -15,6 +15,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
     {
         abort_unless(auth()->user()->isUmpire(), 403);
 
+        // Concluded events are archived and only visible to admins.
+        abort_if($tournament->is_concluded, 404);
+
         abort_unless(
             Matches::whereIn('tournament_category_id', $tournament->tournamentCategories()->pluck('id'))
                 ->where('assigned_umpire_id', auth()->id())

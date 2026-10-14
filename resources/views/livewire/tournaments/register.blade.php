@@ -11,12 +11,16 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.public', ['title' => 'Tournament Registration'])] class extends Component {
+    use WithFileUploads;
+
     public Tournament $tournament;
 
     public int $regStep = 1;
@@ -52,7 +56,21 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
     public string $pairEmail = '';
     public string $pairPhoneNumber = '';
 
+    public string $ownDocumentType = '';
+    public $ownDocument = null;
+    public string $pairDocumentType = '';
+    public $pairDocument = null;
+
     public ?string $submittedReferenceCode = null;
+
+    /**
+     * @var array<string, string>
+     */
+    private array $documentTypes = [
+        'national_id' => 'Philippine National ID',
+        'passport' => 'Passport',
+        'birth_certificate' => 'Birth Certificate',
+    ];
 
     public function mount(Tournament $tournament): void
     {
@@ -67,7 +85,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         $player = $user?->player;
 
         if ($user) {
-            $this->regEmail = $player?->email ?? $user->email;
+            $this->regEmail = $user->email;
         }
 
         if ($player) {
@@ -131,6 +149,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             $this->validate($this->pairStepRules());
         }
 
+        $this->validate($this->documentRules());
+
         // Staff entering a field of walk-ins from one desk aren't throttled.
         if (! auth()->user()?->isAdmin()) {
             $throttleKey = 'tournament-register:'.request()->ip();
@@ -175,6 +195,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                     'application_id' => $application->id,
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
+                    'id_document_type' => $this->ownDocumentType,
+                    'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
                 ]);
 
                 if ($partner) {
@@ -182,6 +204,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         'application_id' => $application->id,
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairMode === 'search' ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
+                        'id_document_type' => $this->pairDocumentType,
+                        'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
                     ]);
                 }
 
@@ -316,13 +340,42 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             'regLastName' => ['required', 'string', 'max:255'],
             'regMiddleInitial' => ['nullable', 'string', 'max:5'],
             'regBirthDate' => ['required', 'date', 'before:today'],
-            'regGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'regGender' => ['required', 'in:male,female'],
             'regAddress' => ['required', 'string', 'max:255'],
             'regSkillLevel' => ['required', 'string', 'max:255'],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255', 'required_without:regPhoneNumber'],
             'regPhoneNumber' => ['nullable', 'string', 'max:255', 'required_without:regEmail'],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function documentTypeOptions(): array
+    {
+        return $this->documentTypes;
+    }
+
+    /**
+     * A valid ID photo is needed for each player so organizers can verify
+     * eligibility (age/gender) before approving.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function documentRules(): array
+    {
+        $rules = [
+            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+            'ownDocument' => ['required', 'image', 'max:4096'],
+        ];
+
+        if ($this->isDoublesRegistration) {
+            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
+        }
+
+        return $rules;
     }
 
     /**
@@ -341,7 +394,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             'pairLastName' => ['required', 'string', 'max:255'],
             'pairMiddleInitial' => ['nullable', 'string', 'max:5'],
             'pairBirthDate' => ['required', 'date', 'before:today'],
-            'pairGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'pairGender' => ['required', 'in:male,female'],
             'pairAddress' => ['required', 'string', 'max:255'],
             'pairSkillLevel' => ['required', 'string', 'max:255'],
             'pairClub' => ['nullable', 'string', 'max:255'],
@@ -420,9 +473,11 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
     }
 
     /**
-     * Reuse the player who already has this phone number (or email) so match
-     * history and skill level stay in one place; only blank fields on the
-     * existing record are filled in.
+     * Reuse the player who already has this phone number (or email) AND the
+     * same name, so match history and skill level stay in one place. A phone
+     * is shared by families and teammates, so a number on its own doesn't
+     * identify a person: a different name under the same number is a new
+     * player. Only blank fields on a reused record are filled in.
      *
      * @param  array<string, mixed>  $attributes
      */
@@ -431,15 +486,22 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         $existing = null;
 
         if ($attributes['phone_number']) {
-            $existing = Player::query()->where('phone_number', $attributes['phone_number'])->first();
+            $existing = Player::query()
+                ->where('phone_number', $attributes['phone_number'])
+                ->get()
+                ->first(fn (Player $candidate) => $this->isSameName($candidate->name, $attributes['name']));
         }
 
         if (! $existing && $attributes['email']) {
             $email = mb_strtolower($attributes['email']);
 
             // Account holders keep their email on the user, so check it too.
-            $existing = Player::query()->whereRaw('lower(email) = ?', [$email])->first()
-                ?? Player::query()->whereHas('user', fn ($query) => $query->whereRaw('lower(email) = ?', [$email]))->first();
+            $existing = Player::query()
+                ->where(fn ($query) => $query
+                    ->whereRaw('lower(email) = ?', [$email])
+                    ->orWhereHas('user', fn ($user) => $user->whereRaw('lower(email) = ?', [$email])))
+                ->get()
+                ->first(fn (Player $candidate) => $this->isSameName($candidate->name, $attributes['name']));
         }
 
         if (! $existing) {
@@ -451,6 +513,24 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             ->all())->save();
 
         return $existing;
+    }
+
+    /**
+     * Whether two names are the same person's, ignoring case, accents,
+     * punctuation and the middle initial (first and last word must match).
+     */
+    private function isSameName(?string $a, ?string $b): bool
+    {
+        $normalize = function (?string $name): array {
+            $words = preg_split('/\s+/', trim(Str::of((string) $name)->ascii()->lower()->replaceMatches('/[^a-z\s-]/', ' ')->toString()), -1, PREG_SPLIT_NO_EMPTY);
+
+            return [$words[0] ?? '', $words[count($words) - 1] ?? ''];
+        };
+
+        [$firstA, $lastA] = $normalize($a);
+        [$firstB, $lastB] = $normalize($b);
+
+        return $firstA !== '' && $firstA === $firstB && $lastA === $lastB;
     }
 
     /**
@@ -467,7 +547,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             ->exists();
 
         if ($alreadyEntered) {
-            throw new \RuntimeException("{$player->name} already has an active application for this category.");
+            throw new \RuntimeException('A player in this entry already has an active application for this category.');
         }
     }
 
@@ -556,7 +636,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                 <p class="text-xs text-black/60">We also sent the code to {{ $regEmail }}.</p>
             @endif
 
-            <a href="{{ route('home') }}#check-application" wire:navigate
+            <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
                class="rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
                 Check application progress
             </a>
@@ -585,7 +665,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                     </div>
                     <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
                         <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" :live="true" />
-                        <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" />
+                        <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" />
                         <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                     </div>
                     <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
@@ -660,7 +740,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         </div>
                         <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
                             <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" />
-                            <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" />
+                            <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" />
                             <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                         </div>
                         <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
@@ -699,6 +779,42 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         @endif
                     </dl>
 
+                    <div class="flex flex-col gap-[10px]">
+                        <p class="text-[12px] font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
+                        <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+
+                        <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                            <label for="ownDocument"
+                                   class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                <span x-text="fileName || 'Upload photo of the document'"></span>
+                            </label>
+                            <input id="ownDocument" type="file" wire:model="ownDocument" accept="image/*" class="hidden"
+                                   x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                            @error('ownDocument')
+                                <p class="text-[11px] text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+
+                    @if ($this->isDoublesRegistration)
+                        <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
+                            <p class="text-[12px] font-bold text-black">Partner's valid ID</p>
+                            <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+
+                            <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                                <label for="pairDocument"
+                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                    <span x-text="fileName || 'Upload photo of the document'"></span>
+                                </label>
+                                <input id="pairDocument" type="file" wire:model="pairDocument" accept="image/*" class="hidden"
+                                       x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                                @error('pairDocument')
+                                    <p class="text-[11px] text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
+                    @endif
+
                     <p class="text-xs text-black/60">
                         After you submit, you'll get a reference code. Once the organizers approve your application, use that
                         code on the home page to pay the registration fee.
@@ -710,7 +826,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
         <div class="grid grid-cols-2 gap-5">
             @if ($regStep === 1)
-                <a href="{{ route('home') }}" wire:navigate
+                <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home') }}" wire:navigate
                    class="rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
                     Cancel
                 </a>

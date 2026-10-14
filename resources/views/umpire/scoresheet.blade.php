@@ -2,7 +2,7 @@
 <html lang="en">
     <head>
         <meta charset="utf-8">
-        <title>Match {{ $match->id }} — Rally Score Sheet</title>
+        <title>Match {{ $match->id }} — Score Sheet</title>
         @vite(['resources/css/app.css'])
         <style>
             @page { size: A4 landscape; margin: 10mm; }

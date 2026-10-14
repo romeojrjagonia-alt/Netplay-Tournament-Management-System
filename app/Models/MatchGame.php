@@ -62,12 +62,13 @@ class MatchGame extends Model
      * it's still in progress.
      *
      * @param  array<int, 'A'|'B'>  $playerSideMap
+     * @param  bool  $singleSet  Whether the match is scored as a 31-point single set
      * @return 'A'|'B'|null
      */
-    public function winningSide(array $playerSideMap): ?string
+    public function winningSide(array $playerSideMap, bool $singleSet = false): ?string
     {
         $scores = $this->scores($playerSideMap);
 
-        return GameRules::gameWinner($scores['A'], $scores['B']);
+        return GameRules::gameWinner($scores['A'], $scores['B'], $singleSet);
     }
 }

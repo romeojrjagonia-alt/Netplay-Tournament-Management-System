@@ -49,7 +49,7 @@ class TournamentCategory extends Model
     /**
      * Restrict to categories a player of the given gender and age is allowed
      * to register for. A "mixed" category gender always qualifies; any other
-     * player gender (including null/"prefer_not_to_say") only qualifies for
+     * player gender (including null) only qualifies for
      * "mixed" categories. Null age bounds on the category are unrestricted.
      */
     public function scopeEligibleFor(Builder $query, ?string $gender, ?int $age): Builder

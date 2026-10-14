@@ -27,7 +27,7 @@
 <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
     <head>
         <meta charset="utf-8">
-        <title>Match {{ $match->id }} Rally Score Sheet</title>
+        <title>Match {{ $match->id }} Score Sheet</title>
         <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml><![endif]-->
         <style>
             @page Section1 { size: 11.69in 8.27in; mso-page-orientation: landscape; margin: 0.4in; }
@@ -56,7 +56,7 @@
 
                     <tr>
                         <td colspan="3" style="{{ $box }}"><b>GAME NO:</b>&nbsp;&nbsp;{{ $match->id }}</td>
-                        <td colspan="8" style="{{ $box }}">Set: {{ $set['number'] }}</td>
+                        <td colspan="8" style="{{ $box }}">{{ $match->usesSinglePointSystem() ? 'First to 31 points' : 'Set: '.$set['number'] }}</td>
                         <td colspan="11" style="{{ $box }}"><b>COURT:</b>&nbsp;{{ $match->court }}</td>
                         <td colspan="{{ $total - 22 }}" style="{{ $box }}"><b>BRACKET:</b>&nbsp;&nbsp;{{ str($match->bracket_type)->headline() }}</td>
                     </tr>

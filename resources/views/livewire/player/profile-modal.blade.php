@@ -3,13 +3,19 @@
 use App\Livewire\Actions\SendVerificationEmail;
 use App\Models\Player;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new class extends Component {
+    use WithFileUploads;
+
     public bool $editing = false;
+
+    public $photo = null;
 
     public string $name = '';
 
@@ -54,6 +60,7 @@ new class extends Component {
 
     public function cancelEditing(): void
     {
+        $this->photo = null;
         $this->resetValidation();
         $this->editing = false;
     }
@@ -77,6 +84,7 @@ new class extends Component {
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore(Auth::id())],
             'address' => ['required', 'string', 'max:255'],
             'phoneNumber' => ['nullable', 'string', 'max:255'],
+            'photo' => ['nullable', 'image', 'max:2048'],
         ]);
 
         $user = Auth::user();
@@ -90,11 +98,24 @@ new class extends Component {
 
         $user->save();
 
-        $this->player->update([
+        $attributes = [
             'name' => $validated['name'],
             'address' => $validated['address'],
             'phone_number' => $validated['phoneNumber'],
-        ]);
+        ];
+
+        if ($this->photo) {
+            $previousPhoto = $this->player->photo_path;
+            $attributes['photo_path'] = $this->photo->store('player-photos', 'public');
+
+            if ($previousPhoto) {
+                Storage::disk('public')->delete($previousPhoto);
+            }
+        }
+
+        $this->player->update($attributes);
+        $this->photo = null;
+        unset($this->player);
 
         $this->editing = false;
 
@@ -106,11 +127,28 @@ new class extends Component {
     <flux:modal name="player-profile" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
         <div class="flex flex-col gap-6">
             <div class="flex items-start gap-5">
-                <x-portal.avatar
-                    :photo-url="$this->player->photo_url"
-                    :initials="auth()->user()->initials()"
-                    class="size-28 text-3xl ring-2 ring-[#178279]"
-                />
+                @if ($editing)
+                    <label for="profile-photo" class="group relative block size-28 shrink-0 cursor-pointer">
+                        <x-portal.avatar
+                            :photo-url="$photo ? $photo->temporaryUrl() : $this->player->photo_url"
+                            :initials="auth()->user()->initials()"
+                            class="size-28 text-3xl ring-2 ring-[#178279]"
+                        />
+                        <span class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 p-3 text-center text-[11px] font-bold text-white opacity-0 transition group-hover:opacity-100">
+                            Click to change profile
+                        </span>
+                    </label>
+                    <input id="profile-photo" type="file" wire:model="photo" accept="image/*" class="hidden">
+                    @error('photo')
+                        <p class="text-[11px] text-red-600">{{ $message }}</p>
+                    @enderror
+                @else
+                    <x-portal.avatar
+                        :photo-url="$this->player->photo_url"
+                        :initials="auth()->user()->initials()"
+                        class="size-28 text-3xl ring-2 ring-[#178279]"
+                    />
+                @endif
 
                 <div class="flex flex-col gap-3 pt-1">
                     @if ($editing)

@@ -286,3 +286,23 @@ test('search filters rows by player name', function () {
         ->assertSee('Marcus Villanueva')
         ->assertDontSee('Ramon Dela Cruz');
 });
+
+test('the application modal links to the uploaded ID document, or says none was uploaded', function () {
+    $tournamentCategory = dashboardTournamentCategory(dashboardTournament());
+
+    $withDocument = dashboardApplication($tournamentCategory, [dashboardPlayer(['name' => 'Doc Dan'])], 'pending_verification');
+    $withDocument->applicationPlayers()->update(['id_document_type' => 'passport', 'id_document_path' => 'id-documents/dan.jpg']);
+
+    $withoutDocument = dashboardApplication($tournamentCategory, [dashboardPlayer(['name' => 'No Doc Nick'])], 'pending_verification');
+
+    $this->actingAs(dashboardAdmin());
+
+    Volt::test('admin.dashboard')
+        ->call('viewApplication', $withDocument->id)
+        ->assertSee('View document')
+        ->assertSee('Passport')
+        ->assertSeeHtml('id-documents/dan.jpg')
+        ->call('viewApplication', $withoutDocument->id)
+        ->assertSee('No document uploaded')
+        ->assertDontSee('View document');
+});

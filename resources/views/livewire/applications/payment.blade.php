@@ -107,7 +107,7 @@ new #[Layout('components.layouts.public', ['title' => 'Pay Registration Fee'])] 
                 The organizers will verify your payment. Check back with your reference code
                 (<span class="font-bold">{{ $application->reference_code }}</span>) on the home page to see the result.
             </p>
-            <a href="{{ route('home') }}#check-application" wire:navigate
+            <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
                class="rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
                 Back to home
             </a>
@@ -170,7 +170,7 @@ new #[Layout('components.layouts.public', ['title' => 'Pay Registration Fee'])] 
                     Your payment proof is being verified by the organizers.
                 @endif
             </p>
-            <a href="{{ route('home') }}#check-application" wire:navigate
+            <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
                class="rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
                 Back to home
             </a>

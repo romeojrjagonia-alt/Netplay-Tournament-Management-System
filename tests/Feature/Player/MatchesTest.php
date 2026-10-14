@@ -182,7 +182,7 @@ function matchesScoreRallies(MatchGame $game, Player $leader, int $leaderPoints,
     }
 }
 
-test('an in-progress match shows its live score on the ongoing tab only', function () {
+test('an in-progress match shows its live score at the top of upcoming matches', function () {
     $user = User::factory()->create(['role' => 'player']);
     $player = Player::create(['user_id' => $user->id, 'name' => $user->name]);
     $rival = Player::create(['name' => 'Rival Player']);
@@ -204,7 +204,7 @@ test('an in-progress match shows its live score on the ongoing tab only', functi
     $this->actingAs($user);
 
     Volt::test('player.matches')
-        ->set('tab', 'ongoing')
+        ->set('tab', 'upcoming')
         ->assertSee('LIVE')
         ->assertSee('Court 7')
         ->assertSeeInOrder(['Game', '2', 'in progress'])
@@ -212,10 +212,6 @@ test('an in-progress match shows its live score on the ongoing tab only', functi
         ->assertSee('G1: 21-17')
         ->assertSee('>9</span>', false)
         ->assertSee('>12</span>', false);
-
-    Volt::test('player.matches')
-        ->set('tab', 'upcoming')
-        ->assertDontSee('Court 7');
 
     Volt::test('player.matches')
         ->set('tab', 'concluded')
