@@ -1,12 +1,11 @@
 <?php
 
+use App\Models\Matches;
 use App\Models\Player;
+use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
-
-beforeEach(fn () => Storage::fake('public'));
 
 it('refuses to run without --force when not interactive', function () {
     User::factory()->create(['email' => 'keep@example.com']);
@@ -16,7 +15,7 @@ it('refuses to run without --force when not interactive', function () {
     expect(User::where('email', 'keep@example.com')->exists())->toBeTrue();
 });
 
-it('wipes every record and seeds test accounts with password123', function () {
+it('wipes every record and creates only the test accounts with password123', function () {
     $user = User::factory()->create(['email' => 'old@example.com', 'role' => 'player']);
     Player::create(['user_id' => $user->id, 'name' => 'Old Player']);
     Tournament::create([
@@ -28,14 +27,17 @@ it('wipes every record and seeds test accounts with password123', function () {
     $this->artisan('netplay:reset-test-data', ['--force' => true])->assertSuccessful();
 
     expect(User::where('email', 'old@example.com')->exists())->toBeFalse()
-        ->and(Player::where('name', 'Old Player')->exists())->toBeFalse()
-        ->and(Tournament::where('name', 'Old Event')->exists())->toBeFalse()
-        ->and(Tournament::where('name', 'like', '[TEST] %')->count())->toBe(5);
+        ->and(Tournament::count())->toBe(0)
+        ->and(PlayerApplication::count())->toBe(0)
+        ->and(Matches::count())->toBe(0)
+        ->and(User::count())->toBe(6)
+        ->and(Player::count())->toBe(3);
 
     foreach (['admin', 'umpire1', 'umpire2', 'player1', 'player2', 'player3'] as $account) {
         $seeded = User::where('email', "{$account}@seed.netplay.test")->first();
 
         expect($seeded)->not->toBeNull()
+            ->and($seeded->hasVerifiedEmail())->toBeTrue()
             ->and(Hash::check('password123', $seeded->password))->toBeTrue();
     }
 });
