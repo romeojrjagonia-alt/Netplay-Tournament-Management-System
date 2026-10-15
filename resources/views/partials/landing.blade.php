@@ -185,18 +185,20 @@
         </section>
 
         {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
-        <section id="check-application" data-center-target class=" sm:px-10 sm:py-16 lg:px-16">
-            <div class="mx-auto flex max-w-6xl flex-col items-center justify-between gap-10 lg:flex-row lg:gap-40">
-                <div class="flex max-w-sm flex-col gap-3 text-center lg:text-left">
-                    <h2 class="text-3xl leading-tight font-bold text-white sm:text-5xl">
+        <section id="check-application" class="w-full bg-emerald-950 px-6 py-[50px] sm:px-10 xl:px-[183px]">
+            <div data-center-target class="flex flex-col items-start justify-between gap-10 bg-[#031b17] p-6 sm:p-10 lg:flex-row lg:items-center lg:gap-[155px]">
+                <div class="flex max-w-md flex-col gap-3">
+                    <h2 class="text-3xl leading-tight font-bold text-white sm:text-4xl">
                         Check Tournament Application Progress
                     </h2>
-                    <p class="text-xs leading-4 text-white">
+                    <p class="max-w-xs text-xs leading-4 text-white/80">
                         Enter the reference code you received when you registered to see your application status and pay your fee.
                     </p>
                 </div>
 
-                <livewire:applications.lookup />
+                <div class="w-full lg:w-auto">
+                    <livewire:applications.lookup />
+                </div>
             </div>
         </section>
 

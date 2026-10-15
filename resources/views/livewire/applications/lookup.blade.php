@@ -125,16 +125,20 @@ new class extends Component {
 <div>
     <form wire:submit="search" class="flex flex-col gap-1.5">
         <label for="reference_code" class="text-sm text-white">Enter Application Reference Code</label>
-        <input id="reference_code" type="text" wire:model="code" placeholder="e.g. NP-7K4Q9X" autocomplete="off"
-               class="h-11 w-full rounded-[10px] bg-white px-2.5 text-sm text-black uppercase placeholder:text-black/30 placeholder:normal-case focus:ring-2 focus:ring-emerald-600 focus:outline-none sm:w-60">
+
+        <div class="flex items-center gap-3">
+            <input id="reference_code" type="text" wire:model="code" placeholder="e.g. NP-7K4Q9X" autocomplete="off"
+                   class="h-11 min-w-0 flex-1 rounded-[10px] bg-white px-2.5 text-sm text-black uppercase placeholder:text-black/30 placeholder:normal-case focus:ring-2 focus:ring-emerald-600 focus:outline-none lg:w-60 lg:flex-none">
+            <button type="submit"
+                    class="h-9 shrink-0 cursor-pointer rounded-[36px] bg-white px-9 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
+                <span wire:loading.remove wire:target="search">Search</span>
+                <span wire:loading wire:target="search">Searching…</span>
+            </button>
+        </div>
+
         @error('code')
             <p class="text-xs font-medium text-red-200">{{ $message }}</p>
         @enderror
-        <button type="submit"
-                class="mt-2 self-start rounded-[36px] bg-white px-9 py-1.5 text-sm font-bold text-teal-700 transition hover:bg-slate-100">
-            <span wire:loading.remove wire:target="search">Search</span>
-            <span wire:loading wire:target="search">Searching…</span>
-        </button>
     </form>
 
     <flux:modal name="application-lookup" class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
