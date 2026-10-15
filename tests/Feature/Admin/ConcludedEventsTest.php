@@ -62,13 +62,13 @@ test('an event is not concluded on its last day, but is the day after', function
         ->and(auditTournament(['date_end' => today()->subDay()->toDateString()])->is_concluded)->toBeTrue();
 });
 
-test('the last day of an event is listed under Published, not Concluded', function () {
+test('the last day of an event is listed under All, not Concluded', function () {
     auditTournament(['name' => 'Final Day Cup', 'date_start' => today()->subDay()->toDateString(), 'date_end' => today()->toDateString()]);
 
     $this->actingAs(auditAdmin());
 
     Volt::test('admin.events.index')
-        ->call('selectTab', 'published')
+        ->call('selectTab', 'all')
         ->assertSee('Final Day Cup')
         ->call('selectTab', 'concluded')
         ->assertDontSee('Final Day Cup');
@@ -89,7 +89,7 @@ test('an admin can conclude an event, which moves it to the Concluded tab and cl
     Volt::test('admin.events.index')
         ->call('selectTab', 'concluded')
         ->assertSee('Manual Cup')
-        ->call('selectTab', 'published')
+        ->call('selectTab', 'draft')
         ->assertDontSee('Manual Cup');
 });
 

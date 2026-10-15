@@ -31,7 +31,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             ->with(['tournamentCategories.playerApplications' => fn ($query) => $query->where('status', '!=', 'rejected')->with('applicationPlayers')])
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->when($this->tab === 'published', fn ($query) => $query->published()->notConcluded())
+            ->when($this->tab === 'draft', fn ($query) => $query->where('status', 'draft'))
             ->when($this->tab === 'concluded', fn ($query) => $query->published()->concluded())
+            // Live (published, not concluded) first, then drafts, then concluded.
+            ->orderByRaw("case when status = 'published' and concluded_at is null and date_end >= ? then 0 when status = 'draft' then 1 else 2 end", [today()->toDateString()])
             ->latest('date_start')
             ->get();
     }
@@ -86,6 +89,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                 'cursor-pointer text-[#0b4742]' => $tab !== 'published',
             ])>
                 Published Events
+            </button>
+            <button type="button" wire:click="selectTab('draft')" @class([
+                'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                'bg-[#0b4742] text-white' => $tab === 'draft',
+                'cursor-pointer text-[#0b4742]' => $tab !== 'draft',
+            ])>
+                Draft Events
             </button>
             <button type="button" wire:click="selectTab('concluded')" @class([
                 'flex h-full items-center justify-center rounded-full px-4 text-xs',

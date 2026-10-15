@@ -86,10 +86,10 @@ select:focus[data-flux-control] {
     backdrop-filter: none;
 }
 
-/* Browser autofill paints a gray background and (on dark themes) white text,
-   which made autofilled fields unreadable on our light inputs. Keep the
-   field's own look: a long background-color transition hides the UA fill and
-   the inset shadow + text-fill-color restore readable dark text. */
+/* Browser autofill paints its own (gray/blue) background and, on dark
+   themes, white text. Keep the field's own background: the long
+   background-color transition stops the UA fill from ever showing, and the
+   text colour stays readable. */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
@@ -97,8 +97,6 @@ textarea:-webkit-autofill,
 select:-webkit-autofill {
     -webkit-text-fill-color: #111827;
     caret-color: #111827;
-    -webkit-box-shadow: 0 0 0 1000px #eaf4f3 inset;
-    box-shadow: 0 0 0 1000px #eaf4f3 inset;
     transition: background-color 600000s 0s, color 600000s 0s;
 }
 
@@ -106,5 +104,21 @@ input:autofill,
 textarea:autofill,
 select:autofill {
     color: #111827;
-    box-shadow: 0 0 0 1000px #eaf4f3 inset;
+}
+
+/* Date/time pickers sit on light fields. In a dark colour scheme the browser
+   draws the calendar/clock icon white, which disappears on them. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='month'] {
+    color-scheme: light;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator,
+input[type='month']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.75;
 }
