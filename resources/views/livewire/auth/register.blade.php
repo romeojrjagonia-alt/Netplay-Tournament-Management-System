@@ -2,6 +2,7 @@
 
 use App\Models\Player;
 use App\Models\User;
+use App\Rules\AccountPassword;
 use Illuminate\Support\Facades\Auth;
 use App\Mail\UmpireSignupCode;
 use Illuminate\Support\Facades\Cache;
@@ -116,7 +117,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'lastName' => ['required', 'string', 'max:255'],
                 'middleInitial' => ['nullable', 'string', 'max:5'],
                 'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-                'password' => ['required', 'string', 'min:8', 'confirmed'],
+                'password' => ['required', 'string', new AccountPassword, 'confirmed'],
             ]);
         }
 
@@ -156,7 +157,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
             'middleInitial' => ['nullable', 'string', 'max:5'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', 'min:8', 'confirmed'],
+            'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', new AccountPassword, 'confirmed'],
             'birthDate' => ['required', 'date', 'before:today'],
             'phoneNumber' => ['required', 'string', 'max:255'],
             'gender' => ['required', 'in:male,female'],
@@ -516,7 +517,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             </div>
                         </div>
 
-                        <p class="w-full text-right text-xs text-[#3e948d] italic">Must be at least 8 characters</p>
+                        <p class="w-full text-right text-xs text-[#3e948d] italic">At least 8 characters with uppercase and lowercase letters and a number. No spaces or special characters.</p>
                     </div>
                 </div>
             @else
