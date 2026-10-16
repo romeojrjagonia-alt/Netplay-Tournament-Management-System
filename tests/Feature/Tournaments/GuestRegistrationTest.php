@@ -368,7 +368,7 @@ test('an admin is not throttled when registering many walk-ins', function () {
     foreach (range(1, 12) as $i) {
         fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, [
             'phone' => '0917000'.str_pad((string) $i, 4, '0', STR_PAD_LEFT),
-            'first' => "Walkin$i",
+            'first' => 'Walkin'.chr(64 + $i),
         ])
             ->call('nextStep')
             ->call('submit')
@@ -383,8 +383,8 @@ test('a category refuses applications once its slots are taken', function () {
     $category = openCategory($tournament);
     $category->update(['max_slots' => 2]);
 
-    foreach (['0917000001', '0917000002'] as $phone) {
-        fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => $phone, 'first' => 'P'.$phone])
+    foreach (['0917000001' => 'Alpha', '0917000002' => 'Bravo'] as $phone => $first) {
+        fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => $phone, 'first' => $first])
             ->call('nextStep')
             ->call('submit')
             ->assertHasNoErrors();
@@ -493,4 +493,68 @@ test('the already-entered error does not reveal the player name', function () {
     }
 
     $component->assertDispatched('system-message', message: 'A player in this entry already has an active application for this category.');
+});
+
+test('the same name and birthdate is the same person even with a new phone or email', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    $existing = Player::create([
+        'name' => 'Juan D. Cruz',
+        'birth_date' => '1998-03-01',
+        'phone_number' => '09170000000',
+        'email' => 'old@example.com',
+    ]);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09999999999', 'email' => 'new@example.com'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(Player::count())->toBe(1)
+        ->and(ApplicationPlayer::where('player_id', $existing->id)->exists())->toBeTrue()
+        ->and($existing->fresh()->phone_number)->toBe('09170000000');
+});
+
+test('the same name with a different birthdate and phone is a different person', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    Player::create(['name' => 'Juan Cruz', 'birth_date' => '1985-07-07', 'phone_number' => '09170000000']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09999999999'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    expect(Player::count())->toBe(2);
+});
+
+test('guests are nudged to sign in, and signed-in users and admins are not', function () {
+    $tournament = openTournament();
+    openCategory($tournament);
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->assertSee('Have an account? Sign in');
+
+    expect(session('url.intended'))->toBe(url()->current());
+
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->assertDontSee('Have an account? Sign in');
+});
+
+test('the confirmation screen and the reference email invite guests to sign in', function () {
+    Mail::fake();
+
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['email' => 'juan@example.com'])
+        ->call('nextStep')
+        ->call('submit')
+        ->assertSee('with the same email so this registration stays with your account');
+
+    Mail::assertSent(ApplicationReceived::class, fn ($mail) => str_contains($mail->render(), 'Sign in to NetPlay'));
 });

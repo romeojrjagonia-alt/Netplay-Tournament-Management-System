@@ -148,7 +148,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
         @foreach (['all' => 'All Matches', 'upcoming' => 'Upcoming Matches', 'concluded' => 'Concluded Matches'] as $key => $label)
             <button type="button" wire:click="selectTab('{{ $key }}')"
                     @class([
-                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs',
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                         'bg-[#0b4742] text-white' => $tab === $key,
                         'cursor-pointer text-[#0b4742]' => $tab !== $key,
                     ])>

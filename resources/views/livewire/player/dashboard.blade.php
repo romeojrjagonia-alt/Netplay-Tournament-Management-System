@@ -109,7 +109,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     @if ($this->upcomingTournament)
         <a href="{{ $this->upcomingTournament['url'] }}" wire:navigate class="block">
         <x-player.tournament-card
-            class="h-[204px] px-10"
+            class="min-h-[204px] px-5 sm:px-10"
             :poster-url="$this->upcomingTournament['posterUrl']"
             :label="$this->upcomingTournament['label']"
             :name="$this->upcomingTournament['name']"
@@ -128,7 +128,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
             @forelse ($this->openTournaments as $tournament)
                 <a href="{{ $tournament['url'] }}" wire:navigate wire:key="open-{{ $loop->index }}" class="block">
                 <x-player.tournament-card
-                    class="h-[203px]"
+                    class="min-h-[203px]"
                     :poster-url="$tournament['posterUrl']"
                     badge-placement="top"
                     :label="$tournament['label']"

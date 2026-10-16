@@ -66,7 +66,7 @@
                         <td colspan="10" style="{{ $box }}"><b>TIME:</b>&nbsp;{{ $match->scheduled_at?->format('g:i A, M j, Y') }}</td>
                     </tr>
 
-                    @foreach ($teams as $team)
+                    @foreach ($teams as $side => $team)
                         <tr bgcolor="#eeeeee" style="background:#eeeeee;">
                             <td width="{{ $nameWidth }}" style="{{ $border.$text }}font-size:8pt;padding:2px 6px;"><b>{{ $team['label'] }}</b></td>
                             @foreach ($columns as $number)
@@ -78,7 +78,7 @@
                             <tr style="height:30px;">
                                 <td height="30" style="{{ $border.$text }}font-size:8pt;padding:2px 6px;"><b>{{ $player['name'] }}</b></td>
                                 @foreach ($columns as $number)
-                                    @if (($set['scorers'][$number] ?? null) === $player['id'])
+                                    @if (($set['scorers'][$side][$number] ?? null) === $player['id'])
                                         <td height="30" bgcolor="#000000" style="{{ $border }}background:#000000;">&nbsp;</td>
                                     @else
                                         <td height="30" style="{{ $border }}">&nbsp;</td>

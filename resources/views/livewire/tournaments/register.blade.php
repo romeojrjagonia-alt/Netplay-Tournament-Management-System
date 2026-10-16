@@ -6,12 +6,12 @@ use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Support\Players\NameMatcher;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
@@ -80,6 +80,11 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         );
 
         $this->tournament = $tournament;
+
+        // A guest who signs in from the banner comes straight back to this form.
+        if (! auth()->check()) {
+            session()->put('url.intended', url()->current());
+        }
 
         $user = $this->applicantUser();
         $player = $user?->player;
@@ -489,7 +494,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             $existing = Player::query()
                 ->where('phone_number', $attributes['phone_number'])
                 ->get()
-                ->first(fn (Player $candidate) => $this->isSameName($candidate->name, $attributes['name']));
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
         }
 
         if (! $existing && $attributes['email']) {
@@ -501,7 +506,15 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                     ->whereRaw('lower(email) = ?', [$email])
                     ->orWhereHas('user', fn ($user) => $user->whereRaw('lower(email) = ?', [$email])))
                 ->get()
-                ->first(fn (Player $candidate) => $this->isSameName($candidate->name, $attributes['name']));
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
+        }
+
+        // A person who changed phone or email is still the same person.
+        if (! $existing && $attributes['birth_date']) {
+            $existing = Player::query()
+                ->whereDate('birth_date', $attributes['birth_date'])
+                ->get()
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
         }
 
         if (! $existing) {
@@ -513,24 +526,6 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             ->all())->save();
 
         return $existing;
-    }
-
-    /**
-     * Whether two names are the same person's, ignoring case, accents,
-     * punctuation and the middle initial (first and last word must match).
-     */
-    private function isSameName(?string $a, ?string $b): bool
-    {
-        $normalize = function (?string $name): array {
-            $words = preg_split('/\s+/', trim(Str::of((string) $name)->ascii()->lower()->replaceMatches('/[^a-z\s-]/', ' ')->toString()), -1, PREG_SPLIT_NO_EMPTY);
-
-            return [$words[0] ?? '', $words[count($words) - 1] ?? ''];
-        };
-
-        [$firstA, $lastA] = $normalize($a);
-        [$firstB, $lastB] = $normalize($b);
-
-        return $firstA !== '' && $firstA === $firstB && $lastA === $lastB;
     }
 
     /**
@@ -614,6 +609,15 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         </p>
     </div>
 
+    @guest
+        @unless ($submittedReferenceCode)
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-[#138177] bg-[#eaf4f3] px-4 py-3 text-xs text-black">
+                <span>Have an account? Sign in so your details are filled in and your records stay together.</span>
+                <a href="{{ route('login') }}" wire:navigate class="font-bold text-[#138177] underline">Sign in</a>
+            </div>
+        @endunless
+    @endguest
+
     @if ($submittedReferenceCode)
         <div class="flex flex-col items-center gap-4 rounded-[10px] border border-[#138177] bg-white p-6 text-center">
             <p class="text-lg font-bold text-black">Application submitted!</p>
@@ -635,6 +639,13 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             @if ($regEmail !== '')
                 <p class="text-xs text-black/60">We also sent the code to {{ $regEmail }}.</p>
             @endif
+
+            @guest
+                <p class="max-w-md text-xs text-black/60">
+                    Have an account? <a href="{{ route('login') }}" wire:navigate class="font-bold text-[#138177] underline">Sign in</a>
+                    with the same email so this registration stays with your account.
+                </p>
+            @endguest
 
             <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
                class="rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
@@ -658,6 +669,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
             <div class="flex flex-col gap-[15px] rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
                 @if ($regStep === 1)
+                    <div wire:key="reg-step-profile" class="contents">
                     <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
                         <x-player.registration-field label="First Name" model="regFirstName" placeholder="e.g. Juan" />
                         <x-player.registration-field label="Last Name" model="regLastName" placeholder="e.g. Cruz" />
@@ -685,7 +697,9 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2).($this->fullCategoryIds->contains($tc->id) ? ' (Full)' : '')])"
                         :disabled-options="$this->fullCategoryIds->all()"
                     />
+                    </div>
                 @elseif ($this->isPairStep)
+                    <div wire:key="reg-step-pair" class="contents">
                     @if ($pairMode === 'search')
                         <p class="text-xs text-black/60">Search for your partner by name. Players who have joined before are already in our records.</p>
 
@@ -757,7 +771,9 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                             Search existing players instead
                         </button>
                     @endif
+                    </div>
                 @else
+                    <div wire:key="reg-step-documents" class="contents">
                     <dl class="flex flex-col gap-2 text-xs text-black">
                         <div class="flex justify-between gap-4">
                             <dt class="text-black/60">Category</dt>
@@ -819,6 +835,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         After you submit, you'll get a reference code. Once the organizers approve your application, use that
                         code on the home page to pay the registration fee.
                     </p>
+                    </div>
                 @endif
             </div>
         </div>

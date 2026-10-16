@@ -75,30 +75,30 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     <h2 class="border-b border-white/50 pb-4 text-2xl font-bold text-white">Event Tournaments</h2>
 
     <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+        <div class="flex h-10 max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
             <button type="button" wire:click="selectTab('all')" @class([
-                'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                 'bg-[#0b4742] text-white' => $tab === 'all',
                 'cursor-pointer text-[#0b4742]' => $tab !== 'all',
             ])>
                 All Events
             </button>
             <button type="button" wire:click="selectTab('published')" @class([
-                'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                 'bg-[#0b4742] text-white' => $tab === 'published',
                 'cursor-pointer text-[#0b4742]' => $tab !== 'published',
             ])>
                 Published Events
             </button>
             <button type="button" wire:click="selectTab('draft')" @class([
-                'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                 'bg-[#0b4742] text-white' => $tab === 'draft',
                 'cursor-pointer text-[#0b4742]' => $tab !== 'draft',
             ])>
                 Draft Events
             </button>
             <button type="button" wire:click="selectTab('concluded')" @class([
-                'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                 'bg-[#0b4742] text-white' => $tab === 'concluded',
                 'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
             ])>

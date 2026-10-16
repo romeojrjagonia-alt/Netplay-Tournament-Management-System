@@ -52,10 +52,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Reports'])] class ex
     </div>
 
     <div class="flex flex-wrap items-center justify-between gap-4 print:hidden">
-        <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+        <div class="flex h-10 max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
             @foreach (['sales' => 'Sales Report', 'participation' => 'Player Participation'] as $key => $label)
                 <button type="button" wire:click="selectReport('{{ $key }}')" @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $report === $key,
                     'cursor-pointer text-[#0b4742]' => $report !== $key,
                 ])>

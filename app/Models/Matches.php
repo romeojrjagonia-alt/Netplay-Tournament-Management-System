@@ -142,12 +142,15 @@ class Matches extends Model
 
     /**
      * One entry per set to print on the score sheet, each its own sheet.
-     * `scorers` maps rally number => the player who won that rally, which is
-     * what the black cells show. The form only has 31 rally columns, so a set
-     * that runs longer prints its first 31 rallies. Always at least one set,
-     * so an unplayed match still prints a blank sheet.
+     * Like the paper form, each team's block is numbered by that TEAM'S running
+     * score: `scorers['A'][n]` is the player who won Team 1's n-th point (and
+     * `['B']` Team 2's), which is what the black cells show. The side that
+     * reaches the target has its last cell filled, so the sheet reads as the
+     * result. Numbering by overall rally would hide the end of any game longer
+     * than 31 rallies (a 31-30 game is 61). The form has 31 point columns.
+     * Always at least one set, so an unplayed match still prints a blank sheet.
      *
-     * @return list<array{number: int, winner: 'A'|'B'|null, scorers: array<int, int>}>
+     * @return list<array{number: int, winner: 'A'|'B'|null, scorers: array{A: array<int, int>, B: array<int, int>}}>
      */
     public function scoresheetSets(): array
     {
@@ -158,14 +161,26 @@ class Matches extends Model
         $games = $this->games->sortBy('game_number')->values();
 
         if ($games->isEmpty()) {
-            return [['number' => 1, 'winner' => null, 'scorers' => []]];
+            return [['number' => 1, 'winner' => null, 'scorers' => ['A' => [], 'B' => []]]];
         }
 
         return $games->map(function (MatchGame $game) use ($playerSideMap, $singleSet): array {
-            $scorers = $game->rallies
-                ->where('rally_number', '<=', self::SCORESHEET_RALLIES)
-                ->pluck('scoring_player_id', 'rally_number')
-                ->all();
+            $points = ['A' => 0, 'B' => 0];
+            $scorers = ['A' => [], 'B' => []];
+
+            foreach ($game->rallies->sortBy('rally_number') as $rally) {
+                $side = $playerSideMap[$rally->scoring_player_id] ?? null;
+
+                if ($side === null) {
+                    continue;
+                }
+
+                $points[$side]++;
+
+                if ($points[$side] <= self::SCORESHEET_RALLIES) {
+                    $scorers[$side][$points[$side]] = $rally->scoring_player_id;
+                }
+            }
 
             return [
                 'number' => $game->game_number,

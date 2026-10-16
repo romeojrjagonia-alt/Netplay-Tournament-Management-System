@@ -11,6 +11,12 @@ Your application reference code is:
 
 Enter this code under "Check Tournament Application Progress" on the NetPlay home page to see whether your application was approved and to pay your registration fee.
 
+Already have a NetPlay account? Sign in with this email address so this registration is kept with your account.
+
+<x-mail::button :url="route('login')">
+Sign in to NetPlay
+</x-mail::button>
+
 <x-mail::button :url="route('home')">
 Open NetPlay
 </x-mail::button>

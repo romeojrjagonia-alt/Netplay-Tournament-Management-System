@@ -147,7 +147,7 @@ test('the downloaded document uses the same layout with a landscape page and one
     expect(substr_count($response->getContent(), 'bgcolor="#000000"'))->toBe(2);
 });
 
-test('the black cell for each rally is in the row of the player who won it', function () {
+test('each team\'s black cells are numbered by that team\'s points, in the row of the player who scored them', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
 
@@ -155,7 +155,7 @@ test('the black cell for each rally is in the row of the player who won it', fun
     $playerA = $match->sidePlayers('A')[0];
     $playerB = $match->sidePlayers('B')[0];
 
-    expect($set['scorers'])->toBe([1 => $playerA['id'], 2 => $playerB['id']]);
+    expect($set['scorers'])->toBe(['A' => [1 => $playerA['id']], 'B' => [1 => $playerB['id']]]);
     expect($set['winner'])->toBeNull();
 });
 
@@ -173,21 +173,23 @@ test('every set prints on its own sheet, and an unplayed match still prints a bl
     $blank->games()->delete();
 
     expect($blank->fresh()->scoresheetSets())->toHaveCount(1);
-    expect($blank->fresh()->scoresheetSets()[0]['scorers'])->toBe([]);
+    expect($blank->fresh()->scoresheetSets()[0]['scorers'])->toBe(['A' => [], 'B' => []]);
 });
 
-test('the grid stays at 31 rallies: later rallies are not printed', function () {
+test('the grid stays at 31 points per team: later points are not printed', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
     $game = $match->games()->first();
     $player = $match->sidePlayers('A')[0];
 
-    Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $player['id'], 'rally_number' => 40]);
+    foreach (range(3, 42) as $n) {
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $player['id'], 'rally_number' => $n]);
+    }
 
     $set = $match->fresh()->scoresheetSets()[0];
 
-    expect(array_keys($set['scorers']))->toBe([1, 2]);
-    expect(array_key_exists(40, $set['scorers']))->toBeFalse();
+    expect(array_keys($set['scorers']['A']))->toBe(range(1, 31));
+    expect($set['scorers']['B'])->toHaveCount(1);
 });
 
 test('the winner shown on a sheet is that set\'s winner and stays empty while the set is undecided', function () {
@@ -205,4 +207,26 @@ test('the winner shown on a sheet is that set\'s winner and stays empty while th
 
     expect($match->fresh()->scoresheetSets()[0]['winner'])->toBe('A');
     $this->get(route('umpire.matches.scoresheet', $match))->assertSee('Team 1');
+});
+
+test('a long game ends on the winning team\'s last numbered cell instead of being cut off at rally 31', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = scoresheetMatch($umpire);
+    $match->games()->delete();
+
+    $game = MatchGame::create(['match_id' => $match->id, 'game_number' => 1]);
+    $playerA = $match->sidePlayers('A')[0];
+    $playerB = $match->sidePlayers('B')[0];
+
+    // 31-30 over 61 rallies, alternating, Team 1 taking the last point.
+    foreach (range(1, 61) as $n) {
+        $scorer = $n % 2 === 1 ? $playerA : $playerB;
+        Rally::create(['match_game_id' => $game->id, 'scoring_player_id' => $scorer['id'], 'rally_number' => $n]);
+    }
+
+    $set = $match->fresh()->scoresheetSets()[0];
+
+    expect($set['scorers']['A'])->toHaveKey(31)
+        ->and($set['scorers']['B'])->toHaveKey(30)
+        ->and($set['scorers']['B'])->not->toHaveKey(31);
 });

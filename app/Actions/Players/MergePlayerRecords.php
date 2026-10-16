@@ -4,7 +4,6 @@ namespace App\Actions\Players;
 
 use App\Models\ApplicationPlayer;
 use App\Models\Player;
-use App\Models\PlayerStatistic;
 use App\Models\Rally;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +17,8 @@ use InvalidArgumentException;
  */
 class MergePlayerRecords
 {
+    use CombinesPlayerRecords;
+
     /**
      * Profile fields a guest record fills in from the account's own player
      * only when the guest left them empty.
@@ -66,42 +67,5 @@ class MergePlayerRecords
 
             return $guest;
         });
-    }
-
-    /**
-     * A player can only be in one live entry per draw, so refuse a merge that
-     * would put the same person in one category twice.
-     */
-    private function assertNoSharedCategory(Player $guest, Player $own): void
-    {
-        $categoryIds = fn (Player $player) => ApplicationPlayer::query()
-            ->where('player_id', $player->id)
-            ->whereHas('application', fn ($query) => $query->where('status', '!=', 'rejected'))
-            ->join('player_applications', 'player_applications.id', '=', 'application_players.application_id')
-            ->pluck('player_applications.tournament_category_id');
-
-        if ($categoryIds($guest)->intersect($categoryIds($own))->isNotEmpty()) {
-            throw new InvalidArgumentException('Both records have an active entry in the same category, so they can\'t be merged automatically.');
-        }
-    }
-
-    private function combineStatistics(Player $guest, Player $own): void
-    {
-        $ownStats = PlayerStatistic::find($own->id);
-
-        if (! $ownStats) {
-            return;
-        }
-
-        $stats = PlayerStatistic::firstOrCreate(
-            ['player_id' => $guest->id],
-            ['matches_played' => 0, 'wins' => 0, 'losses' => 0],
-        );
-
-        $stats->update([
-            'matches_played' => $stats->matches_played + $ownStats->matches_played,
-            'wins' => $stats->wins + $ownStats->wins,
-            'losses' => $stats->losses + $ownStats->losses,
-        ]);
     }
 }

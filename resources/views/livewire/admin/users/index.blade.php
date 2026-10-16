@@ -1,10 +1,14 @@
 <?php
 
+use App\Actions\Players\MergeDuplicatePlayers;
 use App\Actions\Players\MergePlayerRecords;
+use App\Actions\Players\PruneUnusedGuests;
+use App\Models\DismissedPlayerPair;
 use App\Mail\PlayerLinkDecided;
 use App\Models\Player;
 use App\Models\PlayerLinkRequest;
 use App\Models\User;
+use App\Support\Players\DuplicatePlayerFinder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
@@ -274,6 +278,64 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
     }
 
     /**
+     * Pairs of player records that look like the same person.
+     *
+     * @return \Illuminate\Support\Collection<int, array{a: Player, b: Player, reasons: list<string>}>
+     */
+    #[Computed]
+    public function duplicatePairs()
+    {
+        return app(DuplicatePlayerFinder::class)->pairs();
+    }
+
+    public function mergeDuplicates(int $firstPlayerId, int $secondPlayerId, MergeDuplicatePlayers $merge): void
+    {
+        $first = Player::query()->findOrFail($firstPlayerId);
+        $second = Player::query()->findOrFail($secondPlayerId);
+
+        try {
+            $survivor = $merge->handle($first, $second);
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch('system-message', title: 'Can\'t merge these records', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        unset($this->duplicatePairs, $this->unusedGuestCount, $this->linkRequests);
+
+        $this->dispatch('system-message', title: 'Records merged', message: "The two records were merged into {$survivor->name}.", variant: 'success');
+    }
+
+    /**
+     * An admin judged these two to be different people; stop suggesting them.
+     */
+    public function dismissDuplicate(int $firstPlayerId, int $secondPlayerId): void
+    {
+        $ids = Player::query()->whereIn('id', [$firstPlayerId, $secondPlayerId])->pluck('id');
+
+        if ($ids->count() === 2) {
+            DismissedPlayerPair::dismiss($firstPlayerId, $secondPlayerId);
+        }
+
+        unset($this->duplicatePairs);
+    }
+
+    #[Computed]
+    public function unusedGuestCount(): int
+    {
+        return app(PruneUnusedGuests::class)->count();
+    }
+
+    public function pruneUnusedGuests(PruneUnusedGuests $prune): void
+    {
+        $deleted = $prune->handle();
+
+        unset($this->unusedGuestCount, $this->duplicatePairs);
+
+        $this->dispatch('system-message', title: 'Guest records deleted', message: "{$deleted} unused guest record(s) were deleted.", variant: 'success');
+    }
+
+    /**
      * @return Collection<int, User>
      */
     #[Computed]
@@ -372,6 +434,54 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                         <button type="button"
                                 x-on:click="$dispatch('system-confirm', { title: 'Link these records?', message: @js('Merge '.$linkRequest->player->name.' into '.$linkRequest->user->email.'? This can\'t be undone.'), confirmLabel: 'Link', confirm: () => $wire.approveLinkRequest({{ $linkRequest->id }}) })"
                                 class="cursor-pointer rounded-[5px] bg-[#3e948d] px-4 py-2 text-xs font-medium text-white">Approve</button>
+                    </div>
+                </div>
+            @endforeach
+        </div>
+    @endif
+
+    @if ($this->duplicatePairs->isNotEmpty() || $this->unusedGuestCount > 0)
+        <div class="flex flex-col gap-3 rounded-[10px] bg-white px-4 py-4 text-black sm:px-[19px]">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-bold">Player records</span>
+                    @if ($this->duplicatePairs->isNotEmpty())
+                        <span class="rounded-full bg-[#fff1d6] px-2 py-0.5 text-[10px] font-bold text-[#8a5a00]">{{ $this->duplicatePairs->count() }} possible duplicate(s)</span>
+                    @endif
+                </div>
+
+                @if ($this->unusedGuestCount > 0)
+                    <button type="button"
+                            x-on:click="$dispatch('system-confirm', { title: 'Delete unused guest records?', message: @js($this->unusedGuestCount.' guest record(s) with no account, no entries and no link requests (older than 7 days) will be deleted. Records with any history are never touched.'), confirmLabel: 'Delete', confirm: () => $wire.pruneUnusedGuests() })"
+                            class="cursor-pointer rounded-[5px] border border-[#bd6b6c] px-4 py-2 text-xs font-medium text-[#bd6b6c]">
+                        Delete unused guest records ({{ $this->unusedGuestCount }})
+                    </button>
+                @endif
+            </div>
+
+            @foreach ($this->duplicatePairs as $pair)
+                <div class="flex flex-col gap-3 border-t border-[#ececec] pt-3" wire:key="dup-{{ $pair['a']->id }}-{{ $pair['b']->id }}">
+                    <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold text-[#8a5a00]">
+                        @foreach ($pair['reasons'] as $reason)
+                            <span class="rounded-full bg-[#fff1d6] px-2 py-0.5">{{ $reason }}</span>
+                        @endforeach
+                    </div>
+
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        @foreach ([$pair['a'], $pair['b']] as $record)
+                            <div class="flex flex-col gap-0.5 rounded-[5px] border border-[#d3d3d3] px-3 py-2 text-xs">
+                                <span class="font-bold">{{ $record->name }}@if ($record->user_id) <span class="font-normal text-[#138177]">(has account)</span>@endif</span>
+                                <span class="text-black/70">{{ $record->email ?? 'No email' }} · {{ $record->phone_number ?? 'No phone' }}</span>
+                                <span class="text-black/70">{{ $record->birth_date?->format('M j, Y') ?? 'No birthdate' }} · {{ $record->application_players_count }} entries</span>
+                            </div>
+                        @endforeach
+                    </div>
+
+                    <div class="flex justify-end gap-2">
+                        <button type="button" wire:click="dismissDuplicate({{ $pair['a']->id }}, {{ $pair['b']->id }})" class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-2 text-xs font-medium text-[#6b6b6b]">Not the same person</button>
+                        <button type="button"
+                                x-on:click="$dispatch('system-confirm', { title: 'Merge these records?', message: @js('Merge '.$pair['a']->name.' and '.$pair['b']->name.' into one player? Their entries and history are combined. This can\'t be undone.'), confirmLabel: 'Merge', confirm: () => $wire.mergeDuplicates({{ $pair['a']->id }}, {{ $pair['b']->id }}) })"
+                                class="cursor-pointer rounded-[5px] bg-[#3e948d] px-4 py-2 text-xs font-medium text-white">Merge</button>
                     </div>
                 </div>
             @endforeach

@@ -92,10 +92,10 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
 }; ?>
 
 <div class="flex flex-col gap-5">
-    <div class="flex h-10 w-fit items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+    <div class="flex h-10 w-fit max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
         <button type="button" wire:click="selectTab('all')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'all',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'all',
                 ])>
@@ -103,7 +103,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         </button>
         <button type="button" wire:click="selectTab('upcoming')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'upcoming',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'upcoming',
                 ])>
@@ -111,7 +111,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         </button>
         <button type="button" wire:click="selectTab('concluded')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'concluded',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
                 ])>

@@ -82,6 +82,11 @@ class Player extends Model
         return $this->hasOne(PlayerStatistic::class);
     }
 
+    public function linkRequests(): HasMany
+    {
+        return $this->hasMany(PlayerLinkRequest::class);
+    }
+
     public function applicationPlayers(): HasMany
     {
         return $this->hasMany(ApplicationPlayer::class);

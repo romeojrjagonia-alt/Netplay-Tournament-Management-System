@@ -20,7 +20,8 @@
 
 {{-- Mirrors OBC's paper score sheet, one sheet per set: title, GAME NO / Set / COURT / BRACKET,
      CATEGORY / TIME, then a Team 1 and a Team 2 block. Each block is a numbered header row
-     (rally 1, 2, 3 ...) with one row per player; a black cell means that player won that rally.
+     (that team's 1st, 2nd, 3rd ... point) with one row per player; a black cell means that player
+     scored the team's n-th point, so the team that reaches the target ends on its last number.
      Footer: UMPIRE / Signature / Signature / WINNER. One table per sheet, so borders line up. --}}
 <div {{ $attributes->class(['flex flex-col gap-8']) }}>
     @foreach ($sets as $set)
@@ -58,7 +59,7 @@
                         <td colspan="10" class="border border-black px-2 py-1.5"><span class="font-bold">TIME:</span> {{ $match->scheduled_at?->format('g:i A, M j, Y') }}</td>
                     </tr>
 
-                    @foreach ($teams as $team)
+                    @foreach ($teams as $side => $team)
                         <tr class="bg-[#eeeeee]">
                             <td class="border border-black px-2 py-0.5 text-[10px] font-bold">{{ $team['label'] }}</td>
                             @foreach ($columns as $number)
@@ -70,7 +71,7 @@
                             <tr>
                                 <td class="border border-black px-2 py-0.5 text-[10px] leading-tight font-bold break-words">{{ $player['name'] }}</td>
                                 @foreach ($columns as $number)
-                                    <td @class(['h-[30px] border border-black', 'bg-black' => ($set['scorers'][$number] ?? null) === $player['id']])></td>
+                                    <td @class(['h-[30px] border border-black', 'bg-black' => ($set['scorers'][$side][$number] ?? null) === $player['id']])></td>
                                 @endforeach
                             </tr>
                         @endforeach

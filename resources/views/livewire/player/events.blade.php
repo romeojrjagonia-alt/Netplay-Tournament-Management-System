@@ -752,10 +752,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     @endif
 
     <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+        <div class="flex h-10 max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
             <button type="button" wire:click="selectTab('accepting')"
                     @class([
-                        'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                         'bg-[#0b4742] text-white' => $tab === 'accepting',
                         'cursor-pointer text-[#0b4742]' => $tab !== 'accepting',
                     ])>
@@ -763,7 +763,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             </button>
             <button type="button" wire:click="selectTab('applications')"
                     @class([
-                        'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                         'bg-[#0b4742] text-white' => $tab === 'applications',
                         'cursor-pointer text-[#0b4742]' => $tab !== 'applications',
                     ])>
@@ -1006,6 +1006,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                 <div class="flex max-h-[420px] flex-col gap-[15px] overflow-y-auto rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
                     @if ($regStep === 1)
+                        <div wire:key="reg-step-profile" class="contents">
                         <div class="flex gap-[9px]">
                             <x-player.registration-field label="First Name" model="regFirstName" placeholder="e.g. Juan" class="flex-1" />
                             <x-player.registration-field label="Last Name" model="regLastName" placeholder="e.g. Cruz" class="flex-1" />
@@ -1053,8 +1054,11 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 />
                             @endif
                         @endif
+                        </div>
                     @elseif ($this->isPairStep)
+                        <div wire:key="reg-step-pair" class="contents">
                         @if ($this->pairViaSearch)
+                            <div wire:key="reg-pair-search" class="contents">
                             <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
                                 <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name or email"
                                        class="flex-1 bg-transparent text-[12px] text-black placeholder:text-black/40 focus:outline-none">
@@ -1097,7 +1101,9 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             @error('pairPlayerId')
                                 <p class="text-[11px] text-red-600">{{ $message }}</p>
                             @enderror
+                            </div>
                         @else
+                            <div wire:key="reg-pair-manual" class="contents">
                             <div class="flex gap-[9px]">
                                 <x-player.registration-field label="First Name" model="pairFirstName" placeholder="e.g. Juan" class="flex-1" />
                                 <x-player.registration-field label="Last Name" model="pairLastName" placeholder="e.g. Cruz" class="flex-1" />
@@ -1128,8 +1134,11 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                     <p class="text-[11px] text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
+                            </div>
                         @endif
+                        </div>
                     @else
+                        <div wire:key="reg-step-documents" class="contents">
                         <div class="flex flex-col gap-[10px]">
                             <p class="text-[12px] font-bold text-black">Your valid document</p>
                             <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
@@ -1167,6 +1176,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 </div>
                             </div>
                         @endif
+                        </div>
                     @endif
                 </div>
             </div>
