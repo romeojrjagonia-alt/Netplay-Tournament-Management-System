@@ -11,7 +11,7 @@
 
         {{-- Glass overlay + modal. Closing the modal (the X) returns to the landing page. --}}
         <div class="fixed inset-0 z-50 overflow-y-auto bg-black/70" role="dialog" aria-modal="true">
-            <div class="flex min-h-full items-center justify-center p-4 sm:p-6">
+            <div class="flex min-h-full items-center justify-center p-3 sm:p-6">
                 {{ $slot }}
             </div>
         </div>

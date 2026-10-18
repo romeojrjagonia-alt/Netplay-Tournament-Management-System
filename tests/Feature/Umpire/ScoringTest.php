@@ -7,6 +7,7 @@ use App\Models\Matches;
 use App\Models\MatchGame;
 use App\Models\Player;
 use App\Models\PlayerApplication;
+use App\Models\PlayerStatistic;
 use App\Models\Rally;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
@@ -68,6 +69,8 @@ function scoringMatchWithPlayers(User $umpire): array
         'scheduled_at' => now()->addDay(),
         'court' => 'Court 2',
         'assigned_umpire_id' => $umpire->id,
+        'team_a_ready_at' => now(),
+        'team_b_ready_at' => now(),
     ]);
 
     MatchApplication::create(['match_id' => $match->id, 'application_id' => $applicationA->id]);
@@ -304,4 +307,148 @@ test('a 21-point tournament is unaffected by the single set rules', function () 
     $component->call('recordRally', $playerA->id)
         ->assertSet('canAddSet', true)
         ->assertSet('canConfirmResults', false);
+});
+
+test('the game cannot start until both teams are marked ready', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match] = scoringMatchWithPlayers($umpire);
+    $match->update(['team_a_ready_at' => null, 'team_b_ready_at' => null]);
+
+    $this->actingAs($umpire);
+
+    $component = Volt::test('umpire.matches.scoring', ['match' => $match])
+        ->assertSee('Ready Team A')
+        ->assertSee('Ready Team B')
+        ->assertSet('canStartMatch', false)
+        ->call('startMatch');
+
+    expect(MatchGame::where('match_id', $match->id)->count())->toBe(0);
+
+    $component->call('toggleReady', 'A')
+        ->assertSet('canStartMatch', false)
+        ->call('toggleReady', 'B')
+        ->assertSet('canStartMatch', true)
+        ->call('startMatch');
+
+    expect(MatchGame::where('match_id', $match->id)->count())->toBe(1)
+        ->and($match->fresh()->team_a_ready_at)->not->toBeNull();
+});
+
+test('a team can be un-readied before the game starts but readiness is locked afterwards', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match] = scoringMatchWithPlayers($umpire);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches.scoring', ['match' => $match])
+        ->call('toggleReady', 'A')
+        ->assertSet('canStartMatch', false)
+        ->call('toggleReady', 'A')
+        ->call('startMatch')
+        ->call('toggleReady', 'B');
+
+    expect($match->fresh()->team_b_ready_at)->not->toBeNull();
+});
+
+test('only the umpire of the match can toggle readiness or declare a walkover', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match] = scoringMatchWithPlayers($umpire);
+
+    $this->actingAs(User::factory()->create(['role' => 'umpire']));
+
+    Volt::test('umpire.matches.scoring', ['match' => $match])->assertForbidden();
+});
+
+test('a no-show is awarded to the ready team only after the scheduled time, as a walkover', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, $applicationA] = scoringMatchWithPlayers($umpire);
+    $match->update(['team_a_ready_at' => now(), 'team_b_ready_at' => null, 'scheduled_at' => now()->addHour()]);
+
+    $this->actingAs($umpire);
+
+    // Before the scheduled time nothing can be declared.
+    Volt::test('umpire.matches.scoring', ['match' => $match])
+        ->assertSee('A no-show can be declared after')
+        ->call('declareWalkover', 'A');
+
+    expect($match->fresh()->status)->toBe('scheduled');
+
+    $match->update(['scheduled_at' => now()->subMinutes(20)]);
+
+    // The team that did not show up cannot be the winner.
+    Volt::test('umpire.matches.scoring', ['match' => $match->fresh()])
+        ->call('declareWalkover', 'B');
+
+    expect($match->fresh()->status)->toBe('scheduled');
+
+    Volt::test('umpire.matches.scoring', ['match' => $match->fresh()])
+        ->assertSee('No-show: award win to Team A')
+        ->call('declareWalkover', 'A')
+        ->assertRedirect();
+
+    $match->refresh();
+
+    expect($match->status)->toBe('completed')
+        ->and($match->result_type)->toBe('walkover')
+        ->and($match->winner_application_id)->toBe($applicationA->id)
+        ->and($match->games()->count())->toBe(0);
+});
+
+test('a walkover is not counted as a played match in player statistics', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, , , $playerA, $playerB] = scoringMatchWithPlayers($umpire);
+    $match->update(['team_a_ready_at' => now(), 'team_b_ready_at' => null, 'scheduled_at' => now()->subMinutes(10)]);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches.scoring', ['match' => $match])->call('declareWalkover', 'A');
+
+    expect(PlayerStatistic::whereIn('player_id', [$playerA->id, $playerB->id])->count())->toBe(0);
+});
+
+test('a walkover advances the winner in a knockout bracket', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, $applicationA] = scoringMatchWithPlayers($umpire);
+
+    $final = Matches::create([
+        'tournament_category_id' => $match->tournament_category_id,
+        'bracket_type' => 'single_elimination',
+        'round' => 2,
+        'position' => 1,
+        'status' => 'scheduled',
+    ]);
+
+    $match->update(['team_a_ready_at' => now(), 'team_b_ready_at' => null, 'scheduled_at' => now()->subMinutes(10)]);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches.scoring', ['match' => $match])->call('declareWalkover', 'A');
+
+    expect($final->fresh()->matchApplications()->pluck('application_id')->all())->toContain($applicationA->id);
+});
+
+test('the scoring screen has a fullscreen toggle around the scoring area', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match] = scoringMatchWithPlayers($umpire);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches.scoring', ['match' => $match])
+        ->assertSeeHtml('requestFullscreen')
+        ->assertSeeHtml('fullscreenchange');
+});
+
+test('each scoring button reacts only to its own action, so one tap does not make every button blink', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    [$match, , , $playerA, $playerB] = scoringMatchWithPlayers($umpire);
+
+    $this->actingAs($umpire);
+
+    $html = Volt::test('umpire.matches.scoring', ['match' => $match])
+        ->call('startMatch')
+        ->html();
+
+    expect($html)->toContain('wire:target="recordRally('.$playerA->id.')"')
+        ->and($html)->toContain('wire:target="recordRally('.$playerB->id.')"')
+        ->and($html)->not->toContain('wire:target="recordRally,undoLastRally');
 });

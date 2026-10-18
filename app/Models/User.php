@@ -78,6 +78,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Player::class);
     }
 
+    /**
+     * Every signed-in player needs a player record (the player pages read
+     * it), but accounts created by an admin or switched to the player role
+     * don't get one at sign-up. Create it on first use.
+     */
+    public function ensurePlayer(): Player
+    {
+        return $this->player()->firstOrCreate([], [
+            'name' => $this->name,
+            'email' => $this->email,
+        ]);
+    }
+
     public function playerLinkRequests(): HasMany
     {
         return $this->hasMany(PlayerLinkRequest::class);

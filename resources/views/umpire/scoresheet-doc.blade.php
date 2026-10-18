@@ -100,7 +100,7 @@
                                 {{ $team['names'] }}<br><br><br><br><br><span align="center" style="display:block;text-align:center;">Signature</span>
                             </td>
                         @endforeach
-                        <td colspan="{{ $total - 22 }}" height="90" valign="top" style="{{ $box }}"><b>WINNER:</b>&nbsp;&nbsp;{{ $set['winner'] === 'A' ? $teams['A']['label'] : ($set['winner'] === 'B' ? $teams['B']['label'] : '') }}</td>
+                        <td colspan="{{ $total - 22 }}" height="90" valign="top" style="{{ $box }}"><b>WINNER:</b>&nbsp;&nbsp;{{ $match->isWalkover() ? ($match->winnerSide() === 'A' ? $teams['A']['label'] : ($match->winnerSide() === 'B' ? $teams['B']['label'] : '')).' (walkover)' : ($set['winner'] === 'A' ? $teams['A']['label'] : ($set['winner'] === 'B' ? $teams['B']['label'] : '')) }}</td>
                     </tr>
                 </table>
             @endforeach

@@ -96,6 +96,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     {
         abort_unless(auth()->user()->isPlayer(), 403);
 
+        auth()->user()->ensurePlayer();
+
         if (request()->query('tab') === 'applications') {
             $this->tab = 'applications';
         }
@@ -752,7 +754,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     @endif
 
     <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex h-10 max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
+        <div class="flex h-10 min-w-0 max-w-full flex-1 items-center gap-2 overflow-x-auto sm:flex-none rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
             <button type="button" wire:click="selectTab('accepting')"
                     @class([
                         'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
@@ -771,11 +773,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             </button>
         </div>
 
-        <div class="flex w-full items-center gap-2.5 rounded-[10px] bg-white px-5 py-2.5 sm:w-[265px]">
-            <flux:icon.magnifying-glass class="size-[17px] shrink-0 text-black/50" />
-            <input type="search" wire:model.live.debounce.300ms="search" placeholder="Search"
-                   class="w-full bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none">
-        </div>
+        <x-collapsible-search wire:model.live.debounce.300ms="search" />
     </div>
 
     @if ($tab === 'accepting')

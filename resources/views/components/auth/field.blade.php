@@ -8,7 +8,7 @@
             wire:model="{{ $model }}"
             type="{{ $type }}"
             placeholder="{{ $placeholder }}"
-            class="w-full bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none"
+            class="w-full min-w-0 bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none"
         >
 
         {{ $slot ?? '' }}

@@ -92,16 +92,21 @@
                 <p class="text-[13px] text-black">Winner <span class="font-bold">{{ $result['winnerName'] }}</span></p>
             @endif
 
-            <p class="text-[13px] text-black">
-                {{ $result['setsPlayed'] }} {{ \Illuminate\Support\Str::plural('set', $result['setsPlayed']) }} played
-                ({{ $result['gamesWonA'] }}-{{ $result['gamesWonB'] }})
-            </p>
+            @if ($result['walkover'] ?? false)
+                <span class="flex h-[15px] w-fit items-center justify-center rounded-[3px] bg-[#e9e0f8] px-2.5 text-[8px] font-bold text-[#5d3198]">WALKOVER</span>
+                <p class="text-[13px] text-black/70">The other team did not show up.</p>
+            @else
+                <p class="text-[13px] text-black">
+                    {{ $result['setsPlayed'] }} {{ \Illuminate\Support\Str::plural('set', $result['setsPlayed']) }} played
+                    ({{ $result['gamesWonA'] }}-{{ $result['gamesWonB'] }})
+                </p>
 
-            @foreach ($result['games'] as $game)
-                @if ($game['A'] > 0 || $game['B'] > 0)
-                    <p class="text-[13px] text-black/70">G{{ $game['number'] }}: {{ $game['A'] }}-{{ $game['B'] }}</p>
-                @endif
-            @endforeach
+                @foreach ($result['games'] as $game)
+                    @if ($game['A'] > 0 || $game['B'] > 0)
+                        <p class="text-[13px] text-black/70">G{{ $game['number'] }}: {{ $game['A'] }}-{{ $game['B'] }}</p>
+                    @endif
+                @endforeach
+            @endif
         </div>
     @elseif ($winner)
         <div class="flex items-center border-t border-[#d3d3d3] px-2.5 pt-[5px]">

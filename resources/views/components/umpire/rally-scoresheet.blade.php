@@ -95,7 +95,7 @@
                         @endforeach
 
                         <td colspan="{{ $total - 22 }}" class="h-24 border border-black px-2 py-1.5 align-top">
-                            <span class="font-bold">WINNER:</span> {{ $set['winner'] === 'A' ? $teams['A']['label'] : ($set['winner'] === 'B' ? $teams['B']['label'] : '') }}
+                            <span class="font-bold">WINNER:</span> {{ $match->isWalkover() ? ($match->winnerSide() === 'A' ? $teams['A']['label'] : ($match->winnerSide() === 'B' ? $teams['B']['label'] : '')).' (walkover)' : ($set['winner'] === 'A' ? $teams['A']['label'] : ($set['winner'] === 'B' ? $teams['B']['label'] : '')) }}
                         </td>
                     </tr>
                 </tbody>

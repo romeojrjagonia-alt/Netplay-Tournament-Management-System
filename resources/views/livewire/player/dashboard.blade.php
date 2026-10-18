@@ -11,6 +11,8 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     public function mount(): void
     {
         abort_unless(auth()->user()->isPlayer(), 403);
+
+        auth()->user()->ensurePlayer();
     }
 
     /**

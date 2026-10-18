@@ -31,6 +31,9 @@ class Matches extends Model
         'schedule_notified_at',
         'court',
         'assigned_umpire_id',
+        'team_a_ready_at',
+        'team_b_ready_at',
+        'result_type',
         'line_judge_1_name',
         'line_judge_2_name',
     ];
@@ -45,7 +48,17 @@ class Matches extends Model
         return [
             'scheduled_at' => 'datetime',
             'schedule_notified_at' => 'datetime',
+            'team_a_ready_at' => 'datetime',
+            'team_b_ready_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Decided because a team did not show up, with no points played.
+     */
+    public function isWalkover(): bool
+    {
+        return $this->result_type === 'walkover';
     }
 
     public function tournamentCategory(): BelongsTo

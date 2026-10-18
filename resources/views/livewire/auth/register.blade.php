@@ -374,13 +374,13 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
 <div class="relative w-full max-w-[994px] overflow-hidden rounded-[20px] bg-white shadow-2xl">
     <a href="{{ route('home') }}" wire:navigate
-       class="absolute top-5 right-5 z-10 text-white transition hover:text-white/80 lg:text-teal-800 lg:hover:text-teal-600">
+       class="absolute top-4 right-4 z-10 text-teal-800 transition hover:text-teal-600 lg:top-5 lg:right-5">
         <flux:icon.x-mark class="size-7" />
     </a>
 
     <div class="flex flex-col lg:flex-row">
         {{-- Status panel --}}
-        <div class="relative shrink-0 overflow-hidden lg:w-[464px]"
+        <div class="relative hidden shrink-0 overflow-hidden lg:block lg:w-[464px]"
              style="background-image: linear-gradient(202deg, #8CC7C1 3.75%, #77B9B3 12.29%, #61ABA4 19.34%, #3E948D 30.06%, #11776E 41.94%, #0D5750 53.65%, #083531 78.04%, #051C1A 101.46%);">
             <img src="{{ asset('images/auth/grid-pattern.svg') }}" alt=""
                  class="absolute inset-0 h-full w-full object-cover">
@@ -408,12 +408,12 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         </div>
 
         {{-- Form panel --}}
-        <div class="flex w-full flex-col items-center gap-10 px-8 py-10 lg:w-[530px] md:px-14">
+        <div class="flex w-full flex-col items-center gap-6 px-5 pt-12 pb-6 sm:gap-10 sm:px-8 sm:py-10 lg:w-[530px] md:px-14">
             @if ($step === 1)
                 <div class="flex flex-col items-center gap-8 text-center">
                     <div class="flex flex-col items-center gap-2">
-                        <h1 class="text-2xl font-bold text-black">Create Your Account</h1>
-                        <p class="text-[15px] text-[#3e948d]">Choose how you'll use NETPLAY!</p>
+                        <h1 class="text-xl font-bold text-black sm:text-2xl">Create Your Account</h1>
+                        <p class="text-xs text-[#3e948d] sm:text-[15px]">Choose how you'll use NETPLAY!</p>
                     </div>
 
                     <div class="flex flex-col items-center gap-2">
@@ -473,8 +473,8 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             @elseif ($step === 2)
                 <div class="flex w-full flex-col items-center gap-8">
                     <div class="flex flex-col items-center gap-2 text-center">
-                        <h1 class="text-2xl font-bold text-black">Create Your Account</h1>
-                        <p class="text-[15px] text-[#3e948d]">Enter your credentials to create your account</p>
+                        <h1 class="text-xl font-bold text-black sm:text-2xl">Create Your Account</h1>
+                        <p class="text-xs text-[#3e948d] sm:text-[15px]">Enter your credentials to create your account</p>
                     </div>
 
                     <div class="flex w-full flex-col items-center gap-5">
@@ -486,8 +486,8 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
                         <x-auth.field label="Email" model="email" type="email" placeholder="e.g. juancruz@gmail.com" class="w-full" />
 
-                        <div class="flex w-full gap-4">
-                            <div x-data="{ show: false }" class="flex flex-1 flex-col gap-0.5">
+                        <div class="flex w-full flex-col gap-4 sm:flex-row">
+                            <div x-data="{ show: false }" class="flex min-w-0 flex-1 flex-col gap-0.5">
                                 <label for="password" class="text-xs text-black">Password</label>
                                 <div class="flex items-center gap-2 rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5">
                                     <input id="password" wire:model="password" :type="show ? 'text' : 'password'"
@@ -503,7 +503,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 @enderror
                             </div>
 
-                            <div x-data="{ show: false }" class="flex flex-1 flex-col gap-0.5">
+                            <div x-data="{ show: false }" class="flex min-w-0 flex-1 flex-col gap-0.5">
                                 <label for="password_confirmation" class="text-xs text-black">Confirm Password</label>
                                 <div class="flex items-center gap-2 rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5">
                                     <input id="password_confirmation" wire:model="password_confirmation" :type="show ? 'text' : 'password'"
@@ -517,23 +517,23 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             </div>
                         </div>
 
-                        <p class="w-full text-right text-xs text-[#3e948d] italic">At least 8 characters with uppercase and lowercase letters and a number. No spaces or special characters.</p>
+                        <p class="w-full text-center text-[11px] text-[#3e948d] italic sm:text-right sm:text-xs">At least 8 characters with uppercase and lowercase letters and a number. No spaces or special characters.</p>
                     </div>
                 </div>
             @else
                 <div class="flex w-full flex-col items-center gap-8">
                     <div class="flex flex-col items-center gap-2 text-center">
-                        <h1 class="text-2xl font-bold text-black">Create Your Account</h1>
-                        <p class="text-[15px] text-[#3e948d]">Finalize your account through setting your profile</p>
+                        <h1 class="text-xl font-bold text-black sm:text-2xl">Create Your Account</h1>
+                        <p class="text-xs text-[#3e948d] sm:text-[15px]">Finalize your account through setting your profile</p>
                     </div>
 
                     <div class="flex w-full flex-col items-center gap-3.5">
-                        <div class="flex w-full gap-3">
-                            <x-auth.field label="Birth Date" model="birthDate" type="date" class="flex-[2]" />
+                        <div class="grid w-full grid-cols-2 gap-3 sm:flex">
+                            <x-auth.field label="Birth Date" model="birthDate" type="date" class="min-w-0 sm:flex-[2]" />
 
-                            <x-auth.field label="Phone Number" model="phoneNumber" type="tel" placeholder="e.g. 09123456789" class="flex-[2]" />
+                            <x-auth.field label="Phone Number" model="phoneNumber" type="tel" placeholder="e.g. 09123456789" class="order-last col-span-2 min-w-0 sm:order-none sm:flex-[2]" />
 
-                            <div class="flex w-28 shrink-0 flex-col gap-0.5">
+                            <div class="flex min-w-0 flex-col gap-0.5 sm:w-28 sm:shrink-0">
                                 <label for="gender" class="text-xs text-black">Gender</label>
                                 <select id="gender" wire:model="gender"
                                         class="w-full rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5 text-xs text-black focus:outline-none">
@@ -553,19 +553,19 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                             <p class="w-full text-[11px] text-red-600">{{ $message }}</p>
                         @enderror
 
-                        <div class="flex w-full gap-2">
-                            <x-auth.field label="Purok/ Street" model="purok" placeholder="e.g. Purok 5" class="flex-1" />
-                            <x-auth.field label="City" model="city" placeholder="e.g. Ozamiz City" class="flex-1" />
-                            <x-auth.field label="Province" model="province" placeholder="e.g. Misamis Occidental" class="flex-[1.5]" />
+                        <div class="grid w-full grid-cols-2 gap-2 sm:flex">
+                            <x-auth.field label="Purok/ Street" model="purok" placeholder="e.g. Purok 5" class="min-w-0 sm:flex-1" />
+                            <x-auth.field label="City" model="city" placeholder="e.g. Ozamiz City" class="min-w-0 sm:flex-1" />
+                            <x-auth.field label="Province" model="province" placeholder="e.g. Misamis Occidental" class="col-span-2 min-w-0 sm:flex-[1.5]" />
                         </div>
 
                         <x-auth.field label="Club" model="club" placeholder="e.g. OBC Badminton Club" class="w-full" />
 
-                        <div x-data="{ fileName: '' }" class="flex w-full flex-col gap-0.5 px-8">
+                        <div x-data="{ fileName: '' }" class="flex w-full flex-col gap-0.5 sm:px-8">
                             <label for="profilePhoto" class="text-xs text-black">Upload Profile Photo</label>
                             <label for="profilePhoto"
-                                   class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#138177] bg-[#11776e]/15 px-2.5 py-8 text-center text-xs text-black/50">
-                                <span x-text="fileName || 'Upload Image'"></span>
+                                   class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#138177] bg-[#11776e]/15 min-w-0 px-2.5 py-6 text-center text-xs text-black/50 sm:py-8">
+                                <span class="max-w-full truncate" x-text="fileName || 'Upload Image'"></span>
                             </label>
                             <input id="profilePhoto" type="file" wire:model="profilePhoto" accept="image/*" class="hidden"
                                    x-on:change="fileName = $event.target.files[0]?.name ?? ''">
@@ -577,27 +577,27 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 </div>
             @endif
 
-            <div class="mt-auto flex w-full items-center justify-center gap-3.5">
+            <div class="sticky bottom-0 z-10 mt-auto flex w-full max-w-[360px] items-center justify-center gap-5 sm:max-w-none sm:gap-3.5 bg-white pt-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:static sm:pt-0 sm:pb-0">
                 @if ($step === 1)
                     <a href="{{ route('home') }}" wire:navigate
-                       class="flex h-9 items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-8 sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
+                       class="flex h-10 items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white min-w-0 flex-[2] px-2 sm:h-9 sm:flex-none sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
                         Cancel
                     </a>
                 @else
                     <button type="button" wire:click="previousStep"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white px-8 sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
+                            class="flex h-10 touch-manipulation cursor-pointer items-center justify-center rounded-[69px] border border-[#138177]/50 bg-white min-w-0 flex-[2] px-2 sm:h-9 sm:flex-none sm:px-14 text-sm font-bold text-[#138177] transition hover:bg-teal-50">
                         Back
                     </button>
                 @endif
 
                 @if ($step < 3)
                     <button type="button" wire:click="nextStep"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-8 sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750]">
+                            class="flex h-10 touch-manipulation cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] min-w-0 flex-[3] px-2 sm:h-9 sm:flex-none sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750]">
                         Next
                     </button>
                 @else
                     <button type="button" wire:click="register" wire:loading.attr="disabled" wire:target="register"
-                            class="flex h-9 cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] px-8 sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-60">
+                            class="flex h-10 touch-manipulation cursor-pointer items-center justify-center rounded-[69px] bg-[#0b4742] min-w-0 flex-[3] px-2 sm:h-9 sm:flex-none sm:px-16 text-sm font-bold text-white transition hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-60">
                         <span wire:loading.remove wire:target="register">Confirm</span>
                         <span wire:loading wire:target="register">Creating account…</span>
                     </button>

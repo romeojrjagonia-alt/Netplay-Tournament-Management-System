@@ -126,7 +126,7 @@
         </section>
 
         {{-- ============ ACTIVE TOURNAMENTS ============ --}}
-        <section id="tournaments" class="w-full bg-emerald-950 px-6 pt-8 pb-20 sm:px-10">
+        <section id="tournaments" class="w-full bg-[#031b17] px-6 pt-8 pb-20 sm:px-10">
             <div data-center-target class="mx-auto flex max-w-6xl flex-col gap-8">
                 <div class="flex items-end justify-between">
                     <div>
@@ -185,7 +185,7 @@
         </section>
 
         {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
-        <section id="check-application" class="w-full bg-emerald-950 px-6 py-[50px] sm:px-10 xl:px-[183px]">
+        <section id="check-application" class="w-full bg-[#031b17] px-6 py-[50px] sm:px-10 xl:px-[183px]">
             <div data-center-target class="flex flex-col items-start justify-between gap-10 bg-[#031b17] p-6 sm:p-10 lg:flex-row lg:items-center lg:gap-[155px]">
                 <div class="flex max-w-md flex-col gap-3">
                     <h2 class="text-3xl leading-tight font-bold text-white sm:text-4xl">
@@ -203,7 +203,7 @@
         </section>
 
         {{-- ============ UMPIRE RECRUITMENT ============ --}}
-        <section class="w-full bg-white px-6 py-8">
+        <section class="w-full bg-[#031b17] px-6 py-8">
             <div class="mx-auto flex max-w-3xl flex-col items-center gap-6 sm:flex-row sm:gap-10">
                 <div class="relative h-24 w-28 shrink-0">
                     <img src="{{ asset('images/welcome/racket-2.svg') }}" alt=""
@@ -213,8 +213,8 @@
                 </div>
 
                 <div class="flex-1 text-center sm:text-left">
-                    <h2 class="text-base font-bold text-black">Apply as an Umpire</h2>
-                    <p class="mt-1 text-xs text-black">Simply register through creating new account!</p>
+                    <h2 class="text-base font-bold text-white">Apply as an Umpire</h2>
+                    <p class="mt-1 text-xs text-white">Simply register through creating new account!</p>
                 </div>
 
                 @guest

@@ -115,18 +115,99 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     }
 
     /**
-     * Whether the very first set still needs to be created. True for a
-     * freshly scheduled match, and also for a match that was already
-     * marked in-progress elsewhere (e.g. seeded data) but has no sets yet —
-     * either way, nothing gates creating set 1 except the match not
-     * already being finished.
+     * A match that has two entries, is not finished and has no sets yet:
+     * the stage where teams are checked in and the match can still start
+     * (or be awarded by walkover).
      */
     #[Computed]
-    public function canStartMatch(): bool
+    public function awaitingStart(): bool
     {
         return $this->match->status !== 'completed'
             && $this->games->count() === 0
             && $this->match->matchApplications()->count() >= 2;
+    }
+
+    public function isTeamReady(string $side): bool
+    {
+        return $side === 'A'
+            ? $this->match->team_a_ready_at !== null
+            : $this->match->team_b_ready_at !== null;
+    }
+
+    #[Computed]
+    public function bothTeamsReady(): bool
+    {
+        return $this->isTeamReady('A') && $this->isTeamReady('B');
+    }
+
+    /**
+     * Whether the scheduled start time has passed, which is when a no-show
+     * can be declared.
+     */
+    #[Computed]
+    public function scheduledTimePassed(): bool
+    {
+        return $this->match->scheduled_at === null || $this->match->scheduled_at->isPast();
+    }
+
+    /**
+     * The umpire marks a team ready once all of its players are present, and
+     * can take it back until the match starts.
+     */
+    public function toggleReady(string $side): void
+    {
+        abort_unless(in_array($side, ['A', 'B'], true), 404);
+
+        if (! $this->awaitingStart) {
+            return;
+        }
+
+        $column = $side === 'A' ? 'team_a_ready_at' : 'team_b_ready_at';
+
+        $this->match->update([$column => $this->match->{$column} === null ? now() : null]);
+
+        unset($this->bothTeamsReady, $this->canStartMatch);
+    }
+
+    /**
+     * A team that is not ready by the scheduled time can be passed over: the
+     * team that is ready wins, but only if it is the one that showed up.
+     */
+    public function canDeclareWalkover(string $winnerSide): bool
+    {
+        $absentSide = $winnerSide === 'A' ? 'B' : 'A';
+
+        return $this->awaitingStart
+            && $this->scheduledTimePassed
+            && $this->isTeamReady($winnerSide)
+            && ! $this->isTeamReady($absentSide);
+    }
+
+    public function declareWalkover(string $winnerSide)
+    {
+        abort_unless(in_array($winnerSide, ['A', 'B'], true), 404);
+
+        if (! $this->canDeclareWalkover($winnerSide)) {
+            return;
+        }
+
+        $this->match->update([
+            'status' => 'completed',
+            'winner_application_id' => $this->match->applicationForSide($winnerSide)?->id,
+            'result_type' => 'walkover',
+        ]);
+
+        return $this->redirect(route('umpire.events.show', $this->match->tournamentCategory->tournament_id), navigate: true);
+    }
+
+    /**
+     * Whether the very first set can be created: the match has not started,
+     * and the umpire has checked in both teams.
+     */
+    #[Computed]
+    public function canStartMatch(): bool
+    {
+        return $this->awaitingStart && $this->bothTeamsReady;
     }
 
     #[Computed]
@@ -381,7 +462,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
         </div>
     </div>
 
-    <div class="flex flex-col gap-5 lg:flex-row lg:items-start">
+    {{-- Everything an umpire needs while scoring lives in this stage, so fullscreen can show just it. --}}
+    <div x-data="{ fs: false, walkover: null, supported: !! document.fullscreenEnabled,
+                  toggle() { document.fullscreenElement ? document.exitFullscreen() : $root.requestFullscreen() } }"
+         x-on:fullscreenchange.window="fs = document.fullscreenElement === $root"
+         x-bind:class="fs ? 'h-screen w-screen overflow-auto bg-gradient-to-b from-[#051c1a] to-[#178279] p-4 sm:p-6' : ''"
+         class="flex flex-col gap-5">
+    <div class="flex flex-col gap-5 lg:flex-row" x-bind:class="fs ? 'min-h-0 flex-1 lg:items-stretch' : 'lg:items-start'">
         <div class="flex w-full flex-col gap-2.5 lg:w-[220px] lg:shrink-0">
             @foreach ($this->games as $game)
                 @php $side = $game->winningSide($this->playerSideMap, $this->singleSet); @endphp
@@ -401,14 +488,14 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
 
             @if ($this->canAddSet)
                 <button type="button" wire:click="addSet"
-                        wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
+                        wire:loading.attr="disabled" wire:target="addSet"
                         class="flex cursor-pointer items-center justify-center gap-2 rounded-[5px] bg-[#3e948d] px-4 py-2.5 text-xs font-bold text-white hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-50">
                     <flux:icon.plus class="size-4" /> Add New Set
                 </button>
             @endif
         </div>
 
-        <div class="flex w-full flex-col gap-5 rounded-[5px] bg-white/10 p-5">
+        <div class="flex w-full flex-col gap-5 rounded-[5px] bg-white/10 p-5" x-bind:class="fs ? 'min-h-0 flex-1' : ''">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 @if ($this->singleSet)
                     <span class="text-xs text-white">First to {{ GameRules::SINGLE_SET_POINTS_TO_WIN }} points wins</span>
@@ -417,13 +504,18 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
                 @endif
 
                 <div class="flex items-center gap-2">
+                    <button type="button" x-show="supported" x-cloak x-on:click="toggle()" x-bind:title="fs ? 'Exit fullscreen' : 'Fullscreen'"
+                            class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-white text-black hover:bg-white/80">
+                        <flux:icon.arrows-pointing-out class="size-4" x-show="!fs" />
+                        <flux:icon.arrows-pointing-in class="size-4" x-show="fs" x-cloak />
+                    </button>
                     <button type="button" wire:click="undoLastRally" title="Undo last point"
-                            wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
+                            wire:loading.attr="disabled" wire:target="undoLastRally"
                             class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-white text-black hover:bg-white/80 disabled:cursor-not-allowed disabled:opacity-40">
                         <flux:icon.arrow-uturn-left class="size-4" />
                     </button>
                     <button type="button" wire:click="redoLastRally" title="Redo point" @disabled(empty($redoStack))
-                            wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
+                            wire:loading.attr="disabled" wire:target="redoLastRally"
                             class="flex size-9 cursor-pointer items-center justify-center rounded-full bg-white text-black hover:bg-white/80 disabled:cursor-not-allowed disabled:opacity-40">
                         <flux:icon.arrow-uturn-right class="size-4" />
                     </button>
@@ -435,18 +527,68 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
                 <span>TEAM B</span>
             </div>
 
-            <div class="grid grid-cols-2 items-center gap-2.5 rounded-[5px] bg-black/40 py-6 text-center text-5xl font-bold text-white">
+            @if ($this->awaitingStart)
+                <div class="grid grid-cols-2 gap-2.5">
+                    @foreach (['A', 'B'] as $side)
+                        @php $otherSide = $side === 'A' ? 'B' : 'A'; @endphp
+                        <div class="flex flex-col gap-2" wire:key="ready-{{ $side }}">
+                            <button type="button" wire:click="toggleReady('{{ $side }}')"
+                                    wire:loading.attr="disabled" wire:target="toggleReady('{{ $side }}')"
+                                    @class([
+                                        'flex cursor-pointer items-center justify-center gap-1.5 rounded-[5px] border px-3 py-2.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50',
+                                        'border-[#9cee69] bg-[#9cee69] text-[#2f6b13]' => $this->isTeamReady($side),
+                                        'border-white/60 bg-transparent text-white hover:bg-white/10' => ! $this->isTeamReady($side),
+                                    ])>
+                                @if ($this->isTeamReady($side))
+                                    <flux:icon.check class="size-4" /> Team {{ $side }} ready
+                                @else
+                                    Ready Team {{ $side }}
+                                @endif
+                            </button>
+
+                            @if ($this->canDeclareWalkover($otherSide))
+                                <button type="button" x-on:click="walkover = '{{ $otherSide }}'"
+                                        class="cursor-pointer rounded-[5px] border border-[#ffb8b8] px-3 py-2 text-[11px] font-bold text-[#ffb8b8] hover:bg-white/10">
+                                    No-show: award win to Team {{ $otherSide }}
+                                </button>
+                            @elseif ($this->isTeamReady($otherSide) && ! $this->isTeamReady($side) && ! $this->scheduledTimePassed)
+                                <p class="text-center text-[10px] text-white/70">
+                                    A no-show can be declared after {{ $match->scheduled_at->format('g:i A') }}.
+                                </p>
+                            @endif
+                        </div>
+                    @endforeach
+                </div>
+
+                <div x-show="walkover" x-cloak class="flex flex-col gap-2 rounded-[5px] border border-[#ffb8b8] bg-black/30 p-3 text-xs text-white">
+                    <p>
+                        Award the match to <span class="font-bold" x-text="'Team ' + walkover"></span> because the other team did not show up?
+                        This ends the match as a walkover and cannot be undone.
+                    </p>
+                    <div class="flex gap-2">
+                        <button type="button" x-on:click="$wire.declareWalkover(walkover)" wire:loading.attr="disabled" wire:target="declareWalkover"
+                                class="cursor-pointer rounded-[5px] bg-[#bd6b6c] px-4 py-2 font-bold text-white disabled:opacity-50">
+                            Confirm walkover
+                        </button>
+                        <button type="button" x-on:click="walkover = null" class="cursor-pointer rounded-[5px] border border-white/60 px-4 py-2 font-bold">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            @endif
+
+            <div class="grid grid-cols-2 items-center gap-2.5 rounded-[5px] bg-black/40 text-center font-bold text-white" x-bind:class="fs ? 'min-h-0 flex-1 text-[22vh] leading-none' : 'py-6 text-5xl'">
                 <span>{{ str_pad((string) $this->currentScores['A'], 2, '0', STR_PAD_LEFT) }}</span>
                 <span>{{ str_pad((string) $this->currentScores['B'], 2, '0', STR_PAD_LEFT) }}</span>
             </div>
 
-            <div class="grid grid-cols-2 gap-2.5">
-                <div class="flex flex-col gap-2">
+            <div class="grid grid-cols-2 gap-2.5" x-bind:class="fs ? 'min-h-0 flex-1' : ''">
+                <div class="flex flex-col gap-2" x-bind:class="fs ? 'min-h-0' : ''">
                     @forelse ($this->teamAPlayers as $index => $player)
                         <button type="button" wire:click="recordRally({{ $player['id'] }})"
                                 @disabled(! $this->currentGame)
-                                wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
-                                class="flex cursor-pointer flex-col items-center gap-1 rounded-[5px] bg-[#caa2ff] px-3 py-4 text-[#5d3198] hover:bg-[#b98cf5] disabled:cursor-not-allowed disabled:opacity-50">
+                                wire:loading.attr="disabled" wire:target="recordRally({{ $player['id'] }})"
+                                x-bind:class="fs ? 'min-h-24 flex-1 justify-center [&_span:last-child]:text-2xl' : ''" class="flex cursor-pointer flex-col items-center gap-1 rounded-[5px] bg-[#caa2ff] px-3 py-4 text-[#5d3198] hover:bg-[#b98cf5] disabled:cursor-not-allowed disabled:opacity-50">
                             <span class="text-[9px] font-medium">Player {{ $index + 1 }}</span>
                             <span class="text-xs font-bold">{{ $player['name'] }}</span>
                         </button>
@@ -455,12 +597,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
                     @endforelse
                 </div>
 
-                <div class="flex flex-col gap-2">
+                <div class="flex flex-col gap-2" x-bind:class="fs ? 'min-h-0' : ''">
                     @forelse ($this->teamBPlayers as $index => $player)
                         <button type="button" wire:click="recordRally({{ $player['id'] }})"
                                 @disabled(! $this->currentGame)
-                                wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
-                                class="flex cursor-pointer flex-col items-center gap-1 rounded-[5px] bg-[#9cee69] px-3 py-4 text-[#2f6b13] hover:bg-[#8ade56] disabled:cursor-not-allowed disabled:opacity-50">
+                                wire:loading.attr="disabled" wire:target="recordRally({{ $player['id'] }})"
+                                x-bind:class="fs ? 'min-h-24 flex-1 justify-center [&_span:last-child]:text-2xl' : ''" class="flex cursor-pointer flex-col items-center gap-1 rounded-[5px] bg-[#9cee69] px-3 py-4 text-[#2f6b13] hover:bg-[#8ade56] disabled:cursor-not-allowed disabled:opacity-50">
                             <span class="text-[9px] font-medium">Player {{ $index + 1 }}</span>
                             <span class="text-xs font-bold">{{ $player['name'] }}</span>
                         </button>
@@ -470,14 +612,21 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
                 </div>
             </div>
 
-            @if ($this->canStartMatch)
-                <button type="button" wire:click="startMatch"
-                        wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
+            @if ($this->awaitingStart)
+                <button type="button" wire:click="startMatch" @disabled(! $this->canStartMatch)
+                        wire:loading.attr="disabled" wire:target="startMatch"
                         class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] py-2.5 text-center text-xs font-bold text-white hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-50">
-                    Start Game
+                    {{ $this->canStartMatch ? 'Start Game' : 'Start Game (mark both teams ready first)' }}
                 </button>
             @endif
         </div>
+    </div>
+
+        <button type="button" wire:click="confirmResults" @disabled(! $this->canConfirmResults)
+                wire:loading.attr="disabled" wire:target="confirmResults"
+                class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] py-2.5 text-center text-xs font-bold text-white hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-50">
+            Confirm Match Results
+        </button>
     </div>
 
     <div class="flex flex-col gap-3 rounded-[5px] bg-white/10 p-4">
@@ -501,17 +650,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
         </div>
     </div>
 
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div class="grid grid-cols-1 gap-3">
         <button type="button" wire:click="openScoresheet"
                 class="w-full cursor-pointer rounded-[5px] bg-[#0b4742] py-2.5 text-center text-xs font-bold text-white hover:bg-[#083530]">
             View Score Sheet
         </button>
 
-        <button type="button" wire:click="confirmResults" @disabled(! $this->canConfirmResults)
-                wire:loading.attr="disabled" wire:target="recordRally,undoLastRally,redoLastRally,addSet,startMatch,confirmResults"
-                class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] py-2.5 text-center text-xs font-bold text-white hover:bg-[#0d5750] disabled:cursor-not-allowed disabled:opacity-50">
-            Confirm Match Results
-        </button>
     </div>
 
     <flux:modal name="rally-scoresheet" wire:close="closeScoresheet" class="w-full max-w-6xl dark:bg-white! dark:ring-black/5!">

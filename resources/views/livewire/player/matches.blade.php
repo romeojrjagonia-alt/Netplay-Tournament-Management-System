@@ -11,6 +11,8 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     public function mount(): void
     {
         abort_unless(auth()->user()->isPlayer(), 403);
+
+        auth()->user()->ensurePlayer();
     }
 
     public function selectTab(string $tab): void
@@ -120,6 +122,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
                 'outcome' => $mySide === null || $winnerSide === null ? null : ($winnerSide === $mySide ? 'win' : 'lose'),
                 'winnerSide' => $winnerSide,
                 'winnerName' => $winnerSide ? $match->sideLabel($winnerSide) : null,
+                'walkover' => $match->isWalkover(),
                 'setsPlayed' => count($games),
                 'gamesWonA' => $gamesWonA,
                 'gamesWonB' => $gamesWonB,

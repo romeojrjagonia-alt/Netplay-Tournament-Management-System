@@ -8,16 +8,20 @@ use App\Mail\PlayerLinkDecided;
 use App\Models\Player;
 use App\Models\PlayerLinkRequest;
 use App\Models\User;
+use App\Rules\AccountPassword;
 use App\Support\Players\DuplicatePlayerFinder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Component {
+    use WithFileUploads;
+
     public const ROLES = ['admin', 'umpire', 'player'];
 
     public bool $showFormModal = false;
@@ -28,7 +32,27 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
     public ?int $editingUserId = null;
 
-    public string $name = '';
+    public string $firstName = '';
+
+    public string $lastName = '';
+
+    public string $middleInitial = '';
+
+    public string $birthDate = '';
+
+    public string $phoneNumber = '';
+
+    public string $gender = '';
+
+    public string $purok = '';
+
+    public string $city = '';
+
+    public string $province = '';
+
+    public string $club = '';
+
+    public $profilePhoto = null;
 
     public string $email = '';
 
@@ -64,29 +88,63 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
     public function openEditModal(int $userId): void
     {
-        $user = User::findOrFail($userId);
+        $user = User::with('player')->findOrFail($userId);
+        $player = $user->player;
 
         $this->resetForm();
         $this->editingUserId = $user->id;
-        $this->name = $user->name;
+
+        [$this->firstName, $this->lastName, $this->middleInitial] = $this->splitName($user->name);
         $this->email = $user->email;
         $this->role = $user->role;
+
+        if ($player) {
+            $this->birthDate = $player->birth_date?->format('Y-m-d') ?? '';
+            $this->phoneNumber = $player->phone_number ?? '';
+            $this->gender = in_array($player->gender, ['male', 'female'], true) ? $player->gender : '';
+            $this->club = $player->club ?? '';
+
+            // Addresses are stored as "purok, city, province".
+            $parts = array_map('trim', explode(',', (string) $player->address));
+
+            if (count($parts) === 3) {
+                [$this->purok, $this->city, $this->province] = $parts;
+            } else {
+                $this->purok = (string) $player->address;
+            }
+        }
+
         $this->showFormModal = true;
     }
 
     /**
      * Accounts created or edited here are trusted: the admin vouches for the
-     * email address, so new accounts are marked verified straight away.
+     * email address, so new accounts are marked verified straight away. The
+     * form mirrors sign-up, and every account gets a player record like a
+     * self sign-up does. The profile fields are required when creating; when
+     * editing they only need to be valid if filled in, so older accounts
+     * with an empty profile can still be edited.
      */
     public function save(): void
     {
         $editing = $this->editingUserId !== null ? User::findOrFail($this->editingUserId) : null;
+        $profile = $editing ? 'nullable' : 'required';
 
         $data = $this->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'firstName' => ['required', 'string', 'max:255'],
+            'lastName' => ['required', 'string', 'max:255'],
+            'middleInitial' => ['nullable', 'string', 'max:5'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($editing?->id)],
             'role' => ['required', Rule::in(self::ROLES)],
-            'password' => [$editing ? 'nullable' : 'required', 'confirmed', Password::min(8)],
+            'password' => [$editing ? 'nullable' : 'required', 'confirmed', new AccountPassword],
+            'birthDate' => [$profile, 'date', 'before:today'],
+            'phoneNumber' => [$profile, 'string', 'max:255'],
+            'gender' => [$profile, 'in:male,female'],
+            'purok' => [$profile, 'string', 'max:255'],
+            'city' => [$profile, 'string', 'max:255'],
+            'province' => [$profile, 'string', 'max:255'],
+            'club' => ['nullable', 'string', 'max:255'],
+            'profilePhoto' => ['nullable', 'image', 'max:2048'],
         ]);
 
         if ($editing?->is(auth()->user()) && $data['role'] !== 'admin') {
@@ -95,8 +153,14 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
             return;
         }
 
+        $fullName = collect([
+            $data['firstName'],
+            filled($data['middleInitial']) ? rtrim($data['middleInitial'], '.').'.' : null,
+            $data['lastName'],
+        ])->filter()->implode(' ');
+
         $attributes = [
-            'name' => $data['name'],
+            'name' => $fullName,
             'email' => $data['email'],
             'role' => $data['role'],
         ];
@@ -107,19 +171,16 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
         if ($editing) {
             $editing->update($attributes);
-
-            // The player's contact email follows the account email.
-            if ($editing->wasChanged('email')) {
-                $editing->player?->update(['email' => $editing->email]);
-            }
-
+            $user = $editing;
             $message = "{$data['email']} was updated.";
             $title = 'User updated';
         } else {
-            User::create($attributes + ['email_verified_at' => now()]);
+            $user = User::create($attributes + ['email_verified_at' => now()]);
             $message = "Account created for {$data['email']}. Share the password with them securely.";
             $title = 'User created';
         }
+
+        $this->saveProfile($user, $data, $fullName);
 
         $this->showFormModal = false;
         $this->resetForm();
@@ -128,6 +189,64 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         $this->dispatch('system-message', title: $title, message: $message, variant: 'success');
     }
 
+    /**
+     * The player record every account has (as with sign-up): the contact
+     * email follows the account, and only fields the admin filled in change.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function saveProfile(User $user, array $data, string $fullName): void
+    {
+        $player = $user->ensurePlayer();
+
+        $attributes = [
+            'name' => $fullName,
+            'email' => $user->email,
+            'club' => $data['club'] !== '' ? $data['club'] : null,
+        ];
+
+        foreach (['birthDate' => 'birth_date', 'gender' => 'gender', 'phoneNumber' => 'phone_number'] as $field => $column) {
+            if (filled($data[$field])) {
+                $attributes[$column] = $data[$field];
+            }
+        }
+
+        if (filled($data['purok']) && filled($data['city']) && filled($data['province'])) {
+            $attributes['address'] = "{$data['purok']}, {$data['city']}, {$data['province']}";
+        }
+
+        if ($this->profilePhoto) {
+            $previousPhoto = $player->photo_path;
+            $attributes['photo_path'] = $this->profilePhoto->store('player-photos', 'public');
+
+            if ($previousPhoto) {
+                Storage::disk('public')->delete($previousPhoto);
+            }
+        }
+
+        $player->update($attributes);
+    }
+
+    /**
+     * Best-effort split of a combined "First M. Last" name back into its
+     * parts, for pre-filling the form.
+     *
+     * @return array{0: string, 1: string, 2: string} [first, last, middleInitial]
+     */
+    private function splitName(string $name): array
+    {
+        $parts = explode(' ', trim($name));
+
+        if (count($parts) >= 3 && str_ends_with($parts[1], '.') && mb_strlen($parts[1]) <= 3) {
+            return [$parts[0], implode(' ', array_slice($parts, 2)), rtrim($parts[1], '.')];
+        }
+
+        if (count($parts) >= 2) {
+            return [$parts[0], implode(' ', array_slice($parts, 1)), ''];
+        }
+
+        return [$parts[0] ?? '', '', ''];
+    }
     public function delete(int $userId): void
     {
         $user = User::findOrFail($userId);
@@ -357,7 +476,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
     private function resetForm(): void
     {
-        $this->reset('editingUserId', 'name', 'email', 'role', 'password', 'password_confirmation');
+        $this->reset('editingUserId', 'firstName', 'lastName', 'middleInitial', 'email', 'role', 'password', 'password_confirmation', 'birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province', 'club', 'profilePhoto');
         $this->resetValidation();
     }
 }; ?>
@@ -601,17 +720,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         </div>
     </flux:modal>
 
-    <flux:modal wire:model.self="showFormModal" class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
-        <form wire:submit="save" class="flex flex-col gap-5">
+    <flux:modal wire:model.self="showFormModal" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
+        <form wire:submit="save" class="flex max-h-[80vh] flex-col gap-5 text-black">
             <div class="flex flex-col gap-1">
-                <h2 class="text-base font-bold text-black">{{ $editingUserId ? 'Edit User' : 'Add User' }}</h2>
+                <h2 class="text-base font-bold">{{ $editingUserId ? 'Edit User' : 'Add User' }}</h2>
                 <p class="text-sm text-black/70">
-                    {{ $editingUserId ? 'Update this account. Leave the password blank to keep the current one.' : 'Accounts added here are verified automatically and can sign in right away.' }}
+                    {{ $editingUserId ? 'Update this account. Leave the password blank to keep the current one.' : 'The same details as sign-up. Accounts added here are verified automatically and can sign in right away.' }}
                 </p>
             </div>
 
-            <div class="flex flex-col gap-3">
-                <label class="flex flex-col gap-1 text-[11px] text-black">
+            <div class="flex min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+                <label class="flex flex-col gap-1 text-[11px]">
                     Role
                     <select wire:model="role" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
                         <option value="admin">Admin</option>
@@ -620,32 +739,102 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                     </select>
                     @error('role') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                 </label>
-                <label class="flex flex-col gap-1 text-[11px] text-black">
-                    Full name
-                    <input type="text" wire:model="name" autocomplete="off" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
-                    @error('name') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
-                </label>
-                <label class="flex flex-col gap-1 text-[11px] text-black">
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        First name
+                        <input type="text" wire:model="firstName" autocomplete="off" placeholder="e.g. Juan" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('firstName') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Last name
+                        <input type="text" wire:model="lastName" autocomplete="off" placeholder="e.g. Cruz" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('lastName') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        M.I
+                        <input type="text" wire:model="middleInitial" autocomplete="off" placeholder="e.g. D" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('middleInitial') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                </div>
+
+                <label class="flex flex-col gap-1 text-[11px]">
                     Email
                     <input type="email" wire:model="email" autocomplete="off" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
                     @error('email') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                 </label>
-                <label class="flex flex-col gap-1 text-[11px] text-black">
-                    {{ $editingUserId ? 'New password (optional)' : 'Password' }}
-                    <input type="password" wire:model="password" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
-                    @error('password') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        {{ $editingUserId ? 'New password (optional)' : 'Password' }}
+                        <input type="password" wire:model="password" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('password') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Confirm password
+                        <input type="password" wire:model="password_confirmation" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                    </label>
+                </div>
+                <p class="text-[10px] text-black/60">{{ \App\Rules\AccountPassword::HINT }}</p>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Birthdate
+                        <input type="date" wire:model="birthDate" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('birthDate') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Gender
+                        <select wire:model="gender" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            <option value="" hidden>Select gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                        </select>
+                        @error('gender') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Phone number
+                        <input type="text" wire:model="phoneNumber" placeholder="e.g. 09xxxxxxxxx" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('phoneNumber') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                </div>
+
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Purok / street
+                        <input type="text" wire:model="purok" placeholder="e.g. Purok 5" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('purok') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        City
+                        <input type="text" wire:model="city" placeholder="e.g. Ozamiz City" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('city') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                    <label class="flex flex-col gap-1 text-[11px]">
+                        Province
+                        <input type="text" wire:model="province" placeholder="e.g. Misamis Occidental" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        @error('province') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                    </label>
+                </div>
+
+                <label class="flex flex-col gap-1 text-[11px]">
+                    Club (optional)
+                    <input type="text" wire:model="club" placeholder="e.g. OBC Badminton Club" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                    @error('club') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                 </label>
-                <label class="flex flex-col gap-1 text-[11px] text-black">
-                    Confirm password
-                    <input type="password" wire:model="password_confirmation" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
-                </label>
+
+                <div class="flex flex-col gap-1 text-[11px]">
+                    Profile photo (optional)
+                    <input type="file" wire:model="profilePhoto" accept="image/*" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                    @error('profilePhoto') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                </div>
             </div>
 
             <div class="flex justify-end gap-2">
                 <button type="button" wire:click="$set('showFormModal', false)" class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-2 text-xs font-medium text-[#6b6b6b]">
                     Cancel
                 </button>
-                <button type="submit" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-4 py-2 text-xs font-medium text-white">
+                <button type="submit" wire:loading.attr="disabled" wire:target="save,profilePhoto" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-4 py-2 text-xs font-medium text-white disabled:opacity-60">
                     {{ $editingUserId ? 'Save Changes' : 'Add User' }}
                 </button>
             </div>

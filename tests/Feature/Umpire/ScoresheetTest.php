@@ -230,3 +230,19 @@ test('a long game ends on the winning team\'s last numbered cell instead of bein
         ->and($set['scorers']['B'])->toHaveKey(30)
         ->and($set['scorers']['B'])->not->toHaveKey(31);
 });
+
+test('the sheet of a walkover names the awarded team as the winner', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = scoresheetMatch($umpire);
+    $match->games()->delete();
+    $match->update([
+        'status' => 'completed',
+        'result_type' => 'walkover',
+        'winner_application_id' => $match->applicationForSide('B')->id,
+    ]);
+
+    $this->actingAs($umpire);
+
+    $this->get(route('umpire.matches.scoresheet', $match))->assertSee('Team 2 (walkover)');
+    $this->get(route('umpire.matches.scoresheet.download', $match))->assertSee('Team 2 (walkover)', false);
+});

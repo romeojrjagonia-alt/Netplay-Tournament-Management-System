@@ -85,7 +85,8 @@ class MatchObserver
         $matches->loadMissing('matchApplications.application.applicationPlayers');
 
         // A bye has a lone entry and no opponent, so it is not a played match.
-        if ($matches->matchApplications->count() < 2) {
+        // Neither is a walkover: nobody played, so no wins or losses are credited.
+        if ($matches->matchApplications->count() < 2 || $matches->isWalkover()) {
             return;
         }
 

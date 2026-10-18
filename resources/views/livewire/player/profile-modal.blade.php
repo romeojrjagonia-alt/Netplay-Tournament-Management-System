@@ -166,6 +166,8 @@ new class extends Component {
     #[Computed]
     public function player(): Player
     {
+        auth()->user()->ensurePlayer();
+
         return auth()->user()->player()->with('statistic')->firstOrFail();
     }
 
