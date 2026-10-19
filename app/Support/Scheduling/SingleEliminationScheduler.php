@@ -26,13 +26,19 @@ class SingleEliminationScheduler
      * admin has placed (`draw_position`) go exactly where they were put; the
      * rest are seeded in approval order into the remaining slots.
      *
+     * With `$timetable`, the playable matches are also given a date, time and
+     * court round by round from the event's schedule. If they don't all fit,
+     * nothing is generated unless `$allowUndated` lets the overflow stay
+     * undated.
+     *
      * @return int the number of matches created (byes included)
      *
      * @throws InvalidArgumentException when the draw can't be generated
+     * @throws InsufficientSlotsException when the matches don't fit the event's time slots
      */
-    public function generate(TournamentCategory $tournamentCategory): int
+    public function generate(TournamentCategory $tournamentCategory, ?TimetableOptions $timetable = null, bool $allowUndated = false): int
     {
-        return DB::transaction(function () use ($tournamentCategory): int {
+        return DB::transaction(function () use ($tournamentCategory, $timetable, $allowUndated): int {
             if ($tournamentCategory->hasGeneratedDraw()) {
                 throw new InvalidArgumentException('A schedule has already been generated for this category.');
             }
@@ -93,6 +99,14 @@ class SingleEliminationScheduler
             // Completing a bye advances its lone entry into round 2.
             foreach ($byes as [$match, $applicationId]) {
                 $match->update(['status' => 'completed', 'winner_application_id' => $applicationId]);
+            }
+
+            if ($timetable !== null) {
+                $unplaced = app(MatchTimetable::class)->assign($tournamentCategory, $timetable);
+
+                if ($unplaced > 0 && ! $allowUndated) {
+                    throw new InsufficientSlotsException($unplaced, $created - count($byes));
+                }
             }
 
             return $created;

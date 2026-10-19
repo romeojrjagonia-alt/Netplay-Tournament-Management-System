@@ -2,13 +2,16 @@
 
 use App\Actions\Applications\RerouteApplication;
 use App\Actions\Matches\NotifyPlayersOfSchedule;
+use App\Actions\Matches\ResetDraw;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
 use App\Support\Bracket\BracketsViewerData;
+use App\Support\Scheduling\InsufficientSlotsException;
 use App\Support\Scheduling\RoundRobinScheduler;
 use App\Support\Scheduling\SingleEliminationScheduler;
+use App\Support\Scheduling\TimetableOptions;
 use App\Support\Standings\RoundRobinStandings;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -41,6 +44,16 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public ?int $editUmpireId = null;
 
+    public bool $autoDate = true;
+
+    public string $matchDuration = '45';
+
+    public string $breakMinutes = '0';
+
+    public string $courtCount = '1';
+
+    public bool $canGenerateUndated = false;
+
     public function mount(Tournament $tournament, TournamentCategory $tournamentCategory): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -58,15 +71,57 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->redirect(route('admin.events.schedule.show', [$this->tournament, $category]), navigate: true);
     }
 
+    public function updated(string $property): void
+    {
+        if (in_array($property, ['autoDate', 'matchDuration', 'breakMinutes', 'courtCount'], true)) {
+            $this->canGenerateUndated = false;
+        }
+    }
+
     public function generate(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, false);
+    }
+
+    /**
+     * Generate even though some matches don't fit the event's time slots;
+     * those are left without a date and time for the admin to set by hand.
+     */
+    public function generateWithUndatedOverflow(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, true);
+    }
+
+    private function runGeneration(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination, bool $allowUndated): void
     {
         abort_unless(in_array($this->tournament->format, ['round_robin', 'single_elimination'], true), 403);
 
         $scheduler = $this->tournament->format === 'round_robin' ? $roundRobin : $singleElimination;
+        $timetable = null;
 
+        if ($this->autoDate) {
+            $this->validate([
+                'matchDuration' => ['required', 'integer', 'min:5', 'max:240'],
+                'breakMinutes' => ['required', 'integer', 'min:0', 'max:120'],
+                'courtCount' => ['required', 'integer', 'min:1', 'max:50'],
+            ], attributes: [
+                'matchDuration' => 'match length',
+                'breakMinutes' => 'break',
+                'courtCount' => 'number of courts',
+            ]);
+
+            $timetable = new TimetableOptions((int) $this->matchDuration, (int) $this->breakMinutes, (int) $this->courtCount);
+        }
+
+        $this->canGenerateUndated = false;
 
         try {
-            $count = $scheduler->generate($this->tournamentCategory);
+            $count = $scheduler->generate($this->tournamentCategory, $timetable, $allowUndated);
+        } catch (InsufficientSlotsException $exception) {
+            $this->canGenerateUndated = true;
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
         } catch (InvalidArgumentException $exception) {
             $this->say($exception->getMessage(), 'danger');
 
@@ -74,7 +129,30 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         }
 
         $this->cancelReroute();
-        $this->say("Schedule generated: {$count} matches created.");
+        unset($this->hasDraw, $this->rounds, $this->pendingNotificationCount, $this->drawChanges);
+        $this->say("Schedule generated: {$count} matches created.".($timetable ? ' Dates, times and courts were assigned automatically.' : ''));
+    }
+
+    /**
+     * Throw the generated draw away so it can be rebuilt with the current
+     * entries. Single elimination returns to the pairing editor with the
+     * admin's arrangement intact.
+     */
+    public function regenerate(ResetDraw $resetDraw): void
+    {
+        try {
+            $resetDraw->handle($this->tournamentCategory);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
+        }
+
+        $this->reset('canGenerateUndated');
+        unset($this->hasDraw, $this->rounds, $this->pendingNotificationCount, $this->drawChanges, $this->entries, $this->bracketSlots);
+        $this->say($this->tournament->format === 'single_elimination'
+            ? 'Schedule cleared. Adjust the pairings if needed, then generate again.'
+            : 'Schedule cleared. Review the entries, then generate again.');
     }
 
     /**
@@ -331,6 +409,24 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     }
 
     /**
+     * How the approved entries differ from those the generated draw was built
+     * from, and whether regenerating is still possible.
+     *
+     * @return array{added: int, removed: int, outOfDate: bool, started: bool}
+     */
+    #[Computed]
+    public function drawChanges(): array
+    {
+        $changes = $this->tournamentCategory->drawEntryChanges();
+
+        return [
+            ...$changes,
+            'outOfDate' => $changes['added'] > 0 || $changes['removed'] > 0,
+            'started' => $this->tournamentCategory->hasStartedMatches(),
+        ];
+    }
+
+    /**
      * Matches grouped by round.
      *
      * @return Collection<int, Collection<int, \App\Models\Matches>>
@@ -377,7 +473,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         return [
             ...$destination->eligibilityIssuesFor($application),
-            'destination_has_draw' => $destination->hasGeneratedDraw(),
+            'destination_has_draw' => $destination->hasStartedMatches(),
             'fee_changed' => (float) $this->tournamentCategory->registration_fee !== (float) $destination->registration_fee,
             'from_fee' => (string) $this->tournamentCategory->registration_fee,
             'to_fee' => (string) $destination->registration_fee,
@@ -451,7 +547,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                     type="button"
                     x-on:click="$dispatch('system-confirm', {
                         title: 'Generate schedule?',
-                        message: @js('Generate the '.str_replace('_', ' ', $tournament->format).' schedule? This can\'t be undone, and entries can no longer be added or moved afterward.'),
+                        message: @js('Generate the '.str_replace('_', ' ', $tournament->format).' schedule? If entries change afterward, you can regenerate it as long as no match has started.'),
                         confirmLabel: 'Generate',
                         confirm: () => $wire.generate(),
                     })"
@@ -465,6 +561,51 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @if ($this->entries->count() < 2)
                 <p class="text-xs text-black/60">At least 2 confirmed entries are needed to generate a schedule.</p>
             @endif
+
+            <div class="flex flex-col gap-3 rounded-[10px] border border-black/10 p-4">
+                <label class="flex items-center gap-2 text-sm font-bold text-black">
+                    <input type="checkbox" wire:model.live="autoDate" class="size-[15px] rounded-[4px] border-2 border-[#0b4742]">
+                    Auto-assign dates, times and courts
+                </label>
+
+                @if ($autoDate)
+                    <p class="text-xs text-black/60">
+                        Uses the event's {{ $tournament->specific_days ?: 'days' }}
+                        @if ($tournament->time) from {{ $tournament->time }} @endif
+                        between {{ $tournament->date_start->format('M j') }} and {{ $tournament->date_end->format('M j, Y') }}.
+                        @if ($tournament->format === 'single_elimination')
+                            Rounds are scheduled in order; a round starts only after the previous one ends.
+                        @endif
+                    </p>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Match length (min)
+                            <input type="number" min="5" max="240" wire:model="matchDuration" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('matchDuration') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Break between (min)
+                            <input type="number" min="0" max="120" wire:model="breakMinutes" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('breakMinutes') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Courts
+                            <input type="number" min="1" max="50" wire:model="courtCount" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('courtCount') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
+                @endif
+
+                @if ($canGenerateUndated)
+                    <div class="flex flex-col gap-2 rounded-[8px] bg-amber-50 p-3">
+                        <p class="text-xs text-amber-800">Not everything fits. You can generate anyway and set the remaining matches' times by hand, or unpublish the event and widen its dates, days or time window.</p>
+                        <button type="button" wire:click="generateWithUndatedOverflow" class="w-fit cursor-pointer rounded-[5px] bg-amber-600 px-4 py-2 text-xs font-medium text-white">
+                            Generate anyway, leave the overflow undated
+                        </button>
+                    </div>
+                @endif
+            </div>
 
             @if ($reroutingApplicationId)
                 <div class="flex flex-col gap-3 rounded-[10px] border border-[#3e948d] bg-[#eaf4f3] p-4">
@@ -487,7 +628,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                         @endif
 
                         @if ($issues['destination_has_draw'])
-                            <p class="text-xs font-medium text-red-700">The destination category already has a generated schedule.</p>
+                            <p class="text-xs font-medium text-red-700">A match has already started in the destination category, so entries can no longer be moved into it.</p>
                         @endif
 
                         @if ($issues['ineligible_players']->isNotEmpty())
@@ -602,6 +743,42 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @endif
         </div>
     @else
+        @if ($this->drawChanges['outOfDate'])
+            <div class="flex flex-wrap items-center justify-between gap-4 rounded-[10px] bg-amber-50 p-4">
+                <div class="flex flex-col gap-1">
+                    <span class="text-sm font-bold text-amber-900">Entries changed since this schedule was generated</span>
+                    <span class="text-xs text-amber-800">
+                        @if ($this->drawChanges['added'] > 0)
+                            {{ $this->drawChanges['added'] }} {{ Str::plural('entry', $this->drawChanges['added']) }} not in the schedule.
+                        @endif
+                        @if ($this->drawChanges['removed'] > 0)
+                            {{ $this->drawChanges['removed'] }} scheduled {{ Str::plural('entry', $this->drawChanges['removed']) }} no longer confirmed here.
+                        @endif
+                        @if ($this->drawChanges['started'])
+                            A match has already started, so the schedule can no longer be regenerated.
+                        @else
+                            Regenerating clears every match date, court and umpire in this category.
+                        @endif
+                    </span>
+                </div>
+
+                @unless ($this->drawChanges['started'])
+                    <button
+                        type="button"
+                        x-on:click="$dispatch('system-confirm', {
+                            title: 'Regenerate schedule?',
+                            message: 'This deletes the current matches, including any dates, courts and umpires set for them, and returns to the entry list so you can generate a new schedule.',
+                            confirmLabel: 'Regenerate',
+                            confirm: () => $wire.regenerate(),
+                        })"
+                        class="cursor-pointer rounded-[5px] bg-amber-600 px-5 py-2 text-xs font-medium text-white"
+                    >
+                        Regenerate schedule
+                    </button>
+                @endunless
+            </div>
+        @endif
+
         @if ($tournament->format === 'single_elimination')
             <div
                 wire:ignore

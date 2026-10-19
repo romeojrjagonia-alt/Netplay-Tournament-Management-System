@@ -77,6 +77,59 @@ class TournamentCategory extends Model
     }
 
     /**
+     * Whether any real match has begun or finished (a BYE auto-completes at
+     * generation, so it doesn't count). Once true, the draw can't be
+     * regenerated without destroying results.
+     */
+    public function hasStartedMatches(): bool
+    {
+        return $this->matches()
+            ->where(fn (Builder $query) => $query
+                ->whereHas('games')
+                ->orWhere(fn (Builder $started) => $started
+                    ->where('status', '!=', 'scheduled')
+                    ->has('matchApplications', '>=', 2)))
+            ->exists();
+    }
+
+    /**
+     * How the approved entries differ from the entries the generated draw was
+     * built from: `added` have no match yet (newly approved or rerouted in),
+     * `removed` still sit in the draw but are no longer approved here
+     * (withdrawn, rejected or rerouted out).
+     *
+     * @return array{added: int, removed: int}
+     */
+    public function drawEntryChanges(): array
+    {
+        $drawn = MatchApplication::query()
+            ->whereIn('match_id', $this->matches()->select('id'))
+            ->pluck('application_id')
+            ->unique();
+
+        $approved = $this->playerApplications()->where('status', 'approved')->pluck('id');
+
+        return [
+            'added' => $approved->diff($drawn)->count(),
+            'removed' => $drawn->diff($approved)->count(),
+        ];
+    }
+
+    /**
+     * A draw exists but the category's entries have changed since.
+     */
+    public function isDrawOutOfDate(): bool
+    {
+        if (! $this->hasGeneratedDraw()) {
+            return false;
+        }
+
+        $changes = $this->drawEntryChanges();
+
+        return $changes['added'] > 0 || $changes['removed'] > 0;
+    }
+
+    /**
      * Whether `$application` could be moved into this category.
      *
      * `team_size_mismatch` is a hard block; `ineligible_players` (players

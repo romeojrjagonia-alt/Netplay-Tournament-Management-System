@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Matches\ResetDraw;
 use App\Models\Tournament;
 use App\Support\Admin\ManagesEventDetailsForm;
 use Livewire\Attributes\Layout;
@@ -24,7 +25,27 @@ new #[Layout('components.layouts.admin', ['title' => 'Edit Event'])] class exten
     {
         abort_if($this->tournament->is_published, 403);
 
-        $this->saveDetails($this->validateDetails());
+        $data = $this->validateDetails();
+
+        $clearsSchedule = $this->changesGeneratedSchedule($data)
+            && $this->tournament->tournamentCategories()->whereHas('matches')->exists();
+
+        if ($clearsSchedule && app(ResetDraw::class)->isBlockedFor($this->tournament->load('tournamentCategories'))) {
+            $this->addError('dateStart', 'A match in this event has already started, so its dates, days, time window and format can no longer be changed.');
+
+            return;
+        }
+
+        $this->saveDetails($data);
+
+        if ($clearsSchedule) {
+            app(ResetDraw::class)->forTournament($this->tournament);
+
+            // Stay put so the admin sees why the schedules are gone.
+            $this->dispatch('system-message', title: 'Schedules cleared', message: 'The event\'s dates, days, time window or format changed, so every generated schedule was cleared. Publish the event and generate each category\'s schedule again.', variant: 'success');
+
+            return;
+        }
 
         $this->redirect(route('admin.events.show', $this->tournament), navigate: true);
     }

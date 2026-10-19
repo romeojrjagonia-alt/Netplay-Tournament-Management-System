@@ -144,7 +144,55 @@ trait ManagesEventDetailsForm
      */
     protected function saveDetails(array $data): void
     {
-        $attributes = [
+        $attributes = $this->detailAttributes($data);
+
+        if ($this->poster) {
+            // Replacing an existing cover — remove the old file so it
+            // doesn't linger orphaned on disk (NETPLAY.md 4.9).
+            if ($this->tournament?->poster_path) {
+                Storage::disk('public')->delete($this->tournament->poster_path);
+            }
+
+            $attributes['poster_path'] = $this->poster->store('tournament-posters', 'public');
+        }
+
+        if ($this->tournament) {
+            $this->tournament->update($attributes);
+        } else {
+            $this->tournament = Tournament::create([...$attributes, 'status' => 'draft']);
+        }
+    }
+
+    /**
+     * Whether saving `$data` would change anything a generated schedule
+     * depends on: the date range, daily time window, days of the week or
+     * format.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function changesGeneratedSchedule(array $data): bool
+    {
+        if (! $this->tournament) {
+            return false;
+        }
+
+        $new = $this->detailAttributes($data);
+        $current = $this->tournament;
+
+        return $current->date_start->format('Y-m-d') !== Carbon::parse($new['date_start'])->format('Y-m-d')
+            || $current->date_end->format('Y-m-d') !== Carbon::parse($new['date_end'])->format('Y-m-d')
+            || $current->time !== $new['time']
+            || $current->specific_days !== $new['specific_days']
+            || $current->format !== $new['format'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function detailAttributes(array $data): array
+    {
+        return [
             'name' => $data['name'],
             'format' => $data['format'],
             'sport' => 'Badminton',
@@ -163,21 +211,5 @@ trait ManagesEventDetailsForm
                 ? (array_values(array_filter([$data['tiebreakerFirst'] ?? null, $data['tiebreakerSecond'] ?? null])) ?: null)
                 : null,
         ];
-
-        if ($this->poster) {
-            // Replacing an existing cover — remove the old file so it
-            // doesn't linger orphaned on disk (NETPLAY.md 4.9).
-            if ($this->tournament?->poster_path) {
-                Storage::disk('public')->delete($this->tournament->poster_path);
-            }
-
-            $attributes['poster_path'] = $this->poster->store('tournament-posters', 'public');
-        }
-
-        if ($this->tournament) {
-            $this->tournament->update($attributes);
-        } else {
-            $this->tournament = Tournament::create([...$attributes, 'status' => 'draft']);
-        }
     }
 }
