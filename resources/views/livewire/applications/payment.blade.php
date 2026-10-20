@@ -128,6 +128,11 @@ new #[Layout('components.layouts.public', ['title' => 'Pay Registration Fee'])] 
             Pay the registration fee through GCash, then upload a screenshot of the payment and enter its reference number.
         </p>
 
+        <div class="flex flex-col items-center gap-2">
+            <img src="{{ asset('images/payment/gcash-qr.png') }}" alt="GCash payment QR code" class="size-44 rounded-[5px] border border-[#d3d3d3] bg-white p-2">
+            <span class="text-[11px] text-black/60">Scan to pay with GCash</span>
+        </div>
+
         <form wire:submit="submitPayment" class="flex flex-col gap-[15px] rounded-[5px] border border-[#138177] bg-white p-[15px]">
             <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
                 <x-player.registration-field label="GCash Reference Number" model="referenceNumber" placeholder="e.g. 1234 567 890123" />
