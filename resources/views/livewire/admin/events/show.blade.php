@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Applications\CancelApplication;
 use App\Actions\Tournaments\DeleteTournament;
 use App\Models\Category;
 use App\Models\PaymentDetail;
@@ -232,6 +233,29 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     public function closeCategory(): void
     {
         $this->viewingCategoryId = null;
+    }
+
+    /**
+     * Cancel a walk-in's (or anyone's) pending application on their behalf.
+     * Same rule as for players: nothing awaiting review or verified yet.
+     */
+    public function cancelApplication(int $applicationId): void
+    {
+        $application = PlayerApplication::query()
+            ->whereIn('tournament_category_id', $this->tournament->tournamentCategories()->select('id'))
+            ->findOrFail($applicationId);
+
+        try {
+            app(CancelApplication::class)->handle($application);
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch('system-message', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        unset($this->categories, $this->viewingCategory);
+
+        $this->dispatch('system-message', message: 'Application cancelled.', variant: 'success');
     }
 
     /**
@@ -479,6 +503,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
                             <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold">
                                 <span class="rounded-full bg-[#eaf4f3] px-3 py-1 text-[#0b4742]">{{ $application->status_label }}</span>
                                 <span class="rounded-full bg-[#f1f1f1] px-3 py-1">Payment: {{ $latestPayment ? ucfirst($latestPayment->payment_status) : 'None' }}</span>
+                                @if ($application->canBeCancelled())
+                                    <button type="button"
+                                            x-on:click="$dispatch('system-confirm', { title: 'Cancel this application?', message: 'It will be removed and the slot released. This can\'t be undone.', variant: 'danger', confirmLabel: 'Cancel application', confirm: () => $wire.cancelApplication({{ $application->id }}) })"
+                                            class="cursor-pointer rounded-full border border-[#bd3b3c] px-3 py-1 text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                                        Cancel
+                                    </button>
+                                @endif
                             </div>
                         </div>
                     @empty

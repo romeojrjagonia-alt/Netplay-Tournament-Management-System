@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Applications\CancelApplication;
 use App\Models\PlayerApplication;
 use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Attributes\Computed;
@@ -12,6 +13,8 @@ new class extends Component {
     /** The code that was successfully looked up; locked so it can't be swapped from the browser. */
     #[Locked]
     public ?string $foundCode = null;
+
+    public bool $confirmingCancel = false;
 
     public function search(): void
     {
@@ -39,7 +42,8 @@ new class extends Component {
         }
 
         $this->foundCode = $code;
-        unset($this->application);
+        $this->confirmingCancel = false;
+        unset($this->application, $this->canCancel);
 
         $this->dispatch('modal-show', name: 'application-lookup');
     }
@@ -60,6 +64,37 @@ new class extends Component {
             ])
             ->where('reference_code', $this->foundCode)
             ->first();
+    }
+
+    #[Computed]
+    public function canCancel(): bool
+    {
+        return (bool) $this->application?->canBeCancelled();
+    }
+
+    /**
+     * Withdraw the looked-up application. The reference code is the
+     * applicant's proof of ownership, same as for paying.
+     */
+    public function cancelApplication(): void
+    {
+        abort_unless($this->canCancel, 403);
+
+        try {
+            app(CancelApplication::class)->handle($this->application);
+        } catch (\InvalidArgumentException $e) {
+            $this->addError('code', $e->getMessage());
+
+            return;
+        }
+
+        $this->foundCode = null;
+        $this->confirmingCancel = false;
+        $this->reset('code');
+        unset($this->application, $this->canCancel, $this->progress);
+
+        $this->dispatch('modal-close', name: 'application-lookup');
+        $this->dispatch('system-message', title: 'Application cancelled', message: 'Your application was cancelled and your slot released.', variant: 'success');
     }
 
     /**
@@ -196,6 +231,25 @@ new class extends Component {
                        class="rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-xs font-medium text-white transition hover:bg-[#0d5750]">
                         {{ $progress['payLabel'] }}
                     </a>
+                @endif
+
+                @if ($this->canCancel)
+                    @if ($confirmingCancel)
+                        <div class="flex flex-col gap-3 rounded-[5px] bg-[#f6d1d2] p-4">
+                            <p class="text-xs text-[#8a3b3c]">Cancel this application? It will be removed and your slot released. This can't be undone.</p>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" wire:click="$set('confirmingCancel', false)"
+                                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-1.5 text-xs text-black">Keep it</button>
+                                <button type="button" wire:click="cancelApplication"
+                                        class="cursor-pointer rounded-[5px] bg-[#bd3b3c] px-4 py-1.5 text-xs text-white">Cancel application</button>
+                            </div>
+                        </div>
+                    @else
+                        <button type="button" wire:click="$set('confirmingCancel', true)"
+                                class="cursor-pointer rounded-[5px] border border-[#bd3b3c] px-[30px] py-[10px] text-center text-xs font-medium text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                            Cancel application
+                        </button>
+                    @endif
                 @endif
             </div>
         @endif

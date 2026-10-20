@@ -103,6 +103,19 @@ class Player extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Whether this player is on a pending application in any category of
+     * the tournament. They can't apply again there until it is rejected or
+     * cancelled.
+     */
+    public function hasPendingApplicationIn(int $tournamentId): bool
+    {
+        return $this->playerApplications()
+            ->pending()
+            ->whereHas('tournamentCategory', fn ($query) => $query->where('tournament_id', $tournamentId))
+            ->exists();
+    }
+
     public function rallies(): HasMany
     {
         return $this->hasMany(Rally::class, 'scoring_player_id');

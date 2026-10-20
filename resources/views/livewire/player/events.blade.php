@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\Applications\CancelApplication;
 use App\Models\ApplicationPlayer;
 use App\Models\PaymentDetail;
 use App\Models\Player;
@@ -27,6 +28,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public ?int $viewingApplicationId = null;
 
     public bool $confirmingDelete = false;
+
+    public bool $confirmingCancel = false;
 
     public string $paymentReferenceNumber = '';
 
@@ -133,6 +136,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     {
         $this->viewingApplicationId = $applicationId;
         $this->confirmingDelete = false;
+        $this->confirmingCancel = false;
     }
 
     /**
@@ -193,6 +197,47 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             && $application->paymentDetails->isEmpty();
     }
 
+    /**
+     * Whether the viewed application is still pending with no payment made,
+     * so the player may withdraw it.
+     */
+    #[Computed]
+    public function canCancelViewingApplication(): bool
+    {
+        return (bool) $this->viewingApplication?->canBeCancelled();
+    }
+
+    public function cancelViewingApplication(): void
+    {
+        abort_unless($this->canCancelViewingApplication, 403);
+
+        try {
+            app(CancelApplication::class)->handle($this->viewingApplication, auth()->user()->player);
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch('system-message', title: 'Could not cancel application', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->viewingApplicationId = null;
+        $this->confirmingCancel = false;
+        unset($this->viewingApplication, $this->myApplications, $this->canCancelViewingApplication);
+
+        $this->dispatch('modal-close', name: 'application-details');
+        $this->dispatch('system-message', title: 'Application cancelled', message: 'You can apply again if you change your mind.', variant: 'success');
+    }
+
+    /**
+     * Whether this player already has a pending application in the tournament
+     * being viewed, which blocks a second one until it is rejected or cancelled.
+     */
+    #[Computed]
+    public function hasPendingApplicationInViewingTournament(): bool
+    {
+        return (bool) ($this->viewingTournamentId
+            && auth()->user()->player?->hasPendingApplicationIn($this->viewingTournamentId));
+    }
+
     public function deleteViewingApplication(): void
     {
         abort_unless($this->canDeleteViewingApplication, 403);
@@ -214,6 +259,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public function startRegistration(): void
     {
         abort_unless($this->viewingTournament && Tournament::acceptingRegistrations()->whereKey($this->viewingTournamentId)->exists(), 404);
+
+        if ($this->hasPendingApplicationInViewingTournament) {
+            $this->dispatch('system-message', title: 'Cannot register yet', message: 'You already have a pending application for this tournament.', variant: 'danger');
+
+            return;
+        }
 
         $this->resetRegistrationForm();
 
@@ -342,12 +393,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                 $applicant = $this->resolveApplicantPlayer();
 
+                $this->assertNoPendingApplication($applicant, $tournamentCategoryId, 'You already have a pending application for this tournament.');
                 $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
 
                 $partner = null;
 
                 if ($this->isDoublesRegistration) {
                     $partner = $this->resolvePartnerPlayer();
+                    $this->assertNoPendingApplication($partner, $tournamentCategoryId, 'Your partner already has a pending application for this tournament.');
                     $this->assertNotAlreadyEntered($partner, $tournamentCategoryId);
                 }
 
@@ -697,6 +750,19 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     }
 
     /**
+     * A player with a pending application can't apply again anywhere in the
+     * same tournament until it is rejected or cancelled.
+     */
+    private function assertNoPendingApplication(Player $player, int $tournamentCategoryId, string $message): void
+    {
+        $tournamentId = TournamentCategory::query()->whereKey($tournamentCategoryId)->value('tournament_id');
+
+        if ($player->hasPendingApplicationIn($tournamentId)) {
+            throw new \RuntimeException($message);
+        }
+    }
+
+    /**
      * A player can't have more than one non-rejected application in the same
      * draw — a previously rejected application doesn't block re-applying.
      */
@@ -865,10 +931,16 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 </div>
 
                 <div class="px-[20px] pb-[20px]">
-                    <button type="button" wire:click="startRegistration"
-                            class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
-                        Register
-                    </button>
+                    @if ($this->hasPendingApplicationInViewingTournament)
+                        <p class="rounded-[5px] bg-[#ffe48b] px-[15px] py-[10px] text-center text-[12px] text-[#9a7a12]">
+                            You already have a pending application for this tournament.
+                        </p>
+                    @else
+                        <button type="button" wire:click="startRegistration"
+                                class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
+                            Register
+                        </button>
+                    @endif
                 </div>
             </div>
         @endif
@@ -906,6 +978,25 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
                         {{ $this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected' ? 'Resubmit payment' : 'Proceed to payment' }}
                     </button>
+                @endif
+
+                @if ($this->canCancelViewingApplication)
+                    @if ($confirmingCancel)
+                        <div class="flex flex-col gap-3 rounded-[5px] bg-[#f6d1d2] p-4">
+                            <p class="text-xs text-[#8a3b3c]">Cancel this application? It will be removed and your slot released. This can't be undone.</p>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" wire:click="$set('confirmingCancel', false)"
+                                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-1.5 text-xs text-black">Keep it</button>
+                                <button type="button" wire:click="cancelViewingApplication"
+                                        class="cursor-pointer rounded-[5px] bg-[#bd3b3c] px-4 py-1.5 text-xs text-white">Cancel application</button>
+                            </div>
+                        </div>
+                    @else
+                        <button type="button" wire:click="$set('confirmingCancel', true)"
+                                class="w-full cursor-pointer rounded-[5px] border border-[#bd3b3c] px-[30px] py-[10px] text-center text-[12px] text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                            Cancel application
+                        </button>
+                    @endif
                 @endif
 
                 @if ($this->canDeleteViewingApplication)

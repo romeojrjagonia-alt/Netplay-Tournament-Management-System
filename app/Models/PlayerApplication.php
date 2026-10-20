@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -21,6 +22,14 @@ class PlayerApplication extends Model
         'draw_position',
         'rejection_reason',
     ];
+
+    /**
+     * Statuses of an application that hasn't been settled yet: waiting on
+     * the organizers' verification, or on the player's payment.
+     *
+     * @var list<string>
+     */
+    public const PENDING_STATUSES = ['pending_verification', 'payment_pending'];
 
     /**
      * Every application gets a short, shareable reference code so walk-in
@@ -60,6 +69,25 @@ class PlayerApplication extends Model
             'rejected' => 'Rejected',
             default => ucfirst(str_replace('_', ' ', $this->status)),
         });
+    }
+
+    /**
+     * @param  Builder<PlayerApplication>  $query
+     */
+    public function scopePending(Builder $query): void
+    {
+        $query->whereIn('status', self::PENDING_STATUSES);
+    }
+
+    /**
+     * An application can be cancelled while it is still pending and no
+     * payment proof is awaiting review or already verified. A rejected
+     * proof doesn't count as a payment made.
+     */
+    public function canBeCancelled(): bool
+    {
+        return in_array($this->status, self::PENDING_STATUSES, true)
+            && ! $this->paymentDetails()->whereIn('payment_status', ['pending', 'verified'])->exists();
     }
 
     public function tournamentCategory(): BelongsTo

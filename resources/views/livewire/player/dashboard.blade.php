@@ -82,6 +82,7 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
     {
         return match ($application->status) {
             'payment_pending' => 'Pay the registration fee with your reference code '.$application->reference_code.'.',
+            'pending_verification' => 'Open this application to cancel it while it is still pending.',
             'rejected' => $application->rejection_reason ? 'Reason: '.$application->rejection_reason : null,
             default => null,
         };

@@ -177,6 +177,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                 TournamentCategory::lockAndAssertOpenSlot($tournamentCategoryId);
 
                 $applicant = $this->resolveApplicantPlayer();
+                $this->assertNoPendingApplication($applicant, 'You already have a pending application for this tournament.');
                 $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
 
                 $partner = null;
@@ -188,6 +189,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         throw new \RuntimeException('Your partner must be a different player.');
                     }
 
+                    $this->assertNoPendingApplication($partner, 'Your partner already has a pending application for this tournament.');
                     $this->assertNotAlreadyEntered($partner, $tournamentCategoryId);
                 }
 
@@ -526,6 +528,17 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             ->all())->save();
 
         return $existing;
+    }
+
+    /**
+     * A player with a pending application can't apply again anywhere in the
+     * same tournament until it is rejected or cancelled.
+     */
+    private function assertNoPendingApplication(Player $player, string $message): void
+    {
+        if ($player->hasPendingApplicationIn($this->tournament->id)) {
+            throw new \RuntimeException($message);
+        }
     }
 
     /**

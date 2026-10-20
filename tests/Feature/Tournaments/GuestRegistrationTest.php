@@ -492,7 +492,7 @@ test('the already-entered error does not reveal the player name', function () {
             ->call('submit');
     }
 
-    $component->assertDispatched('system-message', message: 'A player in this entry already has an active application for this category.');
+    $component->assertDispatched('system-message', message: 'You already have a pending application for this tournament.');
 });
 
 test('the same name and birthdate is the same person even with a new phone or email', function () {
