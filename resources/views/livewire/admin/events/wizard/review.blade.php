@@ -42,7 +42,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 <div class="flex flex-col items-center gap-5">
     <x-admin.wizard-steps :current="2" />
 
-    <div class="flex w-full max-w-[814px] flex-col gap-[26px] rounded-[10px] bg-white px-4 py-6 sm:px-[33px] sm:py-[35px]">
+    <div class="flex w-full max-w-[1100px] flex-col gap-[26px] rounded-[10px] bg-white px-4 py-6 sm:px-[33px] sm:py-[35px]">
         <div class="flex flex-col gap-[17px]">
             <div class="flex items-center justify-between">
                 <span class="text-sm font-bold text-black">Event Details</span>
@@ -106,6 +106,14 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
             <div class="flex gap-2.5 text-white">
                 <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
+                    <span class="text-[11px]">Sport</span>
+                    <span class="text-xs font-bold">{{ $tournament->sport ?: 'Badminton' }}</span>
+                </div>
+                <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
+                    <span class="text-[11px]">Venue</span>
+                    <span class="text-xs font-bold">{{ $tournament->location ?: '—' }}</span>
+                </div>
+                <div class="flex flex-1 flex-col gap-1 rounded-[5px] bg-[#78b29f] px-5 py-1.5">
                     <span class="text-[11px]">Format</span>
                     <span class="text-xs font-bold">{{ str($tournament->format)->replace('_', ' ')->title() }}</span>
                 </div>
@@ -117,7 +125,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         </div>
     </div>
 
-    <div class="flex w-full max-w-[814px] justify-end gap-6">
+    <div class="flex w-full max-w-[1100px] justify-end gap-6">
         <a href="{{ route('admin.events.wizard.details', $tournament) }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Back
         </a>

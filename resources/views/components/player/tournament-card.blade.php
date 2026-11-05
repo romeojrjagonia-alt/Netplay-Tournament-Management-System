@@ -7,6 +7,8 @@
     'badge' => null,
     'badgePlacement' => 'inline',
     'posterUrl' => null,
+    'sport' => null,
+    'location' => null,
 ])
 
 {{-- Tournament banner. `badgePlacement` matches Figma's two arrangements:
@@ -28,7 +30,7 @@
 
     <div class="relative flex flex-col gap-[15px]">
         <div class="flex flex-col">
-            <span class="text-[8px] leading-5 text-white">{{ $label }}</span>
+            <span class="text-[8px] leading-5 text-white">{{ $label }}@if ($sport) &middot; {{ strtoupper($sport) }}@endif</span>
             <span class="text-lg leading-5 font-bold text-white">{{ $name }}</span>
         </div>
 
@@ -43,6 +45,13 @@
                     <flux:icon.clock class="size-[15px] shrink-0" />
                     {{ $time }}
                 </span>
+
+                @if ($location)
+                    <span class="flex items-center gap-2.5 text-xs text-white">
+                        <flux:icon.map-pin class="size-[15px] shrink-0" />
+                        {{ $location }}
+                    </span>
+                @endif
 
                 @if ($days)
                     <span class="flex items-center gap-1 p-[5px]">

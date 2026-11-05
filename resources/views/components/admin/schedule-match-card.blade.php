@@ -5,10 +5,11 @@
     // eager-loaded by the caller, so a full draw doesn't N+1.
     $playerSideMap = $match->playerSideMap();
     $singleSet = $match->usesSinglePointSystem();
+    $pickleball = $match->usesPickleballRules();
     $games = $match->games->sortBy('game_number')->values();
     $gameResults = $games->map(fn ($game) => [
         'scores' => $game->scores($playerSideMap),
-        'winner' => $game->winningSide($playerSideMap, $singleSet),
+        'winner' => $game->winningSide($playerSideMap, $singleSet, $pickleball),
     ]);
     $winnerSide = $match->status === 'completed' ? $match->winnerSide() : null;
 

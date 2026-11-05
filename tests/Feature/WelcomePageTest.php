@@ -81,3 +81,12 @@ test('the navbar links to the active tournaments and the application progress ch
         ->assertSee('href="#check-application"', false)
         ->assertSee('Check Tournament Application');
 });
+
+test('pages declare the favicon and web manifest', function () {
+    $this->get('/')
+        ->assertSee('favicon.ico', false)
+        ->assertSee('site.webmanifest', false);
+
+    expect(public_path('favicon.ico'))->toBeFile()
+        ->and(public_path('site.webmanifest'))->toBeFile();
+});

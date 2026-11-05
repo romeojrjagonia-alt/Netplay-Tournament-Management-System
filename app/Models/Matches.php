@@ -87,6 +87,16 @@ class Matches extends Model
         return GameRules::isSingleSet($this->tournamentCategory?->tournament?->scoring_system);
     }
 
+    /**
+     * Whether this match is scored with pickleball rules (to 11, win by 2).
+     */
+    public function usesPickleballRules(): bool
+    {
+        $this->loadMissing('tournamentCategory.tournament');
+
+        return GameRules::isPickleball($this->tournamentCategory?->tournament?->scoring_system);
+    }
+
     public function matchApplications(): HasMany
     {
         return $this->hasMany(MatchApplication::class, 'match_id')->orderBy('slot')->orderBy('id');
@@ -171,13 +181,14 @@ class Matches extends Model
 
         $playerSideMap = $this->playerSideMap();
         $singleSet = $this->usesSinglePointSystem();
+        $pickleball = $this->usesPickleballRules();
         $games = $this->games->sortBy('game_number')->values();
 
         if ($games->isEmpty()) {
             return [['number' => 1, 'winner' => null, 'scorers' => ['A' => [], 'B' => []]]];
         }
 
-        return $games->map(function (MatchGame $game) use ($playerSideMap, $singleSet): array {
+        return $games->map(function (MatchGame $game) use ($playerSideMap, $singleSet, $pickleball): array {
             $points = ['A' => 0, 'B' => 0];
             $scorers = ['A' => [], 'B' => []];
 
@@ -197,7 +208,7 @@ class Matches extends Model
 
             return [
                 'number' => $game->game_number,
-                'winner' => $game->winningSide($playerSideMap, $singleSet),
+                'winner' => $game->winningSide($playerSideMap, $singleSet, $pickleball),
                 'scorers' => $scorers,
             ];
         })->all();
@@ -218,15 +229,16 @@ class Matches extends Model
         $applicationIdA = $this->applicationForSide('A')?->id;
         $applicationIdB = $this->applicationForSide('B')?->id;
         $singleSet = $this->usesSinglePointSystem();
+        $pickleball = $this->usesPickleballRules();
 
         return $this->games
             ->sortBy('game_number')
             ->values()
-            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB, $singleSet): array {
+            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB, $singleSet, $pickleball): array {
                 $scores = $game->scores($playerSideMap);
 
                 $winner = match (true) {
-                    $game->winner_application_id === null => $game->winningSide($playerSideMap, $singleSet),
+                    $game->winner_application_id === null => $game->winningSide($playerSideMap, $singleSet, $pickleball),
                     $game->winner_application_id === $applicationIdA => 'A',
                     $game->winner_application_id === $applicationIdB => 'B',
                     default => null,

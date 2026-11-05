@@ -13,8 +13,13 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 10;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -39,6 +44,22 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         $this->activeTab = $tab;
 
         $this->reset(['search', 'eventFilter', 'categoryFilter']);
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedEventFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCategoryFilter(): void
+    {
+        $this->resetPage();
     }
 
     public function viewApplication(int $applicationId): void
@@ -228,6 +249,26 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     }
 
     /**
+     * The current page of the filtered application rows.
+     *
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function pagedRows(): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        $rows = $this->rows;
+        $page = min($this->getPage(), max(1, (int) ceil($rows->count() / self::PER_PAGE)));
+
+        return new \Illuminate\Pagination\LengthAwarePaginator(
+            $rows->forPage($page, self::PER_PAGE)->values(),
+            $rows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => request()->url()],
+        );
+    }
+
+    /**
      * @return array<int, string>
      */
     #[Computed]
@@ -337,7 +378,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         </div>
 
         <div class="max-h-[450px] min-w-[900px] overflow-y-auto">
-            @forelse ($this->rows as $row)
+            @forelse ($this->pagedRows as $row)
                 <flux:modal.trigger :name="$activeTab === 'approvals' ? 'application-details' : 'payment-details'" wire:key="{{ $activeTab }}-{{ $row['application_id'] }}-{{ $row['payment_id'] }}">
                     <div
                         wire:click="{{ $activeTab === 'approvals' ? 'viewApplication('.$row['application_id'].')' : 'viewPayment('.$row['payment_id'].')' }}"
@@ -356,6 +397,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                 <p class="px-2.5 py-6 text-center text-xs text-black/50">No applications match your filters.</p>
             @endforelse
         </div>
+
+        @if ($this->pagedRows->hasPages())
+            <div class="bg-white px-4 py-3">{{ $this->pagedRows->links() }}</div>
+        @endif
     </div>
 
     <flux:modal name="application-details" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">

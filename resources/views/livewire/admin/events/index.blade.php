@@ -1,12 +1,17 @@
 <?php
 
 use App\Models\Tournament;
-use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 10;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -19,13 +24,19 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
     }
 
     /**
-     * @return Collection<int, Tournament>
+     * @return LengthAwarePaginator<int, Tournament>
      */
     #[Computed]
-    public function tournaments(): Collection
+    public function tournaments(): LengthAwarePaginator
     {
         return Tournament::query()
             ->with(['tournamentCategories.playerApplications' => fn ($query) => $query->where('status', '!=', 'rejected')->with('applicationPlayers')])
@@ -36,7 +47,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             // Live (published, not concluded) first, then drafts, then concluded.
             ->orderByRaw("case when status = 'published' and concluded_at is null and date_end >= ? then 0 when status = 'draft' then 1 else 2 end", [today()->toDateString()])
             ->latest('date_start')
-            ->get();
+            ->paginate(self::PER_PAGE);
     }
 
     /**
@@ -128,4 +139,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             <p class="py-10 text-center text-sm text-white">No events match your filters.</p>
         @endforelse
     </div>
+
+    @if ($this->tournaments->hasPages())
+        <div class="rounded-[10px] bg-white px-4 py-3">{{ $this->tournaments->links() }}</div>
+    @endif
 </div>

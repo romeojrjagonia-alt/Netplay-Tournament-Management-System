@@ -159,3 +159,16 @@ test('the published tab excludes drafts and concluded tournaments', function () 
         ->assertDontSee('Concluded Tournament')
         ->assertDontSee('Manually Concluded');
 });
+
+test('the events list is paginated', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    foreach (range(1, 12) as $number) {
+        eventsIndexTournament(['name' => "Event {$number}"]);
+    }
+
+    $component = Volt::test('admin.events.index');
+
+    expect($component->instance()->tournaments)->toHaveCount(10)
+        ->and($component->instance()->tournaments->total())->toBe(12);
+});

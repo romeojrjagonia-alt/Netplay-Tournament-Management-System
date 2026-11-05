@@ -53,6 +53,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
      * 31 wins, no 2-point lead) instead of best of 3 to 21.
      */
     #[Computed]
+    public function pickleball(): bool
+    {
+        return $this->match->usesPickleballRules();
+    }
+
+    #[Computed]
     public function singleSet(): bool
     {
         return $this->match->usesSinglePointSystem();
@@ -74,7 +80,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     #[Computed]
     public function currentGame(): ?MatchGame
     {
-        return $this->games->first(fn (MatchGame $game) => $game->winningSide($this->playerSideMap, $this->singleSet) === null);
+        return $this->games->first(fn (MatchGame $game) => $game->winningSide($this->playerSideMap, $this->singleSet, $this->pickleball) === null);
     }
 
     /**
@@ -411,7 +417,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
      */
     private function settleGameWinner(MatchGame $game): void
     {
-        $side = $game->winningSide($this->match->playerSideMap(), $this->singleSet);
+        $side = $game->winningSide($this->match->playerSideMap(), $this->singleSet, $this->pickleball);
 
         if ($side === null) {
             return;
@@ -432,7 +438,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
         $map = $this->playerSideMap;
 
         return $this->games
-            ->map(fn (MatchGame $game) => $game->winningSide($map, $this->singleSet))
+            ->map(fn (MatchGame $game) => $game->winningSide($map, $this->singleSet, $this->pickleball))
             ->filter()
             ->values()
             ->all();
@@ -471,7 +477,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Scoring'])] class extends
     <div class="flex flex-col gap-5 lg:flex-row" x-bind:class="fs ? 'min-h-0 flex-1 lg:items-stretch' : 'lg:items-start'">
         <div class="flex w-full flex-col gap-2.5 lg:w-[220px] lg:shrink-0">
             @foreach ($this->games as $game)
-                @php $side = $game->winningSide($this->playerSideMap, $this->singleSet); @endphp
+                @php $side = $game->winningSide($this->playerSideMap, $this->singleSet, $this->pickleball); @endphp
                 <div class="flex items-center gap-2.5 rounded-[5px] bg-white px-4 py-2.5 text-xs font-bold text-black">
                     <span>{{ $this->singleSet ? '31-POINT GAME' : 'SET '.$game->game_number }}</span>
                     <span class="text-black/60">

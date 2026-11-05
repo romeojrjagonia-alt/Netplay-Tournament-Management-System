@@ -286,3 +286,44 @@ test('double elimination is not offered as a tournament format', function () {
         ->call('next')
         ->assertHasErrors(['format']);
 });
+
+test('an admin can create a pickleball tournament with pickleball scoring', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('name', 'Dink Open')
+        ->set('format', 'single_elimination')
+        ->set('sport', 'Pickleball')
+        ->assertSet('scoringSystem', 'Pickleball Best of 3 to 11')
+        ->set('location', 'OBC Courts')
+        ->set('dateStart', '2026-09-01')
+        ->set('dateEnd', '2026-09-30')
+        ->set('registrationStart', '2026-06-01')
+        ->set('registrationEnd', '2026-08-31')
+        ->set('selectedDays', ['Sat'])
+        ->call('next')
+        ->assertRedirect();
+
+    $tournament = Tournament::firstWhere('name', 'Dink Open');
+
+    expect($tournament->sport)->toBe('Pickleball')
+        ->and($tournament->scoring_system)->toBe('Pickleball Best of 3 to 11')
+        ->and($tournament->location)->toBe('OBC Courts');
+});
+
+test('a badminton scoring system is rejected for a pickleball tournament', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('name', 'Dink Open')
+        ->set('format', 'single_elimination')
+        ->set('sport', 'Pickleball')
+        ->set('scoringSystem', 'Best of 3 to 21')
+        ->set('dateStart', '2026-09-01')
+        ->set('dateEnd', '2026-09-30')
+        ->set('registrationStart', '2026-06-01')
+        ->set('registrationEnd', '2026-08-31')
+        ->set('selectedDays', ['Sat'])
+        ->call('next')
+        ->assertHasErrors('scoringSystem');
+});

@@ -196,7 +196,9 @@ test('the users page lists possible duplicates and lets an admin merge, dismiss 
     $old->forceFill(['created_at' => now()->subDays(30)])->save();
 
     $component = Volt::test('admin.users.index')
-        ->assertSee('possible duplicate')
+        ->assertDontSee('Same email')
+        ->call('selectTab', 'duplicates')
+        ->assertSet('tab', 'duplicates')
         ->assertSee('Same email')
         ->assertSee('Delete unused guest records')
         ->call('pruneUnusedGuests');
@@ -218,4 +220,68 @@ test('only admins can use the duplicate and prune tools', function () {
     $this->actingAs(User::factory()->create(['role' => 'player']));
 
     Volt::test('admin.users.index')->assertForbidden();
+});
+
+test('resolve duplicates lives on its own tab, which shows a count and an empty state', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    Volt::test('admin.users.index')
+        ->call('selectTab', 'duplicates')
+        ->assertSee('Resolve Duplicates')
+        ->assertSee('No possible duplicates')
+        ->call('selectTab', 'bogus')
+        ->assertSet('tab', 'users');
+
+    Player::create(['name' => 'Nia Oro', 'email' => 'nia@example.com']);
+    Player::create(['name' => 'Nia Oro', 'email' => 'nia@example.com']);
+
+    Volt::test('admin.users.index')
+        ->assertSee('Resolve Duplicates')
+        ->assertSeeHtml('bg-[#fff1d6] px-2 py-0.5 text-[10px] font-bold text-[#8a5a00]">1<');
+});
+
+test('possible duplicates are paginated, ten per page', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    foreach (range(1, 12) as $n) {
+        Player::create(['name' => 'Pair'.chr(64 + $n).' Dupe', 'email' => "dupe{$n}@example.com"]);
+        Player::create(['name' => 'Pair'.chr(64 + $n).' Dupe', 'email' => "dupe{$n}@example.com"]);
+    }
+
+    $component = Volt::test('admin.users.index')->call('selectTab', 'duplicates');
+
+    expect($component->instance()->duplicatePairs)->toHaveCount(12)
+        ->and($component->instance()->pagedDuplicatePairs)->toHaveCount(10);
+
+    $component->assertSee('Page 1 of 2')->assertSee('Showing 1-10 of 12');
+
+    $component->call('goToDuplicatePage', 2)
+        ->assertSet('duplicatePage', 2)
+        ->assertSee('Showing 11-12 of 12');
+
+    expect($component->instance()->pagedDuplicatePairs)->toHaveCount(2);
+
+    // Out-of-range pages are clamped.
+    $component->call('goToDuplicatePage', 99)->assertSet('duplicatePage', 2)
+        ->call('goToDuplicatePage', -4)->assertSet('duplicatePage', 1);
+});
+
+test('resolving the last item on the last page moves back to a page that exists', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    foreach (range(1, 11) as $n) {
+        Player::create(['name' => 'Clamp'.chr(64 + $n).' Dupe', 'email' => "clamp{$n}@example.com"]);
+        Player::create(['name' => 'Clamp'.chr(64 + $n).' Dupe', 'email' => "clamp{$n}@example.com"]);
+    }
+
+    $component = Volt::test('admin.users.index')
+        ->call('selectTab', 'duplicates')
+        ->call('goToDuplicatePage', 2);
+
+    $last = $component->instance()->pagedDuplicatePairs->first();
+
+    $component->call('dismissDuplicate', $last['a']->id, $last['b']->id)
+        ->assertSet('duplicatePage', 1);
+
+    expect($component->instance()->pagedDuplicatePairs)->toHaveCount(10);
 });

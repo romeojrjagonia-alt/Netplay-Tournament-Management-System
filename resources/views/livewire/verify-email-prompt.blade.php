@@ -89,7 +89,7 @@ new class extends Component {
                     <p class="text-sm text-black/70">
                         We will send a verification link to
                         <span class="font-bold text-black">{{ auth()->user()->email }}</span>
-                        to verify your account. Verify now?
+                        to verify your account. Verify now, or continue without verifying and do it later.
                     </p>
 
                     @if ($error)
@@ -100,7 +100,7 @@ new class extends Component {
                 <div class="flex justify-end gap-3">
                     <button type="button" wire:click="dismiss"
                             class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-6 py-2 text-sm text-black transition hover:bg-black/5">
-                        Later
+                        Continue without verifying
                     </button>
                     <button type="button" wire:click="sendVerification" wire:loading.attr="disabled" wire:target="sendVerification"
                             class="cursor-pointer rounded-[5px] bg-[#0d5750] px-6 py-2 text-sm text-white transition hover:bg-[#0b4742] disabled:cursor-not-allowed disabled:opacity-60">

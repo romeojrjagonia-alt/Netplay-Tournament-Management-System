@@ -178,18 +178,19 @@ it('keeps the users page away from non-admins', function (string $role) {
         ->assertForbidden();
 })->with(['player', 'umpire']);
 
-it('lists every account in one scrollable list and narrows it by role', function () {
+it('lists accounts in pages and narrows them by role', function () {
     User::factory()->count(14)->create(['role' => 'player']);
 
     $component = Volt::actingAs(actingAsAdmin())
         ->test('admin.users.index')
         ->assertSee('All Users');
 
-    expect($component->get('users'))->toHaveCount(15);
+    expect($component->get('users'))->toHaveCount(10)
+        ->and($component->get('users')->total())->toBe(15);
 
     $component->set('roleFilter', 'player');
 
-    expect($component->get('users'))->toHaveCount(14);
+    expect($component->get('users')->total())->toBe(14);
 });
 
 test('a player account created by an admin gets a player record and can open the player pages', function () {

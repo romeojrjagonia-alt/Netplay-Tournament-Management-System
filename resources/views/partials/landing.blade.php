@@ -26,7 +26,7 @@
         {{-- ============ NAVBAR ============ --}}
         <nav id="site-nav" class="fixed inset-x-0 top-0 z-50 transition-colors duration-300">
             <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 sm:px-10">
-            <a href="{{ route('home') }}" wire:navigate class="text-2xl font-bold text-white sm:text-3xl">NetPlay</a>
+            <a href="{{ route('home') }}" wire:navigate aria-label="NetPlay" class="flex items-center"><img src="{{ asset('images/logo-light.webp') }}" alt="NetPlay" class="h-9 w-auto sm:h-11"></a>
 
             <ul class="hidden items-center gap-10 text-sm text-white md:flex">
                 <li><a href="{{ route('home') }}" wire:navigate class="transition hover:text-lime-300">Home Page</a></li>

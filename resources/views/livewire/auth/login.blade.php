@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\User;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
@@ -25,6 +26,14 @@ new #[Layout('components.layouts.auth.signin')] class extends Component {
         $this->validate();
 
         $this->ensureIsNotRateLimited();
+
+        // A Google-only account has no password, so typing its email here can
+        // never succeed: send the person through Google sign-in instead.
+        if (User::where('email', $this->email)->whereNull('password')->whereNotNull('google_id')->exists()) {
+            $this->redirect(route('auth.google'));
+
+            return;
+        }
 
         if (! Auth::attempt(['email' => $this->email, 'password' => $this->password])) {
             RateLimiter::hit($this->throttleKey());

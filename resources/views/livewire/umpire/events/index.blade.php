@@ -5,8 +5,13 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 10;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isUmpire(), 403);
@@ -19,16 +24,22 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
     }
 
     /**
      * Tournaments this umpire has at least one assigned match in. Concluded
      * events are archived and only visible to admins.
      *
-     * @return Collection<int, Tournament>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, Tournament>
      */
     #[Computed]
-    public function tournaments(): Collection
+    public function tournaments(): \Illuminate\Pagination\LengthAwarePaginator
     {
         return Tournament::query()
             ->notConcluded()
@@ -39,7 +50,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->when($this->tab === 'upcoming', fn ($query) => $query->whereDate('date_end', '>=', now()))
             ->latest('date_start')
-            ->get();
+            ->paginate(self::PER_PAGE);
     }
 
     public function formatDateRange(Tournament $tournament): string
@@ -89,4 +100,8 @@ new #[Layout('components.layouts.umpire', ['title' => 'Events'])] class extends 
             <p class="py-10 text-center text-sm text-white">You have no assigned tournaments matching this filter.</p>
         @endforelse
     </div>
+
+    @if ($this->tournaments->hasPages())
+        <div class="rounded-[10px] bg-white px-4 py-3">{{ $this->tournaments->links() }}</div>
+    @endif
 </div>

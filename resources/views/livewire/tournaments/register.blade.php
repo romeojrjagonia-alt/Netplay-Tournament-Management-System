@@ -18,7 +18,7 @@ use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
-new #[Layout('components.layouts.public', ['title' => 'Tournament Registration'])] class extends Component {
+new #[Layout('components.layouts.public', ['title' => 'Tournament Registration', 'maxWidth' => 'max-w-5xl'])] class extends Component {
     use WithFileUploads;
 
     public Tournament $tournament;
@@ -615,10 +615,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
 <div class="flex flex-col gap-5">
     <div>
-        <p class="text-sm text-teal-800">Tournament Registration</p>
+        <p class="text-sm text-teal-800">{{ $tournament->sport ?: 'Badminton' }} Tournament Registration</p>
         <h1 class="text-2xl font-bold text-black">{{ $tournament->name }}</h1>
         <p class="text-xs text-black/70">
-            {{ $this->formatDateRange() }}@if ($tournament->location) &middot; {{ $tournament->location }}@endif
+            {{ $this->formatDateRange() }}@if ($tournament->location) &middot; Venue: {{ $tournament->location }}@endif
         </p>
     </div>
 
@@ -661,14 +661,14 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
             @endguest
 
             <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
-               class="rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
+               class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
                 Check application progress
             </a>
         </div>
     @else
         <div>
             <div class="flex items-center justify-between rounded-t-[5px] bg-[#138177] px-[15px] py-[10px] text-white">
-                <span class="text-[11px] font-bold">
+                <span class="text-xs font-bold">
                     @if ($this->isReviewStep)
                         Review &amp; Submit
                     @elseif ($this->isPairStep)
@@ -677,7 +677,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         Player Profile
                     @endif
                 </span>
-                <span class="text-[11px] italic">Step {{ $regStep }} of {{ $this->totalSteps }}</span>
+                <span class="text-xs italic">Step {{ $regStep }} of {{ $this->totalSteps }}</span>
             </div>
 
             <div class="flex flex-col gap-[15px] rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
@@ -718,8 +718,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
 
                         <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
                             <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name"
-                                   class="flex-1 bg-transparent text-[12px] text-black placeholder:text-black/40 focus:outline-none">
-                            <div class="flex h-[30px] w-[36px] items-center justify-center">
+                                   class="flex-1 bg-transparent text-sm text-black placeholder:text-black/40 focus:outline-none">
+                            <div class="flex h-11 w-[36px] items-center justify-center">
                                 <flux:icon.magnifying-glass class="size-[17px] text-black/50" />
                             </div>
                         </div>
@@ -728,7 +728,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                             @forelse ($this->pairSearchResults as $player)
                                 <button type="button" wire:click="selectPairPlayer({{ $player->id }})" wire:key="pair-{{ $player->id }}"
                                         @class([
-                                            'flex items-center justify-between gap-3 rounded-[10px] border px-[15px] py-[10px] text-left text-[12px] font-bold text-black cursor-pointer',
+                                            'flex items-center justify-between gap-3 rounded-[10px] border px-[15px] py-[10px] text-left text-sm font-bold text-black cursor-pointer',
                                             'border-[#138177] bg-[#eaf4f3]' => $pairPlayerId === $player->id,
                                             'border-[#d3d3d3] bg-white' => $pairPlayerId !== $player->id,
                                         ])>
@@ -740,18 +740,18 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                                     ])></span>
                                 </button>
                             @empty
-                                <p class="py-4 text-center text-[11px] text-black/50">
+                                <p class="py-4 text-center text-xs text-black/50">
                                     {{ mb_strlen(trim($pairSearch)) < 2 ? 'Type at least 2 characters to search.' : 'No matching players found.' }}
                                 </p>
                             @endforelse
                         </div>
 
                         @error('pairPlayerId')
-                            <p class="text-[11px] text-red-600">Pick your partner from the list, or enter their details.</p>
+                            <p class="text-xs text-red-600">Pick your partner from the list, or enter their details.</p>
                         @enderror
 
                         <button type="button" wire:click="enterPairManually"
-                                class="cursor-pointer self-start text-[12px] text-[#138177] underline">
+                                class="cursor-pointer self-start text-sm text-[#138177] underline">
                             My partner isn't listed — enter their details
                         </button>
                     @else
@@ -780,7 +780,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                         </div>
 
                         <button type="button" wire:click="searchPairAgain"
-                                class="cursor-pointer self-start text-[12px] text-[#138177] underline">
+                                class="cursor-pointer self-start text-sm text-[#138177] underline">
                             Search existing players instead
                         </button>
                     @endif
@@ -809,36 +809,36 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
                     </dl>
 
                     <div class="flex flex-col gap-[10px]">
-                        <p class="text-[12px] font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
+                        <p class="text-sm font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
                         <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                         <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                             <label for="ownDocument"
-                                   class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                   class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                 <span x-text="fileName || 'Upload photo of the document'"></span>
                             </label>
                             <input id="ownDocument" type="file" wire:model="ownDocument" accept="image/*" class="hidden"
                                    x-on:change="fileName = $event.target.files[0]?.name ?? ''">
                             @error('ownDocument')
-                                <p class="text-[11px] text-red-600">{{ $message }}</p>
+                                <p class="text-xs text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
                     </div>
 
                     @if ($this->isDoublesRegistration)
                         <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
-                            <p class="text-[12px] font-bold text-black">Partner's valid ID</p>
+                            <p class="text-sm font-bold text-black">Partner's valid ID</p>
                             <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label for="pairDocument"
-                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                     <span x-text="fileName || 'Upload photo of the document'"></span>
                                 </label>
                                 <input id="pairDocument" type="file" wire:model="pairDocument" accept="image/*" class="hidden"
                                        x-on:change="fileName = $event.target.files[0]?.name ?? ''">
                                 @error('pairDocument')
-                                    <p class="text-[11px] text-red-600">{{ $message }}</p>
+                                    <p class="text-xs text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
                         </div>
@@ -857,25 +857,25 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration']
         <div class="grid grid-cols-2 gap-5">
             @if ($regStep === 1)
                 <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home') }}" wire:navigate
-                   class="rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                   class="rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                     Cancel
                 </a>
             @else
                 <button type="button" wire:click="previousStep"
-                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                     Back
                 </button>
             @endif
 
             @if ($this->isReviewStep)
                 <button type="button" wire:click="submit" wire:loading.attr="disabled" wire:target="submit"
-                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-60">
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white disabled:cursor-not-allowed disabled:opacity-60">
                     <span wire:loading.remove wire:target="submit">Submit Application</span>
                     <span wire:loading wire:target="submit">Submitting…</span>
                 </button>
             @else
                 <button type="button" wire:click="nextStep"
-                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
                     Next
                 </button>
             @endif

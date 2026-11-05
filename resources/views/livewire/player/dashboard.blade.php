@@ -96,6 +96,8 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
         return [
             'url' => $url,
             'posterUrl' => $tournament->poster_url,
+            'sport' => $tournament->sport,
+            'location' => $tournament->location,
             'label' => $label,
             'name' => $tournament->name,
             'dates' => $tournament->date_range_label,
@@ -120,6 +122,8 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
             :time="$this->upcomingTournament['time']"
             :days="$this->upcomingTournament['days']"
             :badge="$this->upcomingTournament['badge']"
+            :sport="$this->upcomingTournament['sport']"
+            :location="$this->upcomingTournament['location']"
         />
         </a>
     @endif
@@ -140,6 +144,8 @@ new #[Layout('components.layouts.player', ['title' => 'Dashboard'])] class exten
                     :time="$tournament['time']"
                     :days="$tournament['days']"
                     :badge="$tournament['badge']"
+                    :sport="$tournament['sport']"
+                    :location="$tournament['location']"
                 />
                 </a>
             @empty

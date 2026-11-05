@@ -27,6 +27,8 @@ trait ManagesEventDetailsForm
 
     public string $format = '';
 
+    public string $sport = 'Badminton';
+
     public string $location = '';
 
     public string $scoringSystem = '';
@@ -53,16 +55,46 @@ trait ManagesEventDetailsForm
     public $poster = null;
 
     /**
-     * The pointing systems GameRules implements — a dropdown rather than
-     * free text so every event scores one of the supported ways. Keys are
-     * the stored `scoring_system` values.
+     * The sports a tournament can be held for. Keys equal labels; the value
+     * is stored in `tournaments.sport`.
      *
      * @var array<string, string>
      */
-    public array $scoringSystems = [
-        GameRules::SYSTEM_BEST_OF_THREE => '21-Point: Best of 3',
-        GameRules::SYSTEM_SINGLE_SET => '31-Point: Single Set (first to 31)',
+    public array $sports = [
+        'Badminton' => 'Badminton',
+        'Pickleball' => 'Pickleball',
     ];
+
+    /**
+     * The pointing systems GameRules implements for the chosen sport — a
+     * dropdown rather than free text so every event scores one of the
+     * supported ways. Keys are the stored `scoring_system` values.
+     *
+     * @return array<string, string>
+     */
+    #[Computed]
+    public function scoringSystems(): array
+    {
+        if ($this->sport === 'Pickleball') {
+            return [
+                GameRules::SYSTEM_PICKLEBALL => '11-Point: Best of 3 (win by 2)',
+            ];
+        }
+
+        return [
+            GameRules::SYSTEM_BEST_OF_THREE => '21-Point: Best of 3',
+            GameRules::SYSTEM_SINGLE_SET => '31-Point: Single Set (first to 31)',
+        ];
+    }
+
+    /**
+     * Each sport has its own pointing systems, so switching sport resets
+     * the selection to that sport's first one.
+     */
+    public function updatedSport(): void
+    {
+        $this->scoringSystem = (string) array_key_first($this->scoringSystems);
+    }
 
     /** @var array<int, string> */
     public array $weekOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -76,6 +108,7 @@ trait ManagesEventDetailsForm
         $this->tournament = $tournament;
         $this->name = $tournament->name;
         $this->format = $tournament->format;
+        $this->sport = $tournament->sport ?: 'Badminton';
         $this->location = $tournament->location ?? '';
         $this->scoringSystem = $tournament->scoring_system;
         $this->dateStart = $tournament->date_start->format('Y-m-d');
@@ -120,6 +153,7 @@ trait ManagesEventDetailsForm
         return $this->validate([
             'name' => ['required', 'string', 'max:255'],
             'format' => ['required', 'in:single_elimination,round_robin'],
+            'sport' => ['required', Rule::in(array_keys($this->sports))],
             'location' => ['nullable', 'string', 'max:255'],
             'scoringSystem' => ['required', Rule::in(array_keys($this->scoringSystems))],
             'dateStart' => ['required', 'date'],
@@ -195,7 +229,7 @@ trait ManagesEventDetailsForm
         return [
             'name' => $data['name'],
             'format' => $data['format'],
-            'sport' => 'Badminton',
+            'sport' => $data['sport'],
             'location' => $data['location'],
             'scoring_system' => $data['scoringSystem'],
             'date_start' => $data['dateStart'],

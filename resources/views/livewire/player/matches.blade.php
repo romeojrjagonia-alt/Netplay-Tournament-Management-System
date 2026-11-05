@@ -4,8 +4,13 @@ use App\Models\Matches;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 8;
+
     public string $tab = 'all';
 
     public function mount(): void
@@ -18,6 +23,7 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage();
     }
 
     /**
@@ -40,15 +46,21 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
     /**
      * This player's completed matches, most recent first.
      *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, array<string, mixed>>
      */
     #[Computed]
     public function previousMatches()
     {
-        return $this->playerMatches(['completed'])
-            ->sortByDesc('scheduled_at')
-            ->map(fn (Matches $match) => $this->matchViewData($match))
-            ->values();
+        $matches = $this->playerMatches(['completed'])->sortByDesc('scheduled_at')->values();
+        $page = min($this->getPage(), max(1, (int) ceil($matches->count() / self::PER_PAGE)));
+
+        return new \Illuminate\Pagination\LengthAwarePaginator(
+            $matches->forPage($page, self::PER_PAGE)->map(fn (Matches $match) => $this->matchViewData($match))->values(),
+            $matches->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => request()->url()],
+        );
     }
 
     /**
@@ -235,6 +247,10 @@ new #[Layout('components.layouts.player', ['title' => 'My Matches'])] class exte
                     <p class="py-10 text-center text-sm text-white">You have no match history yet.</p>
                 @endforelse
             </div>
+
+            @if ($this->previousMatches->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->previousMatches->links() }}</div>
+            @endif
         </div>
     @endif
 </div>

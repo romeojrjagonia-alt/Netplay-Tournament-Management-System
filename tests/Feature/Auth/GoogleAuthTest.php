@@ -158,3 +158,15 @@ test('going back from the profile step returns google users to the role step', f
         ->call('previousStep')
         ->assertSet('step', 1);
 });
+
+test('typing a google only email into the login form sends the person to google', function () {
+    User::factory()->create(['email' => 'juan@gmail.com', 'password' => null, 'google_id' => 'google-123']);
+
+    Volt::test('auth.login')
+        ->set('email', 'juan@gmail.com')
+        ->set('password', 'anything')
+        ->call('login')
+        ->assertRedirect(route('auth.google'));
+
+    $this->assertGuest();
+});

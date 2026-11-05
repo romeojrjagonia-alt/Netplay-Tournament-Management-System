@@ -15,9 +15,13 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends Component {
     use WithFileUploads;
+    use WithPagination;
+
+    public const PER_PAGE = 8;
 
     public string $tab = 'accepting';
 
@@ -124,6 +128,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage('tournamentsPage');
+        $this->resetPage('applicationsPage');
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage('tournamentsPage');
+        $this->resetPage('applicationsPage');
     }
 
     public function viewTournament(int $tournamentId): void
@@ -444,7 +456,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     /**
      * Tournaments currently open for registration, optionally filtered by name.
      *
-     * @return \Illuminate\Support\Collection<int, Tournament>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, Tournament>
      */
     #[Computed]
     public function tournaments()
@@ -453,7 +465,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->acceptingRegistrations()
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->orderBy('registration_end')
-            ->get();
+            ->paginate(self::PER_PAGE, pageName: 'tournamentsPage');
     }
 
     #[Computed]
@@ -471,7 +483,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     /**
      * This player's tournament applications, optionally filtered by tournament name.
      *
-     * @return \Illuminate\Support\Collection<int, PlayerApplication>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, PlayerApplication>
      */
     #[Computed]
     public function myApplications()
@@ -487,7 +499,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 )
             )
             ->latest()
-            ->get();
+            ->paginate(self::PER_PAGE, pageName: 'applicationsPage');
     }
 
     /**
@@ -859,6 +871,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             @empty
                 <p class="py-10 text-center text-sm text-white">No tournaments are currently accepting registrations.</p>
             @endforelse
+
+            @if ($this->tournaments->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->tournaments->links(data: ['scrollTo' => false]) }}</div>
+            @endif
         </div>
     @else
         <div class="flex flex-col gap-[15px] rounded-[5px] bg-[#77b9b3]/60 p-5">
@@ -874,6 +890,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             @empty
                 <p class="py-10 text-center text-sm text-white">You have no tournament applications yet.</p>
             @endforelse
+
+            @if ($this->myApplications->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->myApplications->links(data: ['scrollTo' => false]) }}</div>
+            @endif
         </div>
     @endif
 
@@ -891,6 +911,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                     </div>
 
                     <div class="grid grid-cols-2 gap-[15px]">
+                        <div>
+                            <p class="text-[8px] text-[#3f3f3f]">Sport</p>
+                            <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->sport ?: 'Badminton' }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[8px] text-[#3f3f3f]">Venue</p>
+                            <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->location ?: '—' }}</p>
+                        </div>
                         <div>
                             <p class="text-[8px] text-[#3f3f3f]">Time</p>
                             <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->time ?? '—' }}</p>
@@ -1077,7 +1105,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         @endif
     </flux:modal>
 
-    <flux:modal name="tournament-registration" class="w-full max-w-xl dark:bg-white! dark:ring-black/5!">
+    <flux:modal name="tournament-registration" class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
         <div class="flex flex-col gap-[20px] p-[5px]">
             <div>
                 <p class="text-[15px] text-black">Tournament Registraion</p>
@@ -1086,7 +1114,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
             <div>
                 <div class="flex items-center justify-between rounded-t-[5px] bg-[#138177] px-[15px] py-[10px] text-white">
-                    <span class="text-[10px] font-bold">
+                    <span class="text-xs font-bold">
                         @if ($this->isDocumentsStep)
                             Valid Government Documents
                         @elseif ($this->isPairStep)
@@ -1095,7 +1123,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             Player Profile
                         @endif
                     </span>
-                    <span class="text-[10px] italic">Step {{ $regStep }} of {{ $this->totalRegistrationSteps }}</span>
+                    <span class="text-xs italic">Step {{ $regStep }} of {{ $this->totalRegistrationSteps }}</span>
                 </div>
 
                 <div class="flex max-h-[420px] flex-col gap-[15px] overflow-y-auto rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
@@ -1155,8 +1183,8 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             <div wire:key="reg-pair-search" class="contents">
                             <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
                                 <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name or email"
-                                       class="flex-1 bg-transparent text-[12px] text-black placeholder:text-black/40 focus:outline-none">
-                                <div class="flex h-[30px] w-[36px] items-center justify-center">
+                                       class="flex-1 bg-transparent text-sm text-black placeholder:text-black/40 focus:outline-none">
+                                <div class="flex h-11 w-[36px] items-center justify-center">
                                     <flux:icon.magnifying-glass class="size-[17px] text-black/50" />
                                 </div>
                             </div>
@@ -1169,7 +1197,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                                 'border-[#138177] bg-[#eaf4f3]' => $pairPlayerId === $player->id,
                                                 'border-[#d3d3d3] bg-white' => $pairPlayerId !== $player->id,
                                             ])>
-                                        <span class="flex size-[24px] shrink-0 items-center justify-center rounded-full bg-[#525591] text-[12px] font-bold text-white">
+                                        <span class="flex size-[24px] shrink-0 items-center justify-center rounded-full bg-[#525591] text-sm font-bold text-white">
                                             {{ $player->initials() }}
                                         </span>
                                         <span class="flex-1">
@@ -1219,7 +1247,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label for="pairPhoto"
-                                       class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] py-[20px] text-center text-[12px] text-black">
+                                       class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] py-[20px] text-center text-sm text-black">
                                     <span x-text="fileName || 'Upload photo of the player'"></span>
                                 </label>
                                 <input id="pairPhoto" type="file" wire:model="pairPhoto" accept="image/*" class="hidden"
@@ -1234,13 +1262,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                     @else
                         <div wire:key="reg-step-documents" class="contents">
                         <div class="flex flex-col gap-[10px]">
-                            <p class="text-[12px] font-bold text-black">Your valid document</p>
+                            <p class="text-sm font-bold text-black">Your valid document</p>
                             <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
-                                <label class="text-[12px] text-black">Upload attach</label>
+                                <label class="text-sm text-black">Upload attach</label>
                                 <label for="ownDocument"
-                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                     <span x-text="fileName || 'Upload photo of the document'"></span>
                                 </label>
                                 <input id="ownDocument" type="file" wire:model="ownDocument" accept="image/*" class="hidden"
@@ -1253,13 +1281,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                         @if ($this->isDoublesRegistration)
                             <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
-                                <p class="text-[12px] font-bold text-black">Pair's valid document</p>
+                                <p class="text-sm font-bold text-black">Pair's valid document</p>
                                 <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
 
                                 <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
-                                    <label class="text-[12px] text-black">Upload attach</label>
+                                    <label class="text-sm text-black">Upload attach</label>
                                     <label for="pairDocument"
-                                           class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                           class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                         <span x-text="fileName || 'Upload photo of the document'"></span>
                                     </label>
                                     <input id="pairDocument" type="file" wire:model="pairDocument" accept="image/*" class="hidden"
@@ -1279,25 +1307,25 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             <div class="grid grid-cols-2 gap-[20px]">
                 @if ($regStep === 1)
                     <button type="button" wire:click="cancelRegistration"
-                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                         Cancel
                     </button>
                 @else
                     <button type="button" wire:click="registrationPreviousStep"
-                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                         Back
                     </button>
                 @endif
 
                 @if ($this->isDocumentsStep)
                     <button type="button" wire:click="submitRegistration" wire:loading.attr="disabled" wire:target="submitRegistration"
-                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-60">
+                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white disabled:cursor-not-allowed disabled:opacity-60">
                         <span wire:loading.remove wire:target="submitRegistration">Submit Application</span>
                         <span wire:loading wire:target="submitRegistration">Submitting…</span>
                     </button>
                 @else
                     <button type="button" wire:click="registrationNextStep"
-                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
+                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
                         Next
                     </button>
                 @endif

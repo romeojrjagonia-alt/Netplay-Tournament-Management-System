@@ -11,6 +11,9 @@ namespace App\Support\Badminton;
  * - 31-point single set: the match is one game, and the first side to reach
  *   31 points wins it, with no 2-point lead required.
  *
+ * - Pickleball best of 3 to 11: a game is won at 11 points with a 2-point
+ *   lead (no cap); a match is decided by whichever side wins 2 of 3 games.
+ *
  * Which one applies is a tournament-level setting (`scoring_system`).
  */
 final class GameRules
@@ -26,6 +29,20 @@ final class GameRules
 
     /** The `tournaments.scoring_system` value for the 31-point single set. */
     public const SYSTEM_SINGLE_SET = '31-Point Single Set';
+
+    public const PICKLEBALL_POINTS_TO_WIN = 11;
+
+    /** The `tournaments.scoring_system` value for pickleball best of 3 to 11. */
+    public const SYSTEM_PICKLEBALL = 'Pickleball Best of 3 to 11';
+
+    /**
+     * Whether the given `tournaments.scoring_system` value is pickleball
+     * scoring (best of 3 to 11, win by 2).
+     */
+    public static function isPickleball(?string $scoringSystem): bool
+    {
+        return $scoringSystem === self::SYSTEM_PICKLEBALL;
+    }
 
     /**
      * Whether the given `tournaments.scoring_system` value is the 31-point
@@ -47,8 +64,12 @@ final class GameRules
     /**
      * The point total a side must reach to win a game outright.
      */
-    public static function pointsToWin(bool $singleSet = false): int
+    public static function pointsToWin(bool $singleSet = false, bool $pickleball = false): int
     {
+        if ($pickleball) {
+            return self::PICKLEBALL_POINTS_TO_WIN;
+        }
+
         return $singleSet ? self::SINGLE_SET_POINTS_TO_WIN : self::POINTS_TO_WIN;
     }
 
@@ -58,8 +79,16 @@ final class GameRules
      *
      * @return 'A'|'B'|null
      */
-    public static function gameWinner(int $scoreA, int $scoreB, bool $singleSet = false): ?string
+    public static function gameWinner(int $scoreA, int $scoreB, bool $singleSet = false, bool $pickleball = false): ?string
     {
+        if ($pickleball) {
+            if (($scoreA >= self::PICKLEBALL_POINTS_TO_WIN || $scoreB >= self::PICKLEBALL_POINTS_TO_WIN) && abs($scoreA - $scoreB) >= 2) {
+                return $scoreA > $scoreB ? 'A' : 'B';
+            }
+
+            return null;
+        }
+
         if ($singleSet) {
             if ($scoreA >= self::SINGLE_SET_POINTS_TO_WIN || $scoreB >= self::SINGLE_SET_POINTS_TO_WIN) {
                 return $scoreA > $scoreB ? 'A' : 'B';
