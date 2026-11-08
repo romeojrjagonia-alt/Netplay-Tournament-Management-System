@@ -84,7 +84,8 @@ test('the navbar links to the active tournaments and the application progress ch
 
 test('pages declare the favicon and web manifest', function () {
     $this->get('/')
-        ->assertSee('favicon.ico', false)
+        ->assertSee('favicon-32x32.png', false)
+        ->assertSee('favicon-light.webp', false)
         ->assertSee('site.webmanifest', false);
 
     expect(public_path('favicon.ico'))->toBeFile()
