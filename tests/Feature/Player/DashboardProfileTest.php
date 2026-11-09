@@ -39,13 +39,14 @@ test('player dashboard shows a profile trigger and the player\'s details in the 
     $response->assertSee('P-2 Molicay, Ozamiz City, Misamis Occidental');
 });
 
-test('admin dashboard keeps a non-interactive profile pill', function () {
+test('admin dashboard opens the staff profile modal from the profile pill', function () {
     $admin = User::factory()->create(['role' => 'admin']);
 
     $response = $this->actingAs($admin)->get(route('admin.dashboard'));
 
     $response->assertOk();
-    $response->assertDontSee('data-flux-modal-trigger', false);
+    $response->assertSee('data-flux-modal-trigger', false);
+    $response->assertSee('My Profile');
 });
 
 test('player can edit their name, address, email, and phone number from the profile modal', function () {
@@ -148,4 +149,24 @@ test('editing the profile rejects an email already taken by another user', funct
         ->assertSet('editing', true);
 
     expect($user->refresh()->email)->toBe('juan@example.com');
+});
+
+test('the profile modal shows the age worked out from the birth date, including under one year', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    $player = Player::create(['user_id' => $user->id, 'name' => 'Pat', 'birth_date' => now()->subYears(25)->subDays(10)->toDateString()]);
+
+    $this->actingAs($user);
+
+    Volt::test('player.profile-modal')->assertSee('25 yrs. old');
+
+    $player->update(['birth_date' => now()->subMonths(8)->toDateString()]);
+
+    Volt::test('player.profile-modal')->assertSee('Under 1 yr. old');
+});
+
+test('a player\'s age follows the birth date even when the stored value is stale', function () {
+    $player = Player::create(['name' => 'Pat', 'birth_date' => now()->subYears(30)->subDay()->toDateString()]);
+    Player::whereKey($player->id)->update(['age' => 12]);
+
+    expect($player->fresh()->age)->toBe(30);
 });

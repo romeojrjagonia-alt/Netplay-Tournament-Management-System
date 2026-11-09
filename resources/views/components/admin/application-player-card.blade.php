@@ -28,7 +28,7 @@
         </div>
         <div class="flex items-start justify-between gap-4">
             <span class="shrink-0">Age</span>
-            <span class="min-w-0 text-right font-bold break-words">{{ $player->age ? $player->age.' yrs. old' : '—' }}</span>
+            <span class="min-w-0 text-right font-bold break-words">{{ $player->age_label }}</span>
         </div>
         <div class="flex items-start justify-between gap-4">
             <span class="shrink-0">Gender</span>

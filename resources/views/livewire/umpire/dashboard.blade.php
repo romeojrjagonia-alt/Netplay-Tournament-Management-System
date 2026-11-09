@@ -172,6 +172,8 @@ new #[Layout('components.layouts.umpire', ['title' => 'Dashboard'])] class exten
             <p class="text-xs font-bold text-white">Previous Match Result</p>
 
             @if ($this->previousMatch)
+                <flux:modal.trigger name="match-summary">
+                <div wire:click="$dispatch('open-match-summary', { matchId: {{ $this->previousMatch['id'] }} })" class="cursor-pointer" role="button">
                 <x-player.match-card
                     :court="$this->previousMatch['court']"
                     :match-time="$this->previousMatch['time']"
@@ -183,9 +185,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Dashboard'])] class exten
                     :team-b-players="$this->previousMatch['teamBPlayers']"
                     :winner="$this->previousMatch['winner']"
                 />
+                </div>
+                </flux:modal.trigger>
             @else
                 <p class="py-10 text-center text-sm text-white">You have no completed matches yet.</p>
             @endif
         </div>
     </div>
+
+    <livewire:umpire.match-summary />
 </div>

@@ -1203,7 +1203,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                         <span class="flex-1">
                                             <span class="block text-[11px] font-bold text-black">{{ $player->name }}</span>
                                             <span class="flex gap-[10px] text-[8px] text-black">
-                                                <span>{{ $player->age ? $player->age.' yrs. old' : '—' }}</span>
+                                                <span>{{ $player->age_label }}</span>
                                                 <span>{{ $player->gender ? Str::headline($player->gender) : '—' }}</span>
                                             </span>
                                         </span>

@@ -144,9 +144,25 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
 
     <div class="flex flex-col gap-[15px]">
         @forelse ($this->matches as $match)
-            <a href="{{ $match['status'] === 'completed' ? '#' : route('umpire.matches.scoring', $match['id']) }}"
-               @if ($match['status'] !== 'completed') wire:navigate @endif
-               wire:key="match-{{ $match['id'] }}">
+            @if ($match['status'] === 'completed')
+                <flux:modal.trigger name="match-summary" wire:key="match-{{ $match['id'] }}">
+                    <div wire:click="$dispatch('open-match-summary', { matchId: {{ $match['id'] }} })" class="cursor-pointer" role="button">
+                        <x-player.match-card
+                            :court="$match['court']"
+                            :match-time="$match['time']"
+                            :match-date="$match['date']"
+                            :round="$match['round']"
+                            :team-a-name="$match['teamAName']"
+                            :team-a-players="$match['teamAPlayers']"
+                            :team-b-name="$match['teamBName']"
+                            :team-b-players="$match['teamBPlayers']"
+                            :winner="$match['winner']"
+                            footer-note="Tap to view the summary and print the scoresheet."
+                        />
+                    </div>
+                </flux:modal.trigger>
+            @else
+            <a href="{{ route('umpire.matches.scoring', $match['id']) }}" wire:navigate wire:key="match-{{ $match['id'] }}">
                 <x-player.match-card
                     :court="$match['court']"
                     :match-time="$match['time']"
@@ -157,11 +173,14 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
                     :team-b-name="$match['teamBName']"
                     :team-b-players="$match['teamBPlayers']"
                     :winner="$match['winner']"
-                    :footer-note="$match['status'] !== 'completed' ? 'Tap to open the scoreboard for this match.' : null"
+                    footer-note="Tap to open the scoreboard for this match."
                 />
             </a>
+            @endif
         @empty
             <p class="py-10 text-center text-sm text-white">No matches in this tournament match your filter.</p>
         @endforelse
     </div>
+
+    <livewire:umpire.match-summary />
 </div>

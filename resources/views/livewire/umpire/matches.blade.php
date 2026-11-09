@@ -13,6 +13,8 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
 
     public string $tab = 'all';
 
+    public string $search = '';
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isUmpire(), 403);
@@ -21,6 +23,11 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
         $this->resetPage();
     }
 
@@ -67,6 +74,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         return Matches::query()
             ->where('assigned_umpire_id', auth()->id())
             ->whereIn('status', $statuses)
+            ->when(trim($this->search) !== '', function ($query) {
+                $term = '%'.trim($this->search).'%';
+
+                $query->where(fn ($query) => $query
+                    ->where('court', 'like', $term)
+                    ->orWhereHas('matchApplications.application.applicationPlayers.player', fn ($player) => $player->where('name', 'like', $term)));
+            })
             ->with(['matchApplications.application.applicationPlayers.player'])
             ->get();
     }
@@ -99,11 +113,14 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
             'teamBName' => 'Team B',
             'teamBPlayers' => $teamB?->applicationPlayers->pluck('player.name')->all() ?? [],
             'winner' => $winner,
+            'status' => $match->status,
+            'ready' => $match->matchApplications->count() >= 2,
         ];
     }
 }; ?>
 
 <div class="flex flex-col gap-5">
+    <div class="flex flex-wrap items-center justify-between gap-4">
     <div class="flex h-10 w-fit max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
         <button type="button" wire:click="selectTab('all')"
                 @class([
@@ -131,14 +148,19 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         </button>
     </div>
 
+    <x-collapsible-search wire:model.live.debounce.300ms="search" placeholder="Search player or court" />
+    </div>
+
     @if ($tab !== 'concluded')
         <div class="flex flex-col gap-2.5">
             <h2 class="text-sm font-bold text-white">Upcoming Matches</h2>
 
             <div class="flex flex-col gap-[17px]">
                 @forelse ($this->upcomingMatches as $match)
+                    <a @if ($match['ready']) href="{{ route('umpire.matches.scoring', $match['id']) }}" wire:navigate @endif
+                       wire:key="upcoming-{{ $match['id'] }}"
+                       @class(['block', 'cursor-not-allowed opacity-70' => ! $match['ready']])>
                     <x-player.match-card
-                        wire:key="upcoming-{{ $match['id'] }}"
                         :court="$match['court']"
                         :match-time="$match['time']"
                         :match-date="$match['date']"
@@ -147,8 +169,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
                         :team-a-players="$match['teamAPlayers']"
                         :team-b-name="$match['teamBName']"
                         :team-b-players="$match['teamBPlayers']"
-                        footer-note="You are assigned as umpire for this match."
+                        :live="null"
+                        :footer-note="! $match['ready']
+                            ? 'Waiting for both teams to be confirmed before scoring can start.'
+                            : ($match['status'] === 'in_progress' ? 'In progress. Tap to continue scoring this match.' : 'Tap to open the scoreboard and start scoring.')"
                     />
+                    </a>
                 @empty
                     <p class="py-10 text-center text-sm text-white">You have no upcoming assigned matches.</p>
                 @endforelse
@@ -162,8 +188,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
 
             <div class="flex flex-col gap-[17px]">
                 @forelse ($this->previousMatches as $match)
+                    <flux:modal.trigger name="match-summary" wire:key="previous-{{ $match['id'] }}">
+                    <div wire:click="$dispatch('open-match-summary', { matchId: {{ $match['id'] }} })" class="cursor-pointer" role="button">
                     <x-player.match-card
-                        wire:key="previous-{{ $match['id'] }}"
                         :court="$match['court']"
                         :match-time="$match['time']"
                         :match-date="$match['date']"
@@ -174,6 +201,8 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
                         :team-b-players="$match['teamBPlayers']"
                         :winner="$match['winner']"
                     />
+                    </div>
+                    </flux:modal.trigger>
                 @empty
                     <p class="py-10 text-center text-sm text-white">You have no match history yet.</p>
                 @endforelse
@@ -184,4 +213,6 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
             @endif
         </div>
     @endif
+
+    <livewire:umpire.match-summary />
 </div>

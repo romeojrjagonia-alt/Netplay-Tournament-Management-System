@@ -165,3 +165,99 @@ test('a completed assigned match shows the winning team, not a win/lose badge', 
         ->assertDontSee('WIN')
         ->assertDontSee('LOSE');
 });
+
+function umpireMatchesPairedMatch(User $umpire, array $overrides = [], string $nameA = 'Mark Santos', string $nameB = 'Juan Torres'): Matches
+{
+    $tournamentCategory = umpireMatchesTournamentCategory();
+    $applicationA = umpireMatchesApplicationFor($tournamentCategory, Player::create(['name' => $nameA]));
+    $applicationB = umpireMatchesApplicationFor($tournamentCategory, Player::create(['name' => $nameB]));
+
+    $match = umpireMatchesMatch($tournamentCategory, array_merge(['assigned_umpire_id' => $umpire->id], $overrides));
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $applicationA->id, 'slot' => 1]);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $applicationB->id, 'slot' => 2]);
+
+    return $match;
+}
+
+test('an upcoming assigned match links to its scoreboard', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = umpireMatchesPairedMatch($umpire);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches')
+        ->assertSee(route('umpire.matches.scoring', $match), false)
+        ->assertSee('Tap to open the scoreboard and start scoring.');
+});
+
+test('a match still waiting for a team cannot be opened for scoring', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $tournamentCategory = umpireMatchesTournamentCategory();
+    $application = umpireMatchesApplicationFor($tournamentCategory, Player::create(['name' => 'Lonely Player']));
+    $match = umpireMatchesMatch($tournamentCategory, ['assigned_umpire_id' => $umpire->id]);
+    MatchApplication::create(['match_id' => $match->id, 'application_id' => $application->id]);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches')
+        ->assertDontSee(route('umpire.matches.scoring', $match), false)
+        ->assertSee('Waiting for both teams');
+});
+
+test('assigned matches can be searched by player or court', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    umpireMatchesPairedMatch($umpire, ['court' => 'Court 7'], 'Mark Santos', 'Juan Torres');
+    umpireMatchesPairedMatch($umpire, ['court' => 'Court 8'], 'Pedro Reyes', 'Ana Cruz');
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches')
+        ->set('search', 'Pedro')
+        ->assertSee('Pedro Reyes')
+        ->assertDontSee('Mark Santos')
+        ->set('search', 'Court 7')
+        ->assertSee('Mark Santos')
+        ->assertDontSee('Pedro Reyes');
+});
+
+test('a concluded match summary shows the winner, scores and scoresheet links', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = umpireMatchesPairedMatch($umpire, ['status' => 'completed', 'scheduled_at' => now()->subDay()]);
+    $match->update(['winner_application_id' => $match->matchApplications->first()->application_id]);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.match-summary')
+        ->dispatch('open-match-summary', matchId: $match->id)
+        ->assertSee('Match Summary')
+        ->assertSee('Mark Santos')
+        ->assertSee('WINNER')
+        ->assertSee(route('umpire.matches.scoresheet', $match), false)
+        ->assertSee('Print Scoresheet');
+});
+
+test('a match summary is not shown for another umpire\'s or an unfinished match', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $other = User::factory()->create(['role' => 'umpire']);
+    $othersMatch = umpireMatchesPairedMatch($other, ['status' => 'completed'], 'Hidden One', 'Hidden Two');
+    $openMatch = umpireMatchesPairedMatch($umpire, ['status' => 'scheduled'], 'Open One', 'Open Two');
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.match-summary')
+        ->dispatch('open-match-summary', matchId: $othersMatch->id)
+        ->assertDontSee('Hidden One')
+        ->dispatch('open-match-summary', matchId: $openMatch->id)
+        ->assertDontSee('Open One');
+});
+
+test('concluded matches on the assigned matches page open the summary', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    umpireMatchesPairedMatch($umpire, ['status' => 'completed', 'scheduled_at' => now()->subDay()]);
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.matches')
+        ->set('tab', 'concluded')
+        ->assertSeeHtml('open-match-summary');
+});

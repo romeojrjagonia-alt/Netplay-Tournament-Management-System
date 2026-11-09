@@ -44,6 +44,28 @@ class Player extends Model
         ];
     }
 
+    /**
+     * The player's age in years, always worked out from the birth date so it
+     * never goes stale (the stored column is only refreshed on save).
+     */
+    protected function age(): Attribute
+    {
+        return Attribute::get(fn (?int $value): ?int => $this->birth_date?->age ?? $value);
+    }
+
+    /**
+     * The age as shown in profiles: "—" when unknown, "Under 1 yr. old" for
+     * infants (a plain 0 reads as missing), otherwise "N yrs. old".
+     */
+    protected function ageLabel(): Attribute
+    {
+        return Attribute::get(fn (): string => match (true) {
+            $this->age === null => '—',
+            $this->age < 1 => 'Under 1 yr. old',
+            default => $this->age.' yrs. old',
+        });
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Player $player) {

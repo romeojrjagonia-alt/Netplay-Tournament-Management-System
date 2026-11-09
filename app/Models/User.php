@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class User extends Authenticatable implements MustVerifyEmail
@@ -25,6 +26,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $fillable = [
         'name',
         'email',
+        'photo_path',
         'google_id',
         'password',
         'role',
@@ -63,6 +65,19 @@ class User extends Authenticatable implements MustVerifyEmail
             ->explode(' ')
             ->map(fn (string $name) => Str::of($name)->substr(0, 1))
             ->implode('');
+    }
+
+    /**
+     * The picture shown on the account's profile: the photo uploaded to the
+     * account itself, else the one on its player record (set at sign-up).
+     */
+    public function profilePhotoUrl(): ?string
+    {
+        if ($this->photo_path) {
+            return Storage::disk('public')->url($this->photo_path);
+        }
+
+        return $this->player?->photo_url;
     }
 
     /**

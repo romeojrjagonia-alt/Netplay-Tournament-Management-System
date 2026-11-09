@@ -3,11 +3,17 @@
 <x-layouts.portal
     :title="$title"
     :brand-route="route('admin.dashboard')"
-    role-name="Administrator"
+    :role-name="auth()->user()->name"
     role-label="ADMIN USER"
     suffix="NetPlay Admin"
+    :profile-photo-url="auth()->user()->profilePhotoUrl()"
+    profile-modal-name="staff-profile"
     :show-header="request()->routeIs('admin.dashboard', 'admin.events.create', 'admin.events.wizard.*')"
 >
+    <x-slot:profileModal>
+        <livewire:staff.profile-modal />
+    </x-slot:profileModal>
+
     <x-slot:nav>
         <x-portal.sidebar-link icon="layout-grid" :href="route('admin.dashboard')" :active="request()->routeIs('admin.dashboard')" wire:navigate>
             Dashboard
