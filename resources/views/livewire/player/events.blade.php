@@ -7,6 +7,7 @@ use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Support\Applications\IdDocumentTypes;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -82,16 +83,16 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public string $ownDocumentType = '';
     public $ownDocument = null;
     public string $pairDocumentType = '';
+
+    public string $ownDocumentOther = '';
+
+    public string $pairDocumentOther = '';
     public $pairDocument = null;
 
     /**
      * @var array<string, string>
      */
-    private array $documentTypes = [
-        'national_id' => 'Philippine National ID',
-        'passport' => 'Passport',
-        'birth_certificate' => 'Birth Certificate',
-    ];
+    private array $documentTypes = IdDocumentTypes::TYPES;
 
     /** Set when the page is opened from a dashboard card, to pop that tournament's details. */
     public bool $openDetailsOnLoad = false;
@@ -309,8 +310,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         $this->pairPhoto = null;
 
         $this->ownDocumentType = '';
+        $this->ownDocumentOther = '';
         $this->ownDocument = null;
         $this->pairDocumentType = '';
+        $this->pairDocumentOther = '';
         $this->pairDocument = null;
 
         $player = auth()->user()->player;
@@ -373,11 +376,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         }
 
         $this->regStep = min($this->regStep + 1, $this->totalRegistrationSteps);
+
+        // isPairStep was read above, before the step changed; drop the cached
+        // value so this render shows the new step's content, not the old one.
+        unset($this->isPairStep);
     }
 
     public function registrationPreviousStep(): void
     {
         $this->regStep = max($this->regStep - 1, 1);
+
+        unset($this->isPairStep);
     }
 
     /**
@@ -387,11 +396,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     {
         $rules = [
             'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
             'ownDocument' => ['required', 'image', 'max:4096'],
         ];
 
         if ($this->isDoublesRegistration) {
             $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
             $rules['pairDocument'] = ['required', 'image', 'max:4096'];
         }
 
@@ -426,6 +437,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
                     'id_document_type' => $this->ownDocumentType,
+                    'id_document_other' => $this->ownDocumentType === 'others' ? trim($this->ownDocumentOther) : null,
                     'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
                 ]);
 
@@ -435,6 +447,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairViaSearch ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
                         'id_document_type' => $this->pairDocumentType,
+                        'id_document_other' => $this->pairDocumentType === 'others' ? trim($this->pairDocumentOther) : null,
                         'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
                     ]);
                 }
@@ -1263,7 +1276,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         <div wire:key="reg-step-documents" class="contents">
                         <div class="flex flex-col gap-[10px]">
                             <p class="text-sm font-bold text-black">Your valid document</p>
-                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                            @if ($ownDocumentType === 'others')
+                                <x-player.registration-field label="Specify the type of ID" model="ownDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                            @endif
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label class="text-sm text-black">Upload attach</label>
@@ -1282,7 +1298,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         @if ($this->isDoublesRegistration)
                             <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
                                 <p class="text-sm font-bold text-black">Pair's valid document</p>
-                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                                @if ($pairDocumentType === 'others')
+                                    <x-player.registration-field label="Specify the type of ID" model="pairDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                                @endif
 
                                 <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                     <label class="text-sm text-black">Upload attach</label>

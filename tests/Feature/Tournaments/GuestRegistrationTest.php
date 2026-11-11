@@ -155,7 +155,8 @@ test('doubles registration collects a partner without an account', function () {
         ->assertHasErrors('pairPlayerId')
         ->call('enterPairManually')
         ->call('nextStep')
-        ->assertHasErrors(['pairFirstName', 'pairPhoneNumber', 'pairEmail'])
+        ->assertHasErrors(['pairFirstName'])
+        ->assertHasNoErrors(['pairPhoneNumber', 'pairEmail'])
         ->set('pairFirstName', 'Pedro')
         ->set('pairLastName', 'Santos')
         ->set('pairBirthDate', '1997-05-05')
@@ -557,4 +558,110 @@ test('the confirmation screen and the reference email invite guests to sign in',
         ->assertSee('with the same email so this registration stays with your account');
 
     Mail::assertSent(ApplicationReceived::class, fn ($mail) => str_contains($mail->render(), 'Sign in to NetPlay'));
+});
+
+test('a doubles registration shows the documents step after the partner step, and the pair step again on Back', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, teamSize: 2);
+
+    $partner = Player::create(['name' => 'Pedro Santos', 'phone_number' => '09181112222']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->call('nextStep')
+        ->assertSee('Search for your partner by name')
+        ->assertDontSee('Your valid ID')
+        ->call('selectPairPlayer', $partner->id)
+        ->call('nextStep')
+        ->assertSet('regStep', 3)
+        ->assertSee('Your valid ID')
+        ->assertSee("Partner's valid ID", false)
+        ->assertSee('Submit Application')
+        ->assertDontSee('Search for your partner by name')
+        ->call('previousStep')
+        ->assertSet('regStep', 2)
+        ->assertSee('Search for your partner by name')
+        ->assertDontSee('Your valid ID');
+});
+
+test('a doubles partner can be registered without a phone number or email', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, teamSize: 2);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->call('nextStep')
+        ->call('enterPairManually')
+        ->set('pairFirstName', 'Pedro')
+        ->set('pairLastName', 'Santos')
+        ->set('pairBirthDate', '1997-05-05')
+        ->set('pairGender', 'male')
+        ->set('pairAddress', 'Ozamiz City')
+        ->set('pairSkillLevel', 'Beginner')
+        ->call('nextStep')
+        ->assertHasNoErrors()
+        ->assertSet('regStep', 3)
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    $partner = Player::firstWhere('name', 'Pedro Santos');
+
+    expect($partner)->not->toBeNull()
+        ->and($partner->phone_number)->toBeNull()
+        ->and($partner->email)->toBeNull();
+});
+
+test('the registrant still needs a phone number or email', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->set('regPhoneNumber', '')
+        ->set('regEmail', '')
+        ->call('nextStep')
+        ->assertHasErrors(['regPhoneNumber', 'regEmail']);
+});
+
+test('student id, driver\'s license and others are accepted ID types', function (string $type) {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->set('ownDocumentType', $type)
+        ->set('ownDocumentOther', 'Postal ID')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasNoErrors();
+
+    $document = ApplicationPlayer::firstOrFail();
+
+    expect($document->id_document_type)->toBe($type)
+        ->and($document->id_document_other)->toBe($type === 'others' ? 'Postal ID' : null);
+})->with(['student_id', 'drivers_license', 'others']);
+
+test('choosing others requires saying what kind of ID it is', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->set('ownDocumentType', 'others')
+        ->set('ownDocumentOther', '')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasErrors('ownDocumentOther');
+
+    expect(PlayerApplication::count())->toBe(0);
+});
+
+test('the partner\'s others ID also needs a description in doubles', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, teamSize: 2);
+    $partner = Player::create(['name' => 'Pedro Santos', 'phone_number' => '09181112222']);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->call('nextStep')
+        ->call('selectPairPlayer', $partner->id)
+        ->call('nextStep')
+        ->set('pairDocumentType', 'others')
+        ->set('pairDocumentOther', '')
+        ->call('submit')
+        ->assertHasErrors('pairDocumentOther');
 });

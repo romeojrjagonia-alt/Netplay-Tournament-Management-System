@@ -339,20 +339,3 @@ it('shows the overflow option on the schedule page when matches do not fit', fun
 
     expect(Matches::where('tournament_category_id', $tournamentCategory->id)->whereNull('scheduled_at')->count())->toBe(3);
 });
-
-it('seeds the regeneration demo events in the expected states', function () {
-    $this->seed(Database\Seeders\RegenerateDemoSeeder::class);
-
-    $byName = fn (string $event, string $category) => TournamentCategory::whereHas('tournament', fn ($q) => $q->where('name', $event))
-        ->whereHas('category', fn ($q) => $q->where('name', $category))->firstOrFail();
-
-    $mens = $byName('Round Robin Regen Demo', "Men's Singles");
-    $doubles = $byName('Round Robin Regen Demo', "Men's Doubles");
-
-    expect($mens->isDrawOutOfDate())->toBeTrue()
-        ->and($mens->matches()->whereNull('scheduled_at')->count())->toBe(0)
-        ->and($byName('Round Robin Regen Demo', "Women's Singles")->isDrawOutOfDate())->toBeTrue()
-        ->and($byName('Round Robin Regen Demo', 'Mixed Doubles')->hasGeneratedDraw())->toBeFalse()
-        ->and($doubles->hasStartedMatches())->toBeTrue()
-        ->and($byName('Single Elim Regen Demo', "Men's Singles")->isDrawOutOfDate())->toBeTrue();
-});

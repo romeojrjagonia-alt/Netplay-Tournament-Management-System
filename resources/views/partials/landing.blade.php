@@ -3,6 +3,7 @@
         @php
             $activeTournaments = \App\Models\Tournament::query()
                 ->acceptingRegistrations()
+                ->with('tournamentCategories.category')
                 ->orderBy('registration_end')
                 ->take(3)
                 ->get();
@@ -141,7 +142,12 @@
                 @else
                     <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
                         @foreach ($activeTournaments as $tournament)
-                            <article class="flex flex-col gap-2 rounded-lg bg-white p-3 shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)]">
+                            <div x-data="{ open: false }" class="contents"
+                                 x-effect="document.body.classList.toggle('overflow-hidden', open)"
+                                 x-on:keydown.escape.window="open = false">
+                            <article role="button" tabindex="0" x-on:click="open = true" x-on:keydown.enter="open = true"
+                                     aria-label="View details of {{ $tournament->name }}"
+                                     class="flex cursor-pointer flex-col gap-2 rounded-lg bg-white p-3 shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)] transition hover:-translate-y-0.5 hover:shadow-[0px_8px_16px_0px_rgba(0,0,0,0.35)]">
                                 @if ($tournament->poster_url)
                                     <img src="{{ $tournament->poster_url }}" alt="{{ $tournament->name }}"
                                          class="h-32 w-full rounded object-cover">
@@ -173,11 +179,71 @@
                                     @endif
                                 </div>
 
-                                <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate
-                                   class="mt-2 self-end rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
-                                    Register
-                                </a>
+                                <div class="mt-2 flex items-center justify-between gap-3">
+                                    <span class="text-[10px] font-bold text-emerald-900 underline">View details</span>
+                                    <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate x-on:click.stop
+                                       class="rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                                        Register
+                                    </a>
+                                </div>
                             </article>
+
+                            <template x-teleport="body">
+                                <div x-show="open" x-cloak x-transition.opacity
+                                     class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+                                     x-on:click.self="open = false" role="dialog" aria-modal="true" aria-label="{{ $tournament->name }} details">
+                                    <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white text-black shadow-2xl">
+                                        <button type="button" x-on:click="open = false" aria-label="Close"
+                                                class="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/50 text-lg text-white hover:bg-black/70">&times;</button>
+
+                                        <div class="overflow-y-auto">
+                                            @if ($tournament->poster_url)
+                                                <img src="{{ $tournament->poster_url }}" alt="{{ $tournament->name }}" class="h-48 w-full object-cover">
+                                            @endif
+
+                                            <div class="flex flex-col gap-4 p-5">
+                                                <div>
+                                                    <p class="text-xs font-bold tracking-wide text-emerald-800 uppercase">{{ $tournament->sport ?: 'Badminton' }} Tournament</p>
+                                                    <h3 class="text-xl font-bold">{{ $tournament->name }}</h3>
+                                                </div>
+
+                                                <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                                                    <div><dt class="text-black/50">Event date</dt><dd class="font-bold">{{ $tournament->date_range_label }}</dd></div>
+                                                    <div><dt class="text-black/50">Time</dt><dd class="font-bold">{{ $tournament->time ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Venue</dt><dd class="font-bold">{{ $tournament->location ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Days</dt><dd class="font-bold">{{ $tournament->specific_days ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Format</dt><dd class="font-bold">{{ ucwords(str_replace('_', ' ', (string) $tournament->format)) }}</dd></div>
+                                                    <div><dt class="text-black/50">Pointing system</dt><dd class="font-bold">{{ $tournament->scoring_system ?: '—' }}</dd></div>
+                                                    <div class="col-span-2">
+                                                        <dt class="text-black/50">Registration</dt>
+                                                        <dd class="font-bold">{{ $tournament->registration_start->format('F j') }} &ndash; {{ $tournament->registration_end->format('F j, Y') }}</dd>
+                                                    </div>
+                                                </dl>
+
+                                                @if ($tournament->tournamentCategories->isNotEmpty())
+                                                    <div class="flex flex-col gap-1.5 text-xs">
+                                                        <div class="flex justify-between border-b border-black/10 pb-1 font-bold">
+                                                            <span>Categories</span><span>Registration fee</span>
+                                                        </div>
+                                                        @foreach ($tournament->tournamentCategories as $tournamentCategory)
+                                                            <div class="flex justify-between gap-3">
+                                                                <span>{{ $tournamentCategory->category_label }}</span>
+                                                                <span class="shrink-0">₱{{ number_format((float) $tournamentCategory->registration_fee, 2) }}</span>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
+
+                                                <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate
+                                                   class="rounded-full bg-emerald-900 px-8 py-2.5 text-center text-sm font-bold text-white transition hover:bg-emerald-800">
+                                                    Register now
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                            </div>
                         @endforeach
                     </div>
                 @endif

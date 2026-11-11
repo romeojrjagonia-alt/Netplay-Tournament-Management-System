@@ -3,8 +3,7 @@
 @php
     $player = $applicationPlayer->player;
     $documentUrl = $applicationPlayer->id_document_url;
-    $documentTypes = ['national_id' => 'Philippine National ID', 'passport' => 'Passport', 'birth_certificate' => 'Birth Certificate'];
-    $documentLabel = $documentTypes[$applicationPlayer->id_document_type] ?? 'Valid ID document';
+    $documentLabel = \App\Support\Applications\IdDocumentTypes::label($applicationPlayer->id_document_type, $applicationPlayer->id_document_other);
 @endphp
 
 <div {{ $attributes->class(['flex w-full max-w-[284px] shrink-0 flex-col gap-[15px] rounded-[5px] border border-[#d3d3d3] px-5 pt-2.5 pb-5']) }}>

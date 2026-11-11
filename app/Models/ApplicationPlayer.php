@@ -19,6 +19,7 @@ class ApplicationPlayer extends Model
         'player_id',
         'level_at_apply',
         'id_document_type',
+        'id_document_other',
         'id_document_path',
     ];
 

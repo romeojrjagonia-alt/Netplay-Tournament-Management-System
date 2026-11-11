@@ -6,6 +6,7 @@ use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Support\Applications\IdDocumentTypes;
 use App\Support\Players\NameMatcher;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -57,6 +58,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
     public string $pairPhoneNumber = '';
 
     public string $ownDocumentType = '';
+
+    public string $ownDocumentOther = '';
+
+    public string $pairDocumentOther = '';
     public $ownDocument = null;
     public string $pairDocumentType = '';
     public $pairDocument = null;
@@ -66,11 +71,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
     /**
      * @var array<string, string>
      */
-    private array $documentTypes = [
-        'national_id' => 'Philippine National ID',
-        'passport' => 'Passport',
-        'birth_certificate' => 'Birth Certificate',
-    ];
+    private array $documentTypes = IdDocumentTypes::TYPES;
 
     public function mount(Tournament $tournament): void
     {
@@ -116,6 +117,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
         }
 
         $this->regStep = min($this->regStep + 1, $this->totalSteps);
+
+        // isPairStep was read above, before the step changed; drop the cached
+        // value so this render shows the new step's content, not the old one.
+        unset($this->isPairStep, $this->isReviewStep);
     }
 
     public function selectPairPlayer(int $playerId): void
@@ -139,6 +144,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
     public function previousStep(): void
     {
         $this->regStep = max($this->regStep - 1, 1);
+
+        unset($this->isPairStep, $this->isReviewStep);
     }
 
     /**
@@ -203,6 +210,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
                     'id_document_type' => $this->ownDocumentType,
+                    'id_document_other' => $this->ownDocumentType === 'others' ? trim($this->ownDocumentOther) : null,
                     'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
                 ]);
 
@@ -212,6 +220,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairMode === 'search' ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
                         'id_document_type' => $this->pairDocumentType,
+                        'id_document_other' => $this->pairDocumentType === 'others' ? trim($this->pairDocumentOther) : null,
                         'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
                     ]);
                 }
@@ -374,11 +383,13 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
     {
         $rules = [
             'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
             'ownDocument' => ['required', 'image', 'max:4096'],
         ];
 
         if ($this->isDoublesRegistration) {
             $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
             $rules['pairDocument'] = ['required', 'image', 'max:4096'];
         }
 
@@ -405,8 +416,9 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
             'pairAddress' => ['required', 'string', 'max:255'],
             'pairSkillLevel' => ['required', 'string', 'max:255'],
             'pairClub' => ['nullable', 'string', 'max:255'],
-            'pairEmail' => ['nullable', 'email', 'max:255', 'required_without:pairPhoneNumber'],
-            'pairPhoneNumber' => ['nullable', 'string', 'max:255', 'required_without:pairEmail'],
+            // The partner's contact details are optional; only the registrant's are required.
+            'pairEmail' => ['nullable', 'email', 'max:255'],
+            'pairPhoneNumber' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -775,8 +787,8 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                             <x-player.registration-field label="Club (optional)" model="pairClub" placeholder="e.g. OBC Badminton Club" />
                         </div>
                         <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                            <x-player.registration-field label="Phone Number (phone or email required)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
-                            <x-player.registration-field label="Email (phone or email required)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                            <x-player.registration-field label="Phone Number (optional)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
+                            <x-player.registration-field label="Email (optional)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
                         </div>
 
                         <button type="button" wire:click="searchPairAgain"
@@ -810,7 +822,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
 
                     <div class="flex flex-col gap-[10px]">
                         <p class="text-sm font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
-                        <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+                        <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                        @if ($ownDocumentType === 'others')
+                            <x-player.registration-field label="Specify the type of ID" model="ownDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                        @endif
 
                         <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                             <label for="ownDocument"
@@ -828,7 +843,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                     @if ($this->isDoublesRegistration)
                         <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
                             <p class="text-sm font-bold text-black">Partner's valid ID</p>
-                            <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :options="$this->documentTypeOptions()" />
+                            <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                            @if ($pairDocumentType === 'others')
+                                <x-player.registration-field label="Specify the type of ID" model="pairDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                            @endif
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label for="pairDocument"

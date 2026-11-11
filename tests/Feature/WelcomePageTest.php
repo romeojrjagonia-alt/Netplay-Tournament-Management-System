@@ -91,3 +91,24 @@ test('pages declare the favicon and web manifest', function () {
     expect(public_path('favicon.ico'))->toBeFile()
         ->and(public_path('site.webmanifest'))->toBeFile();
 });
+
+test('an active tournament card opens a details view with venue, sport and categories', function () {
+    Tournament::create([
+        'name' => 'Details Open',
+        'format' => 'round_robin',
+        'sport' => 'Pickleball',
+        'location' => 'JAL Court',
+        'scoring_system' => 'Pickleball Best of 3 to 11',
+        'date_start' => now()->addDays(20),
+        'date_end' => now()->addDays(21),
+        'registration_start' => now()->subDay(),
+        'registration_end' => now()->addDays(10),
+        'status' => 'published',
+    ]);
+
+    $this->get('/')
+        ->assertSee('View details of Details Open')
+        ->assertSee('Pickleball Tournament')
+        ->assertSee('JAL Court')
+        ->assertSee('Register now');
+});
