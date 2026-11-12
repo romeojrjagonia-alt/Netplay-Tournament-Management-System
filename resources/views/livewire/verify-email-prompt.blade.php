@@ -9,6 +9,12 @@ new class extends Component {
     public bool $show = false;
 
     /**
+     * Whether a prompt is waiting to open. It opens from the browser a moment
+     * after the page has rendered (see reveal()), so the dashboard shows first.
+     */
+    public bool $pending = false;
+
+    /**
      * Why the prompt opened: "signup" (just registered) or "login" (reminder).
      */
     public string $reason = 'login';
@@ -18,9 +24,9 @@ new class extends Component {
     public ?string $error = null;
 
     /**
-     * Open once per login/signup for users whose email is still unverified.
-     * The "verification_prompt" session flag is set by those flows and
-     * consumed here, so the prompt does not repeat on later pages.
+     * Queue the prompt once per login/signup for users whose email is still
+     * unverified. The "verification_prompt" session flag is set by those flows
+     * and consumed here, so the prompt does not repeat on later pages.
      */
     public function mount(): void
     {
@@ -28,6 +34,18 @@ new class extends Component {
 
         if ($reason !== null && ! Auth::user()->hasVerifiedEmail()) {
             $this->reason = $reason;
+            $this->pending = true;
+        }
+    }
+
+    /**
+     * Open the queued prompt. Called from the browser shortly after the page
+     * has loaded, so the user sees their dashboard before the modal.
+     */
+    public function reveal(): void
+    {
+        if ($this->pending) {
+            $this->pending = false;
             $this->show = true;
         }
     }
@@ -62,7 +80,7 @@ new class extends Component {
     }
 }; ?>
 
-<div>
+<div @if ($pending) x-init="setTimeout(() => $wire.reveal(), 800)" @endif>
     <flux:modal wire:model.self="show" class="w-full max-w-md dark:bg-white! dark:ring-black/5!">
         <div class="flex flex-col gap-6">
             @if ($sent)

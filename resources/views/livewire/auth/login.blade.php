@@ -50,6 +50,14 @@ new #[Layout('components.layouts.auth.signin')] class extends Component {
             Session::put('verification_prompt', 'login');
         }
 
+        // Coming from a tournament's registration modal leads to the player
+        // Events page, which only players can open.
+        $intended = Session::get('url.intended');
+
+        if (is_string($intended) && str_starts_with($intended, route('player.events')) && ! Auth::user()->isPlayer()) {
+            Session::forget('url.intended');
+        }
+
         $this->redirectIntended(
             default: route(Auth::user()->homeRouteName(), absolute: false),
             navigate: true,

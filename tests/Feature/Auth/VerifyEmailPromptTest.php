@@ -12,6 +12,9 @@ test('the prompt opens after signup for an unverified user', function () {
     $this->actingAs($user)->withSession(['verification_prompt' => 'signup']);
 
     Volt::test('verify-email-prompt')
+        ->assertSet('show', false)
+        ->assertSet('pending', true)
+        ->call('reveal')
         ->assertSet('show', true)
         ->assertSet('reason', 'signup')
         ->assertSee('We will send a verification link to')
@@ -24,6 +27,7 @@ test('the prompt opens as a reminder after login and only once', function () {
     $this->actingAs($user)->withSession(['verification_prompt' => 'login']);
 
     Volt::test('verify-email-prompt')
+        ->call('reveal')
         ->assertSet('show', true)
         ->assertSet('reason', 'login');
 
@@ -92,4 +96,25 @@ test('verification links are throttled', function () {
 
 test('the verification notification is queued', function () {
     expect(new QueuedVerifyEmail)->toBeInstanceOf(ShouldQueue::class);
+});
+
+test('the prompt waits for the page to load before opening, so the dashboard shows first', function () {
+    $user = User::factory()->unverified()->create();
+
+    $this->actingAs($user)->withSession(['verification_prompt' => 'signup']);
+
+    Volt::test('verify-email-prompt')
+        ->assertSet('show', false)
+        ->assertSeeHtml('$wire.reveal()')
+        ->call('reveal')
+        ->assertSet('show', true)
+        ->assertSet('pending', false);
+});
+
+test('revealing does nothing when no prompt is waiting', function () {
+    $this->actingAs(User::factory()->unverified()->create());
+
+    Volt::test('verify-email-prompt')
+        ->call('reveal')
+        ->assertSet('show', false);
 });

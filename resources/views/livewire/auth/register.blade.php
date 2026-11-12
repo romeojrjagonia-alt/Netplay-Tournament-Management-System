@@ -3,6 +3,7 @@
 use App\Models\Player;
 use App\Models\User;
 use App\Rules\AccountPassword;
+use App\Support\Forms\ClearsResolvedErrors;
 use Illuminate\Support\Facades\Auth;
 use App\Mail\UmpireSignupCode;
 use Illuminate\Support\Facades\Cache;
@@ -18,6 +19,7 @@ use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
 new #[Layout('components.layouts.auth.signup')] class extends Component {
+    use ClearsResolvedErrors;
     use WithFileUploads;
 
     public int $step = 1;
@@ -125,6 +127,47 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     }
 
     /**
+     * Every rule the sign-up form applies, keyed by property.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function signupRules(): array
+    {
+        return [
+            'userType' => ['required', 'in:player,umpire'],
+            'firstName' => ['required', 'string', 'max:255'],
+            'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
+            'middleInitial' => ['nullable', 'string', 'max:5'],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
+            'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', new AccountPassword, 'confirmed'],
+            'birthDate' => ['required', 'date', 'before:today'],
+            'phoneNumber' => ['required', 'string', 'max:255'],
+            'gender' => ['required', 'in:male,female'],
+            'purok' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'province' => ['required', 'string', 'max:255'],
+            'club' => ['nullable', 'string', 'max:255'],
+            'profilePhoto' => ['nullable', 'image', 'max:2048'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->signupRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return ['password_confirmation' => ['password'], 'password' => ['password_confirmation']];
+    }
+
+    /**
      * Return to the previous step without validating.
      */
     public function previousStep(): void
@@ -151,22 +194,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             $this->email = $google['email'];
         }
 
-        $this->validate([
-            'userType' => ['required', 'in:player,umpire'],
-            'firstName' => ['required', 'string', 'max:255'],
-            'lastName' => [$this->viaGoogle ? 'nullable' : 'required', 'string', 'max:255'],
-            'middleInitial' => ['nullable', 'string', 'max:5'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', new AccountPassword, 'confirmed'],
-            'birthDate' => ['required', 'date', 'before:today'],
-            'phoneNumber' => ['required', 'string', 'max:255'],
-            'gender' => ['required', 'in:male,female'],
-            'purok' => ['required', 'string', 'max:255'],
-            'city' => ['required', 'string', 'max:255'],
-            'province' => ['required', 'string', 'max:255'],
-            'club' => ['nullable', 'string', 'max:255'],
-            'profilePhoto' => ['nullable', 'image', 'max:2048'],
-        ]);
+        $this->validate($this->signupRules());
 
         $fullName = collect([
             $this->firstName,
@@ -529,7 +557,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
                     <div class="flex w-full flex-col items-center gap-3.5">
                         <div class="grid w-full grid-cols-2 gap-3 sm:flex">
-                            <x-auth.field label="Birth Date" model="birthDate" type="date" class="min-w-0 sm:flex-[2]" />
+                            <x-auth.field label="Birth Date" model="birthDate" type="date" start="years" max="{{ now()->toDateString() }}" class="min-w-0 sm:flex-[2]" />
 
                             <x-auth.field label="Phone Number" model="phoneNumber" type="tel" placeholder="e.g. 09123456789" class="order-last col-span-2 min-w-0 sm:order-none sm:flex-[2]" />
 

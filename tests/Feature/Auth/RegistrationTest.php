@@ -144,3 +144,48 @@ test('registration rejects an email that is already taken', function () {
         ->call('nextStep')
         ->assertHasErrors(['email' => 'unique']);
 });
+
+test('sign-up errors clear as each field is corrected', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->call('nextStep')
+        ->assertHasErrors(['firstName', 'lastName', 'email', 'password'])
+        ->set('firstName', 'Juan')
+        ->assertHasNoErrors('firstName')
+        ->assertHasErrors(['lastName', 'email', 'password'])
+        ->set('lastName', 'Dela Cruz')
+        ->set('email', 'juan@example.com')
+        ->assertHasNoErrors(['lastName', 'email']);
+});
+
+test('a bad email keeps its error until it is a valid address', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->call('nextStep')
+        ->set('email', 'not-an-email')
+        ->assertHasErrors('email')
+        ->set('email', 'juan@example.com')
+        ->assertHasNoErrors('email');
+});
+
+test('the password error clears once the confirmation matches', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Different123')
+        ->call('nextStep')
+        ->assertHasErrors('password')
+        ->set('password_confirmation', 'Password123')
+        ->assertHasNoErrors('password');
+});
+
+test('sign-up fields nobody has touched are not flagged while another is filled in', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->set('firstName', 'Juan')
+        ->assertHasNoErrors();
+});

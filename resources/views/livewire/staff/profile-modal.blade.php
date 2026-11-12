@@ -1,13 +1,17 @@
 <?php
 
+use App\Models\Matches;
+use App\Models\TournamentCategory;
 use App\Support\Profile\ChangesPassword;
 use Illuminate\Support\Facades\Storage;
+use Livewire\Attributes\Computed;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
 /**
  * Profile modal for admins and umpires: change the display name and picture,
- * and the account password. Players have their own richer modal.
+ * and the account password, and see a few details about the account (umpires
+ * also see their officiating activity). Players have their own richer modal.
  */
 new class extends Component {
     use ChangesPassword;
@@ -18,6 +22,75 @@ new class extends Component {
     public $photo = null;
 
     public string $name = '';
+
+    /**
+     * The details are only worked out once the modal has been opened, since
+     * this component is on every portal page.
+     */
+    public bool $detailsLoaded = false;
+
+    public function loadDetails(): void
+    {
+        $this->detailsLoaded = true;
+    }
+
+    /**
+     * Account details shown under the name. Everyone gets the account basics;
+     * umpires also get their officiating activity from the matches assigned to them.
+     *
+     * @return list<array{label: string, value: string, hint: ?string, wide: bool}>
+     */
+    #[Computed]
+    public function details(): array
+    {
+        if (! $this->detailsLoaded) {
+            return [];
+        }
+
+        $user = auth()->user();
+
+        $details = [
+            ['label' => 'Member since', 'value' => $user->created_at->format('F j, Y'), 'hint' => null, 'wide' => false],
+            [
+                'label' => 'Email status',
+                'value' => $user->hasVerifiedEmail() ? 'Verified' : 'Not verified',
+                'hint' => $user->hasVerifiedEmail() ? $user->email_verified_at->format('F j, Y') : 'Verify it from the prompt after signing in',
+                'wide' => false,
+            ],
+        ];
+
+        if (! $user->isUmpire()) {
+            return $details;
+        }
+
+        $assigned = Matches::query()->where('assigned_umpire_id', $user->id);
+        $nextMatch = (clone $assigned)
+            ->whereIn('status', ['scheduled', 'in_progress'])
+            ->where('scheduled_at', '>=', now()->startOfDay())
+            ->with('tournamentCategory.tournament')
+            ->orderBy('scheduled_at')
+            ->first();
+
+        $details[] = ['label' => 'Upcoming matches', 'value' => (string) (clone $assigned)->whereIn('status', ['scheduled', 'in_progress'])->count(), 'hint' => null, 'wide' => false];
+        $details[] = ['label' => 'Matches officiated', 'value' => (string) (clone $assigned)->where('status', 'completed')->count(), 'hint' => null, 'wide' => false];
+        $details[] = [
+            'label' => 'Tournaments officiated',
+            'value' => (string) TournamentCategory::query()
+                ->whereIn('id', (clone $assigned)->where('status', 'completed')->select('tournament_category_id'))
+                ->distinct()
+                ->count('tournament_id'),
+            'hint' => null,
+            'wide' => false,
+        ];
+        $details[] = [
+            'label' => 'Next match',
+            'value' => $nextMatch ? $nextMatch->scheduled_at->format('F j, Y · g:i A') : 'No upcoming match',
+            'hint' => $nextMatch ? collect([$nextMatch->tournamentCategory?->tournament?->name, $nextMatch->court])->filter()->implode(' · ') : null,
+            'wide' => true,
+        ];
+
+        return $details;
+    }
 
     public function startEditing(): void
     {
@@ -139,6 +212,29 @@ new class extends Component {
                         @endif
                     </div>
                 </div>
+
+                @unless ($editing)
+                    <div x-intersect.once="$wire.loadDetails()" class="border-t border-black/10 pt-4">
+                        @if (! $detailsLoaded)
+                            <div class="flex items-center justify-center gap-3 py-6 text-black/60">
+                                <span class="size-5 animate-spin rounded-full border-[3px] border-[#0d5750]/20 border-t-[#0d5750]" aria-hidden="true"></span>
+                                <span class="text-xs">Loading details…</span>
+                            </div>
+                        @else
+                            <dl class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                @foreach ($this->details as $detail)
+                                    <div @class(['rounded-[5px] bg-[#11776e]/10 px-4 py-3', 'sm:col-span-2' => $detail['wide']])>
+                                        <dt class="text-[10px] font-bold text-black/50 uppercase">{{ $detail['label'] }}</dt>
+                                        <dd class="text-sm font-bold">{{ $detail['value'] }}</dd>
+                                        @if ($detail['hint'])
+                                            <dd class="text-[11px] text-black/60">{{ $detail['hint'] }}</dd>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </dl>
+                        @endif
+                    </div>
+                @endunless
 
                 <div class="flex justify-end gap-3">
                     @if ($editing)

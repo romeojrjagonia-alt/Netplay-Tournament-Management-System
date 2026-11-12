@@ -2,6 +2,7 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Livewire\Volt\Volt;
 
 function actingAsAdmin(): User
@@ -291,4 +292,43 @@ it('requires passwords to follow the account password rules', function () {
         ->set('password_confirmation', 'alllowercase1')
         ->call('save')
         ->assertHasErrors('password');
+});
+
+test('the users list shows each user\'s uploaded profile picture', function () {
+    $admin = actingAsAdmin();
+    User::factory()->create(['role' => 'umpire', 'name' => 'Umpire With Photo', 'photo_path' => 'staff-photos/umpire.jpg']);
+
+    $player = User::factory()->create(['role' => 'player', 'name' => 'Player With Photo']);
+    Player::create(['user_id' => $player->id, 'name' => 'Player With Photo', 'photo_path' => 'player-photos/player.jpg']);
+
+    $html = Volt::actingAs($admin)->test('admin.users.index')->html();
+
+    expect($html)
+        ->toContain('storage/staff-photos/umpire.jpg')
+        ->toContain('storage/player-photos/player.jpg');
+});
+
+test('users without a picture keep their initials badge', function () {
+    $admin = actingAsAdmin();
+    User::factory()->create(['role' => 'umpire', 'name' => 'Gwen Domine', 'photo_path' => null]);
+
+    Volt::actingAs($admin)->test('admin.users.index')
+        ->assertSee('GD')
+        ->assertDontSeeHtml('alt="Gwen Domine"');
+});
+
+test('loading the users list does not query a player record per user', function () {
+    $admin = actingAsAdmin();
+
+    foreach (range(1, 8) as $number) {
+        $user = User::factory()->create(['role' => 'player']);
+        Player::create(['user_id' => $user->id, 'name' => "Player $number"]);
+    }
+
+    DB::enableQueryLog();
+    Volt::actingAs($admin)->test('admin.users.index')->html();
+    $playerQueries = collect(DB::getQueryLog())->filter(fn ($query) => str_contains($query['query'], 'from "players"') || str_contains($query['query'], 'from `players`'))->count();
+    DB::disableQueryLog();
+
+    expect($playerQueries)->toBeLessThan(5);
 });

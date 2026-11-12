@@ -299,3 +299,28 @@ test('a player can re-apply to the same category after a rejected application', 
 
     expect(PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->count())->toBe(2);
 });
+
+test('registration modal errors clear as each field is corrected', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $tournament = registrationTournament();
+    $category = registrationCategory($tournament, ['name' => "Men's Singles", 'gender' => 'male']);
+
+    $this->actingAs($user);
+
+    Volt::test('player.events')
+        ->call('viewTournament', $tournament->id)
+        ->call('startRegistration')
+        ->call('registrationNextStep')
+        ->assertHasErrors(['regBirthDate', 'regAddress', 'regSkillLevel', 'regTournamentCategoryId'])
+        ->set('regAddress', 'Purok 5, Ozamiz City')
+        ->assertHasNoErrors('regAddress')
+        ->assertHasErrors('regSkillLevel')
+        ->set('regTournamentCategoryId', $category->id)
+        ->assertHasNoErrors('regTournamentCategoryId')
+        ->set('regBirthDate', now()->addYear()->toDateString())
+        ->assertHasErrors('regBirthDate')
+        ->set('regBirthDate', now()->subYears(25)->toDateString())
+        ->assertHasNoErrors('regBirthDate');
+});

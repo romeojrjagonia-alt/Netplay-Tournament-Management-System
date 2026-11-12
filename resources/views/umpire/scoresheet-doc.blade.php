@@ -79,7 +79,7 @@
                                 <td height="30" style="{{ $border.$text }}font-size:8pt;padding:2px 6px;"><b>{{ $player['name'] }}</b></td>
                                 @foreach ($columns as $number)
                                     @if (($set['scorers'][$side][$number] ?? null) === $player['id'])
-                                        <td height="30" bgcolor="#000000" style="{{ $border }}background:#000000;">&nbsp;</td>
+                                        <td height="30" align="center" style="{{ $border.$text }}font-size:10pt;text-align:center;vertical-align:middle;">&#9679;</td>
                                     @else
                                         <td height="30" style="{{ $border }}">&nbsp;</td>
                                     @endif

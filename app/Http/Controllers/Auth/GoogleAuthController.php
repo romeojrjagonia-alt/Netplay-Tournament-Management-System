@@ -71,6 +71,12 @@ class GoogleAuthController extends Controller
         Session::regenerate();
         Session::forget('google_signup');
 
+        $intended = Session::get('url.intended');
+
+        if (is_string($intended) && str_starts_with($intended, route('player.events')) && ! $user->isPlayer()) {
+            Session::forget('url.intended');
+        }
+
         return redirect()->intended(route($user->homeRouteName(), absolute: false));
     }
 

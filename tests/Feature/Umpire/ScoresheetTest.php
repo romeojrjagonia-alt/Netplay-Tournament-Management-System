@@ -131,7 +131,21 @@ test('the printed scoresheet follows the paper form layout', function () {
         ->assertSee(['UMPIRE:', 'Signature', 'WINNER:'], false);
 });
 
-test('the downloaded document uses the same layout with a landscape page and one black cell per rally won', function () {
+test('the printed scoresheet marks each point with a dot instead of a solid cell', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+    $match = scoresheetMatch($umpire);
+
+    $this->actingAs($umpire);
+
+    $content = $this->get(route('umpire.matches.scoresheet', $match))->assertOk()->getContent();
+
+    // One rally won by each player: two dots, and no cell is filled solid.
+    expect(substr_count($content, 'data-scoresheet-dot'))->toBe(2)
+        ->and($content)->toContain('rounded-full')
+        ->and($content)->not->toContain("'bg-black' =>");
+});
+
+test('the downloaded document uses the same layout with a landscape page and one dot per rally won', function () {
     $umpire = User::factory()->create(['role' => 'umpire']);
     $match = scoresheetMatch($umpire);
 
@@ -143,8 +157,9 @@ test('the downloaded document uses the same layout with a landscape page and one
         ->assertSee(['GAME NO:', 'Set: 1', 'COURT:', 'BRACKET:', 'CATEGORY:', 'TIME:', 'Team 1', 'Team 2', 'UMPIRE:', 'Signature', 'WINNER:'], false)
         ->assertSee('mso-page-orientation: landscape', false);
 
-    // Two rallies so far (one won by each player): exactly two black cells.
-    expect(substr_count($response->getContent(), 'bgcolor="#000000"'))->toBe(2);
+    // Two rallies so far (one won by each player): exactly two dots, and no solid black cells.
+    expect(substr_count($response->getContent(), '&#9679;'))->toBe(2)
+        ->and($response->getContent())->not->toContain('bgcolor="#000000"');
 });
 
 test('each team\'s black cells are numbered by that team\'s points, in the row of the player who scored them', function () {

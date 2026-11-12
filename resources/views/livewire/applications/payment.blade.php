@@ -136,7 +136,7 @@ new #[Layout('components.layouts.public', ['title' => 'Pay Registration Fee'])] 
         <form wire:submit="submitPayment" class="flex flex-col gap-[15px] rounded-[5px] border border-[#138177] bg-white p-[15px]">
             <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
                 <x-player.registration-field label="GCash Reference Number" model="referenceNumber" placeholder="e.g. 1234 567 890123" />
-                <x-player.registration-field label="Date Paid" model="datePaid" type="date" />
+                <x-player.registration-field label="Date Paid" model="datePaid" type="date" max="{{ now()->toDateString() }}" />
             </div>
 
             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">

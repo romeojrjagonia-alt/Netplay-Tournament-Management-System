@@ -54,6 +54,12 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public bool $canGenerateUndated = false;
 
+    /**
+     * A fingerprint of the category's matches as last rendered, so the
+     * background check can tell when a result has come in.
+     */
+    public string $matchesVersion = '';
+
     public function mount(Tournament $tournament, TournamentCategory $tournamentCategory): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -62,6 +68,35 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->tournament = $tournament;
         $this->tournamentCategory = $tournamentCategory;
         $this->selectedCategoryId = $tournamentCategory->id;
+        $this->matchesVersion = $this->currentMatchesVersion();
+    }
+
+    /**
+     * Polled while the page is visible. When no match has changed it skips the
+     * render, so the check costs one small aggregate query and no view or
+     * bracket rebuild; when a result has come in, the page re-renders and the
+     * bracket redraws itself.
+     */
+    public function refreshWhenResultsChange(): void
+    {
+        $version = $this->currentMatchesVersion();
+
+        if ($version === $this->matchesVersion) {
+            $this->skipRender();
+
+            return;
+        }
+
+        $this->matchesVersion = $version;
+    }
+
+    private function currentMatchesVersion(): string
+    {
+        $summary = $this->tournamentCategory->matches()
+            ->selectRaw("count(*) as total, sum(case when status = 'completed' then 1 else 0 end) as finished, max(updated_at) as latest")
+            ->first();
+
+        return $summary->total.'|'.$summary->finished.'|'.$summary->latest;
     }
 
     public function updatedSelectedCategoryId(int $id): void
@@ -743,6 +778,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @endif
         </div>
     @else
+        <div wire:poll.10s.visible="refreshWhenResultsChange" class="hidden" aria-hidden="true"></div>
+
         @if ($this->drawChanges['outOfDate'])
             <div class="flex flex-wrap items-center justify-between gap-4 rounded-[10px] bg-amber-50 p-4">
                 <div class="flex flex-col gap-1">
@@ -843,7 +880,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                                         <div class="grid grid-cols-2 gap-3">
                                             <label class="flex flex-col gap-1 text-[11px] text-black">
                                                 Date
-                                                <input type="date" wire:model="editDate" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                <x-date-picker model="editDate" variant="bordered" size="xs" />
                                                 @error('editDate') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                                             </label>
                                             <label class="flex flex-col gap-1 text-[11px] text-black">

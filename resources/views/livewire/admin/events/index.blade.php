@@ -17,7 +17,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         abort_unless(auth()->user()->isAdmin(), 403);
     }
 
-    public string $tab = 'all';
+    public string $tab = 'published';
 
     public string $search = '';
 
@@ -44,8 +44,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             ->when($this->tab === 'published', fn ($query) => $query->published()->notConcluded())
             ->when($this->tab === 'draft', fn ($query) => $query->where('status', 'draft'))
             ->when($this->tab === 'concluded', fn ($query) => $query->published()->concluded())
-            // Live (published, not concluded) first, then drafts, then concluded.
-            ->orderByRaw("case when status = 'published' and concluded_at is null and date_end >= ? then 0 when status = 'draft' then 1 else 2 end", [today()->toDateString()])
             ->latest('date_start')
             ->paginate(self::PER_PAGE);
     }
@@ -87,13 +85,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
 
     <div class="flex flex-wrap items-center justify-between gap-4">
         <div class="flex h-10 min-w-0 max-w-full flex-1 items-center gap-2 overflow-x-auto sm:flex-none rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
-            <button type="button" wire:click="selectTab('all')" @class([
-                'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
-                'bg-[#0b4742] text-white' => $tab === 'all',
-                'cursor-pointer text-[#0b4742]' => $tab !== 'all',
-            ])>
-                All Events
-            </button>
             <button type="button" wire:click="selectTab('published')" @class([
                 'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                 'bg-[#0b4742] text-white' => $tab === 'published',

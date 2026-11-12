@@ -23,11 +23,11 @@
             <span class="text-sm text-black">Date Range</span>
             <div class="flex items-center gap-2">
                 <div class="flex h-11 flex-1 items-center gap-[10px] rounded-[5px] bg-[#eaf4f3] px-[10px]">
-                    <input wire:model="dateStart" type="date" class="w-full bg-transparent text-sm text-black focus:outline-none">
+                    <x-date-picker model="dateStart" />
                 </div>
                 <span>-</span>
                 <div class="flex h-11 flex-1 items-center gap-[10px] rounded-[5px] bg-[#eaf4f3] px-[10px]">
-                    <input wire:model="dateEnd" type="date" class="w-full bg-transparent text-sm text-black focus:outline-none">
+                    <x-date-picker model="dateEnd" />
                 </div>
             </div>
             @error('dateStart') <p class="text-xs text-red-600">{{ $message }}</p> @enderror
@@ -57,11 +57,11 @@
             <span class="text-sm text-black">Registration Window</span>
             <div class="flex items-center gap-2">
                 <div class="flex h-11 flex-1 items-center gap-[10px] rounded-[5px] bg-[#eaf4f3] px-[10px]">
-                    <input wire:model="registrationStart" type="date" class="w-full bg-transparent text-sm text-black focus:outline-none">
+                    <x-date-picker model="registrationStart" />
                 </div>
                 <span>-</span>
                 <div class="flex h-11 flex-1 items-center gap-[10px] rounded-[5px] bg-[#eaf4f3] px-[10px]">
-                    <input wire:model="registrationEnd" type="date" class="w-full bg-transparent text-sm text-black focus:outline-none">
+                    <x-date-picker model="registrationEnd" />
                 </div>
             </div>
             @error('registrationStart') <p class="text-xs text-red-600">{{ $message }}</p> @enderror

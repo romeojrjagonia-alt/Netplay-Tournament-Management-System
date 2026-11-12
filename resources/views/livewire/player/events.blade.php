@@ -8,6 +8,7 @@ use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Support\Applications\IdDocumentTypes;
+use App\Support\Forms\ClearsResolvedErrors;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,6 +20,7 @@ use Livewire\WithFileUploads;
 use Livewire\WithPagination;
 
 new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends Component {
+    use ClearsResolvedErrors;
     use WithFileUploads;
     use WithPagination;
 
@@ -394,19 +396,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     public function submitRegistration(): void
     {
-        $rules = [
-            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
-            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
-            'ownDocument' => ['required', 'image', 'max:4096'],
-        ];
-
-        if ($this->isDoublesRegistration) {
-            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
-            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
-            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
-        }
-
-        $this->validate($rules);
+        $this->validate($this->documentRules());
 
         $tournamentCategoryId = $this->regTournamentCategoryId;
 
@@ -669,6 +659,49 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         }
 
         return $tournament->date_start->format('F j, Y').' - '.$tournament->date_end->format('F j, Y');
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function documentRules(): array
+    {
+        $rules = [
+            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
+            'ownDocument' => ['required', 'image', 'max:4096'],
+        ];
+
+        if ($this->isDoublesRegistration) {
+            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
+            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->profileStepRules() + $this->pairStepRules() + $this->documentRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'regGender' => ['regTournamentCategoryId'],
+            'regBirthDate' => ['regTournamentCategoryId'],
+            'ownDocumentType' => ['ownDocumentOther'],
+            'ownDocumentOther' => ['ownDocumentType'],
+            'pairDocumentType' => ['pairDocumentOther'],
+            'pairDocumentOther' => ['pairDocumentType'],
+        ];
     }
 
     /**
@@ -1093,7 +1126,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                 <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
                     <x-player.registration-field label="GCash Reference Number" model="paymentReferenceNumber" placeholder="e.g. 1234 567 890123" />
-                    <x-player.registration-field label="Date Paid" model="paymentDatePaid" type="date" />
+                    <x-player.registration-field label="Date Paid" model="paymentDatePaid" type="date" max="{{ now()->toDateString() }}" />
                 </div>
 
                 <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
@@ -1148,7 +1181,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             <x-player.registration-field label="M.I" model="regMiddleInitial" placeholder="e.g. D" class="flex-1" />
                         </div>
                         <div class="flex gap-[9px]">
-                            <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" :live="true" class="flex-1" />
+                            <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" :live="true" class="flex-1" />
                             <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                             <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                         </div>
@@ -1245,7 +1278,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" class="flex-1" />
                             </div>
                             <div class="flex gap-[9px]">
-                                <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" class="flex-1" />
+                                <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" class="flex-1" />
                                 <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                                 <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                             </div>

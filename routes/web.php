@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\EventReportController;
 use App\Http\Controllers\Umpire\MatchScoresheetController;
+use App\Models\Tournament;
 use Illuminate\Support\Facades\Route;
 use Livewire\Volt\Volt;
 
@@ -11,8 +12,13 @@ Route::get('/', function () {
 
 // Public (no account needed): walk-in players register and pay for tournaments
 // using the reference code issued with their application.
-Volt::route('tournaments/{tournament}/register', 'tournaments.register')
-    ->name('tournaments.register');
+// The registration form is a modal on the landing page; this address (used by
+// the admin's "Register Walk-in" button and any old links) opens it there.
+Route::get('tournaments/{tournament}/register', function (Tournament $tournament) {
+    abort_unless(Tournament::acceptingRegistrations()->whereKey($tournament->id)->exists(), 404);
+
+    return redirect()->route('home', ['register' => $tournament->id]);
+})->name('tournaments.register');
 
 Volt::route('applications/{reference}/payment', 'applications.payment')
     ->name('applications.payment');

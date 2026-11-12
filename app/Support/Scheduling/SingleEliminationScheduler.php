@@ -24,7 +24,8 @@ class SingleEliminationScheduler
     /**
      * Insert the whole bracket for the category's approved entries. Entries an
      * admin has placed (`draw_position`) go exactly where they were put; the
-     * rest are seeded in approval order into the remaining slots.
+     * rest are seeded by strength (level, win rate, then match history; see
+     * EntrySeeding) into the remaining slots.
      *
      * With `$timetable`, the playable matches are also given a date, time and
      * court round by round from the event's schedule. If they don't all fit,
@@ -117,7 +118,8 @@ class SingleEliminationScheduler
      * The round-1 line-up: one application id (or null for a BYE) per slot,
      * slots `2n` and `2n + 1` meeting in match `n + 1`. Placed entries keep
      * their `draw_position`; everyone else fills the remaining slots in
-     * seed order, which with nothing placed is the default seeded bracket.
+     * seed order, strongest first, which with nothing placed is the default
+     * seeded bracket.
      *
      * @return list<int|null>
      */
@@ -125,9 +127,11 @@ class SingleEliminationScheduler
     {
         $entries = $tournamentCategory->playerApplications()
             ->where('status', 'approved')
+            ->with('applicationPlayers.player.statistic')
             ->orderBy('created_at')
             ->orderBy('id')
-            ->get(['id', 'draw_position']);
+            ->get();
+        $entries = app(EntrySeeding::class)->rank($entries);
 
         if ($entries->count() < self::MINIMUM_ENTRIES) {
             return $entries->pluck('id')->all();

@@ -122,36 +122,37 @@ new #[Layout('components.layouts.umpire', ['title' => 'Dashboard'])] class exten
     <div class="flex flex-col gap-2.5">
         <p class="text-xs text-white">Current Tournament Assigned</p>
 
-        <div class="flex flex-col gap-5 lg:flex-row lg:items-center">
+        <div class="flex flex-col gap-5 xl:flex-row xl:items-center">
             @if ($this->assignedTournament)
                 <x-player.tournament-card
-                    class="h-[118px] w-full px-5 lg:max-w-[572px] lg:shrink-0"
+                    class="h-[118px] w-full px-5 xl:max-w-[572px] xl:shrink-0"
                     label="ASSIGNED TOURNAMENT"
                     :name="$this->assignedTournament->name"
                     :dates="$this->assignedTournament->date_start->format('F j').'- '.$this->assignedTournament->date_end->format('j, Y')"
                     :time="$this->assignedTournament->time"
                 />
             @else
-                <div class="flex h-[118px] w-full items-center justify-center rounded-[5px] bg-white/10 px-5 lg:max-w-[572px] lg:shrink-0">
+                <div class="flex h-[118px] w-full items-center justify-center rounded-[5px] bg-white/10 px-5 xl:max-w-[572px] xl:shrink-0">
                     <p class="text-xs text-white">You have no assigned tournament yet.</p>
                 </div>
             @endif
 
             <div class="flex flex-col gap-5 sm:flex-row">
-                <x-admin.analytics-card class="shrink-0" label="ASSIGNED MATCHES" :value="$this->assignedMatchesCount" />
-                <x-admin.analytics-card class="shrink-0" label="ACCOMPLISHED MATCHES" :value="$this->accomplishedMatchesCount" />
+                <x-admin.analytics-card class="sm:flex-1 xl:shrink-0" label="ASSIGNED MATCHES" :value="$this->assignedMatchesCount" />
+                <x-admin.analytics-card class="sm:flex-1 xl:shrink-0" label="ACCOMPLISHED MATCHES" :value="$this->accomplishedMatchesCount" />
             </div>
         </div>
     </div>
 
-    <div class="flex flex-col gap-[27px] lg:flex-row lg:items-start">
-        <div class="flex flex-1 flex-col gap-[19px]">
+    <div class="flex flex-col gap-[27px] xl:flex-row xl:items-start">
+        <div class="flex min-w-0 flex-1 flex-col gap-[19px]">
             <p class="text-xs font-bold text-white">Upcoming Assigned Tournaments</p>
 
             <div class="flex max-h-[516px] flex-col gap-[15px] overflow-y-auto rounded-[5px] bg-[#4ad8cc]/20 p-[25px]">
                 @forelse ($this->upcomingMatches as $match)
+                    <flux:modal.trigger name="match-details" wire:key="upcoming-{{ $match['id'] }}">
+                    <div wire:click="$dispatch('open-match-details', { matchId: {{ $match['id'] }} })" class="cursor-pointer" role="button">
                     <x-player.match-card
-                        wire:key="upcoming-{{ $match['id'] }}"
                         :court="$match['court']"
                         :match-time="$match['time']"
                         :match-date="$match['date']"
@@ -160,15 +161,17 @@ new #[Layout('components.layouts.umpire', ['title' => 'Dashboard'])] class exten
                         :team-a-players="$match['teamAPlayers']"
                         :team-b-name="$match['teamBName']"
                         :team-b-players="$match['teamBPlayers']"
-                        footer-note="You are assigned as umpire for this match."
+                        footer-note="You are assigned as umpire for this match. Tap to view details."
                     />
+                    </div>
+                    </flux:modal.trigger>
                 @empty
                     <p class="w-full py-10 text-center text-sm text-white">You have no upcoming assigned matches.</p>
                 @endforelse
             </div>
         </div>
 
-        <div class="flex w-full flex-col gap-[23px] lg:w-[530px] lg:shrink-0">
+        <div class="flex w-full flex-col gap-[23px] xl:w-[530px] xl:shrink-0">
             <p class="text-xs font-bold text-white">Previous Match Result</p>
 
             @if ($this->previousMatch)
@@ -193,5 +196,6 @@ new #[Layout('components.layouts.umpire', ['title' => 'Dashboard'])] class exten
         </div>
     </div>
 
+    <livewire:umpire.match-details />
     <livewire:umpire.match-summary />
 </div>

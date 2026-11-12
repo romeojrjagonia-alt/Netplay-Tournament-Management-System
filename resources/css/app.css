@@ -122,3 +122,7 @@ input[type='month']::-webkit-calendar-picker-indicator {
     cursor: pointer;
     opacity: 0.75;
 }
+
+[x-cloak] {
+    display: none !important;
+}

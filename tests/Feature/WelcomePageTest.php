@@ -49,7 +49,10 @@ test('active tournament register button links to the public registration form', 
         'status' => 'published',
     ]);
 
-    $this->get('/')->assertSee(route('tournaments.register', $tournament), false);
+    // The Register button opens the registration modal instead of leaving the page.
+    $this->get('/')
+        ->assertSee("open-guest-registration', { tournamentId: {$tournament->id} }", false)
+        ->assertDontSee(route('tournaments.register', $tournament), false);
 });
 
 test('guests see sign in and sign up on the landing page', function () {

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Category;
 use App\Models\Tournament;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -8,6 +9,9 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
     public Tournament $tournament;
 
     public bool $showCategoryPrompt = false;
+
+    /** Shown instead of the category list when the system has no category templates yet. */
+    public bool $showNoTemplatesPrompt = false;
 
     public function mount(Tournament $tournament): void
     {
@@ -28,7 +32,24 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
         $this->showCategoryPrompt = true;
     }
 
+    /**
+     * Take the admin to the event page with its category picker open. With no
+     * category templates in the system there is nothing to pick, so offer to
+     * create some first.
+     */
     public function addCategories(): void
+    {
+        if (! Category::query()->exists()) {
+            $this->showCategoryPrompt = false;
+            $this->showNoTemplatesPrompt = true;
+
+            return;
+        }
+
+        $this->redirect(route('admin.events.show', [$this->tournament, 'manage' => 'categories']), navigate: true);
+    }
+
+    public function createCategoryTemplates(): void
     {
         $this->redirect(route('admin.categories.index'), navigate: true);
     }
@@ -144,8 +165,25 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
             </div>
 
             <div class="flex justify-end gap-3">
-                <flux:button wire:click="addLater">Add Later</flux:button>
                 <flux:button variant="primary" wire:click="addCategories">Add Categories</flux:button>
+                <flux:button wire:click="addLater">Add Later</flux:button>
+            </div>
+        </div>
+    </flux:modal>
+
+    <flux:modal wire:model.self="showNoTemplatesPrompt" :dismissible="false" :closable="false" class="max-w-md dark:bg-white! dark:ring-black/5!">
+        <div class="flex flex-col gap-5">
+            <div class="flex flex-col gap-2">
+                <h2 class="text-base font-bold text-black">No category templates found</h2>
+                <p class="text-sm text-black/70">
+                    There are no category templates in the system yet, so there is nothing to add to "{{ $tournament->name }}".
+                    Would you like to create some now? Your event is saved as a draft either way.
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-3">
+                <flux:button variant="primary" wire:click="createCategoryTemplates">Add Now</flux:button>
+                <flux:button wire:click="addLater">Not Now</flux:button>
             </div>
         </div>
     </flux:modal>

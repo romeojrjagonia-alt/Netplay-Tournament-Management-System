@@ -181,10 +181,10 @@
 
                                 <div class="mt-2 flex items-center justify-between gap-3">
                                     <span class="text-[10px] font-bold text-emerald-900 underline">View details</span>
-                                    <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate x-on:click.stop
-                                       class="rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                                    <button type="button" x-on:click.stop="$dispatch('open-guest-registration', { tournamentId: {{ $tournament->id }} })"
+                                       class="cursor-pointer rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
                                         Register
-                                    </a>
+                                    </button>
                                 </div>
                             </article>
 
@@ -234,10 +234,10 @@
                                                     </div>
                                                 @endif
 
-                                                <a href="{{ route('tournaments.register', $tournament) }}" wire:navigate
-                                                   class="rounded-full bg-emerald-900 px-8 py-2.5 text-center text-sm font-bold text-white transition hover:bg-emerald-800">
+                                                <button type="button" x-on:click="open = false; $dispatch('open-guest-registration', { tournamentId: {{ $tournament->id }} })"
+                                                   class="cursor-pointer rounded-full bg-emerald-900 px-8 py-2.5 text-center text-sm font-bold text-white transition hover:bg-emerald-800">
                                                     Register now
-                                                </a>
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

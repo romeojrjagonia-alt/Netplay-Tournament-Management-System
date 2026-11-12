@@ -7,6 +7,7 @@ use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Support\Applications\IdDocumentTypes;
+use App\Support\Forms\ClearsResolvedErrors;
 use App\Support\Players\NameMatcher;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -15,14 +16,19 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
-use Livewire\Attributes\Layout;
+use Livewire\Attributes\On;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
 
-new #[Layout('components.layouts.public', ['title' => 'Tournament Registration', 'maxWidth' => 'max-w-5xl'])] class extends Component {
+new class extends Component {
+    use ClearsResolvedErrors;
     use WithFileUploads;
 
-    public Tournament $tournament;
+    /**
+     * The tournament being registered for. Null until the modal is opened
+     * from a tournament card (see open()).
+     */
+    public ?Tournament $tournament = null;
 
     public int $regStep = 1;
 
@@ -73,20 +79,66 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
      */
     private array $documentTypes = IdDocumentTypes::TYPES;
 
-    public function mount(Tournament $tournament): void
+    /**
+     * Normally mounted empty (the modal sits on the landing page); a tournament
+     * may be passed to start with it already chosen. The parameter is untyped
+     * on purpose: a typed model would make Livewire look one up from the route.
+     */
+    public function mount($tournament = null): void
     {
-        abort_unless(
-            Tournament::acceptingRegistrations()->whereKey($tournament->id)->exists(),
-            404,
-        );
+        if ($tournament instanceof Tournament) {
+            abort_unless(
+                Tournament::acceptingRegistrations()->whereKey($tournament->id)->exists(),
+                404,
+            );
 
-        $this->tournament = $tournament;
+            $this->tournament = $tournament;
+            $this->prefillFromAccount();
+        }
+    }
 
-        // A guest who signs in from the banner comes straight back to this form.
-        if (! auth()->check()) {
-            session()->put('url.intended', url()->current());
+    /**
+     * Open the registration modal for a tournament. Called when a tournament
+     * card's Register button is pressed; the form starts empty each time, so
+     * nothing from a previously viewed tournament carries over.
+     */
+    #[On('open-guest-registration')]
+    public function open(int $tournamentId): void
+    {
+        $tournament = Tournament::acceptingRegistrations()->find($tournamentId);
+
+        if (! $tournament) {
+            $this->dispatch('system-message', title: 'Registration closed', message: 'This tournament is not accepting registrations.', variant: 'danger');
+
+            return;
         }
 
+        $this->reset();
+        $this->resetValidation();
+        unset($this->isPairStep, $this->isReviewStep);
+
+        $this->tournament = $tournament;
+        $this->prefillFromAccount();
+
+        $this->dispatch('modal-show', name: 'guest-registration');
+    }
+
+    /**
+     * Someone with an account is sent to sign in and, once they have, lands on
+     * the Events page of their dashboard with this tournament's modal open.
+     */
+    public function signIn(): void
+    {
+        session()->put('url.intended', route('player.events', ['tournament' => $this->tournament->id]));
+
+        $this->redirect(route('login'), navigate: true);
+    }
+
+    /**
+     * A signed-in player's own details are filled in for them.
+     */
+    private function prefillFromAccount(): void
+    {
         $user = $this->applicantUser();
         $player = $user?->player;
 
@@ -343,6 +395,31 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
         }
 
         return $this->tournament->date_start->format('F j, Y').' - '.$this->tournament->date_end->format('F j, Y');
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->profileStepRules() + $this->pairStepRules() + $this->documentRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'regGender' => ['regTournamentCategoryId'],
+            'regBirthDate' => ['regTournamentCategoryId'],
+            'regEmail' => ['regPhoneNumber'],
+            'regPhoneNumber' => ['regEmail'],
+            'ownDocumentType' => ['ownDocumentOther'],
+            'ownDocumentOther' => ['ownDocumentType'],
+            'pairDocumentType' => ['pairDocumentOther'],
+            'pairDocumentOther' => ['pairDocumentType'],
+        ];
     }
 
     /**
@@ -625,10 +702,13 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
     }
 }; ?>
 
-<div class="flex flex-col gap-5">
+<div>
+<flux:modal name="guest-registration" class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
+@if ($tournament)
+<div class="flex flex-col gap-5 pt-2 pr-4">
     <div>
         <p class="text-sm text-teal-800">{{ $tournament->sport ?: 'Badminton' }} Tournament Registration</p>
-        <h1 class="text-2xl font-bold text-black">{{ $tournament->name }}</h1>
+        <h2 class="text-2xl font-bold text-black">{{ $tournament->name }}</h2>
         <p class="text-xs text-black/70">
             {{ $this->formatDateRange() }}@if ($tournament->location) &middot; Venue: {{ $tournament->location }}@endif
         </p>
@@ -638,7 +718,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
         @unless ($submittedReferenceCode)
             <div class="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-[#138177] bg-[#eaf4f3] px-4 py-3 text-xs text-black">
                 <span>Have an account? Sign in so your details are filled in and your records stay together.</span>
-                <a href="{{ route('login') }}" wire:navigate class="font-bold text-[#138177] underline">Sign in</a>
+                <button type="button" wire:click="signIn" class="cursor-pointer font-bold text-[#138177] underline">Sign in</button>
             </div>
         @endunless
     @endguest
@@ -667,15 +747,22 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
 
             @guest
                 <p class="max-w-md text-xs text-black/60">
-                    Have an account? <a href="{{ route('login') }}" wire:navigate class="font-bold text-[#138177] underline">Sign in</a>
+                    Have an account? <button type="button" wire:click="signIn" class="cursor-pointer font-bold text-[#138177] underline">Sign in</button>
                     with the same email so this registration stays with your account.
                 </p>
             @endguest
 
-            <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home').'#check-application' }}" wire:navigate
-               class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
-                Check application progress
-            </a>
+            @auth
+                <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                   class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
+                    Check application progress
+                </a>
+            @else
+                <a href="#check-application" x-on:click="$flux.modal('guest-registration').close()"
+                   class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
+                    Check application progress
+                </a>
+            @endauth
         </div>
     @else
         <div>
@@ -701,7 +788,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                         <x-player.registration-field label="M.I" model="regMiddleInitial" placeholder="e.g. D" />
                     </div>
                     <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
-                        <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" :live="true" />
+                        <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" :live="true" />
                         <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" />
                         <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                     </div>
@@ -778,7 +865,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
                             <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" />
                         </div>
                         <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
-                            <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" />
+                            <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" />
                             <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" />
                             <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                         </div>
@@ -874,10 +961,10 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
 
         <div class="grid grid-cols-2 gap-5">
             @if ($regStep === 1)
-                <a href="{{ auth()->check() ? route(auth()->user()->homeRouteName()) : route('home') }}" wire:navigate
-                   class="rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
+                <button type="button" x-on:click="$flux.modal('guest-registration').close()"
+                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                     Cancel
-                </a>
+                </button>
             @else
                 <button type="button" wire:click="previousStep"
                         class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
@@ -899,4 +986,7 @@ new #[Layout('components.layouts.public', ['title' => 'Tournament Registration',
             @endif
         </div>
     @endif
+</div>
+@endif
+</flux:modal>
 </div>

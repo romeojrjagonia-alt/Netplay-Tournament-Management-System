@@ -525,6 +525,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         $search = trim($this->search);
 
         return User::query()
+            ->with('player')
             ->when($this->roleFilter !== '', fn ($query) => $query->where('role', $this->roleFilter))
             ->when($search !== '', fn ($query) => $query->where(function ($query) use ($search) {
                 $query->where('name', 'like', "%{$search}%")
@@ -653,7 +654,11 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
         @forelse ($this->users as $user)
             <div class="flex items-center gap-3 border-t border-[#ececec] px-3 py-3 first:border-t-0" wire:key="user-{{ $user->id }}">
-                <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#52528f] text-xs font-bold text-white uppercase">{{ \Illuminate\Support\Str::substr($user->initials(), 0, 2) }}</span>
+                @if ($photoUrl = $user->profilePhotoUrl())
+                    <img src="{{ $photoUrl }}" alt="{{ $user->name }}" class="size-10 shrink-0 rounded-full object-cover">
+                @else
+                    <span class="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#52528f] text-xs font-bold text-white uppercase">{{ \Illuminate\Support\Str::substr($user->initials(), 0, 2) }}</span>
+                @endif
 
                 <div class="flex min-w-0 flex-1 flex-col">
                     <span class="truncate text-xs font-bold text-black">{{ $user->name }}</span>
@@ -882,7 +887,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <label class="flex flex-col gap-1 text-[11px]">
                         Birthdate
-                        <input type="date" wire:model="birthDate" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        <x-date-picker model="birthDate" variant="bordered" size="xs" start="years" max="{{ now()->toDateString() }}" />
                         @error('birthDate') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                     </label>
                     <label class="flex flex-col gap-1 text-[11px]">

@@ -183,6 +183,7 @@ test('step 1 requires a cover image to actually be an image', function () {
 
 test('the confirmation step shows the event recap and the post-confirm prompt', function () {
     $tournament = wizardDraftTournament();
+    Category::create(['name' => "Men's Singles", 'gender' => 'male', 'team_size' => 1, 'level' => 'Beginner']);
 
     $this->actingAs(wizardAdmin());
 
@@ -193,8 +194,60 @@ test('the confirmation step shows the event recap and the post-confirm prompt', 
         ->call('confirm')
         ->assertSet('showCategoryPrompt', true)
         ->assertSee('Add Later')
+        ->assertSee('Add Categories')
         ->call('addCategories')
+        ->assertRedirect(route('admin.events.show', [$tournament, 'manage' => 'categories']));
+});
+
+test('Add Categories sits before Add Later in the confirmation prompt', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(wizardAdmin());
+
+    $html = Volt::test('admin.events.wizard.review', ['tournament' => $tournament])
+        ->call('confirm')
+        ->html();
+
+    expect(strpos($html, 'Add Categories'))->toBeLessThan(strpos($html, 'Add Later'));
+});
+
+test('with no category templates, Add Categories offers to create some instead', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.review', ['tournament' => $tournament])
+        ->call('confirm')
+        ->call('addCategories')
+        ->assertNoRedirect()
+        ->assertSet('showCategoryPrompt', false)
+        ->assertSet('showNoTemplatesPrompt', true)
+        ->assertSee('No category templates found')
+        ->call('createCategoryTemplates')
         ->assertRedirect(route('admin.categories.index'));
+});
+
+test('declining to add templates leaves the event as a draft on its page', function () {
+    $tournament = wizardDraftTournament();
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.review', ['tournament' => $tournament])
+        ->call('confirm')
+        ->call('addCategories')
+        ->call('addLater')
+        ->assertRedirect(route('admin.events.show', $tournament));
+});
+
+test('opening the event page with manage=categories shows the category picker', function () {
+    $tournament = wizardDraftTournament();
+    Category::create(['name' => "Men's Singles", 'gender' => 'male', 'team_size' => 1, 'level' => 'Beginner']);
+
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.show', ['tournament' => $tournament])
+        ->call('openCategoryModal')
+        ->assertSet('showCategoryModal', true);
 });
 
 test('choosing Add Later from the confirmation prompt goes to the event page', function () {
@@ -326,4 +379,52 @@ test('a badminton scoring system is rejected for a pickleball tournament', funct
         ->set('selectedDays', ['Sat'])
         ->call('next')
         ->assertHasErrors('scoringSystem');
+});
+
+test('a required-field error disappears as soon as the field is filled in correctly', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->call('next')
+        ->assertHasErrors(['dateStart', 'dateEnd', 'registrationStart', 'registrationEnd'])
+        ->set('dateStart', '2027-02-01')
+        ->assertHasNoErrors('dateStart')
+        ->assertHasErrors('dateEnd')
+        ->set('dateEnd', '2027-02-03')
+        ->assertHasNoErrors(['dateStart', 'dateEnd'])
+        ->set('registrationStart', '2027-01-01')
+        ->set('registrationEnd', '2027-01-31')
+        ->assertHasNoErrors(['registrationStart', 'registrationEnd']);
+});
+
+test('a field that is still wrong keeps showing its error', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->call('next')
+        ->set('dateStart', '2027-02-10')
+        ->set('dateEnd', '2027-02-01')
+        ->assertHasErrors('dateEnd')
+        ->set('dateEnd', '2027-02-12')
+        ->assertHasNoErrors('dateEnd');
+});
+
+test('changing the start date rechecks an end date that was before it', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->call('next')
+        ->set('dateStart', '2027-02-10')
+        ->set('dateEnd', '2027-02-01')
+        ->assertHasErrors('dateEnd')
+        ->set('dateStart', '2027-01-20')
+        ->assertHasNoErrors('dateEnd');
+});
+
+test('a field nobody has touched is not flagged while another is being filled in', function () {
+    $this->actingAs(wizardAdmin());
+
+    Volt::test('admin.events.wizard.details')
+        ->set('dateStart', '2027-02-01')
+        ->assertHasNoErrors();
 });

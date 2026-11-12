@@ -65,13 +65,98 @@ function fillGuestDetails($component, TournamentCategory $category, array $overr
         ->set('pairDocument', UploadedFile::fake()->create('partner-id.jpg', 100, 'image/jpeg'));
 }
 
-test('a guest can open the public registration page without signing in', function () {
+test('the registration form is a modal on the landing page that a guest can use without signing in', function () {
     $tournament = openTournament();
     openCategory($tournament);
 
-    $this->get(route('tournaments.register', $tournament))
+    $this->get('/')
         ->assertOk()
+        ->assertSee('guest-registration', false)
+        ->assertSee("open-guest-registration', { tournamentId: {$tournament->id} }", false);
+});
+
+test('the old registration address opens the modal on the landing page', function () {
+    $tournament = openTournament();
+
+    $this->get(route('tournaments.register', $tournament))
+        ->assertRedirect(route('home', ['register' => $tournament->id]));
+
+    $this->get(route('home', ['register' => $tournament->id]))
+        ->assertOk()
+        ->assertSee("tournamentId: {$tournament->id} }); history.replaceState", false);
+});
+
+test('pressing Register opens the modal with that tournament and an empty form', function () {
+    $tournament = openTournament();
+    $other = openTournament(['name' => 'Other Cup']);
+
+    Volt::test('tournaments.register')
+        ->assertSet('tournament', null)
+        ->dispatch('open-guest-registration', tournamentId: $tournament->id)
+        ->assertSet('tournament.id', $tournament->id)
+        ->assertDispatched('modal-show', name: 'guest-registration')
+        ->assertSee('Walk-in Open')
+        ->set('regFirstName', 'Juan')
+        ->set('regStep', 2)
+        ->dispatch('open-guest-registration', tournamentId: $other->id)
+        ->assertSet('tournament.id', $other->id)
+        ->assertSet('regFirstName', '')
+        ->assertSet('regStep', 1)
+        ->assertSee('Other Cup');
+});
+
+test('the modal will not open for a tournament that is not accepting registrations', function () {
+    $closed = openTournament(['registration_end' => now()->subDay()]);
+
+    Volt::test('tournaments.register')
+        ->dispatch('open-guest-registration', tournamentId: $closed->id)
+        ->assertSet('tournament', null)
+        ->assertNotDispatched('modal-show')
+        ->assertDispatched('system-message');
+});
+
+test('signing in from the modal leads to the Events page with that tournament open', function () {
+    $tournament = openTournament();
+    openCategory($tournament);
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('signIn')
+        ->assertRedirect(route('login'));
+
+    expect(session('url.intended'))->toBe(route('player.events', ['tournament' => $tournament->id]));
+});
+
+test('a player who signs in from the modal lands on the Events page with the tournament modal open', function () {
+    $tournament = openTournament();
+    openCategory($tournament);
+    $player = User::factory()->create(['role' => 'player']);
+
+    $this->withSession(['url.intended' => route('player.events', ['tournament' => $tournament->id])]);
+
+    Volt::test('auth.login')
+        ->set('email', $player->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertRedirect(route('player.events', ['tournament' => $tournament->id]));
+
+    $this->actingAs($player)
+        ->get(route('player.events', ['tournament' => $tournament->id]))
+        ->assertOk()
+        ->assertSee("name: 'tournament-details'", false)
         ->assertSee('Walk-in Open');
+});
+
+test('a staff member who signs in from the modal goes to their own dashboard instead', function () {
+    $tournament = openTournament();
+    $admin = User::factory()->create(['role' => 'admin']);
+
+    $this->withSession(['url.intended' => route('player.events', ['tournament' => $tournament->id])]);
+
+    Volt::test('auth.login')
+        ->set('email', $admin->email)
+        ->set('password', 'password')
+        ->call('login')
+        ->assertRedirect(route('admin.dashboard'));
 });
 
 test('the registration page is not available for tournaments that are not accepting registrations', function () {
@@ -538,8 +623,6 @@ test('guests are nudged to sign in, and signed-in users and admins are not', fun
     Volt::test('tournaments.register', ['tournament' => $tournament])
         ->assertSee('Have an account? Sign in');
 
-    expect(session('url.intended'))->toBe(url()->current());
-
     $this->actingAs(User::factory()->create(['role' => 'admin']));
 
     Volt::test('tournaments.register', ['tournament' => $tournament])
@@ -664,4 +747,74 @@ test('the partner\'s others ID also needs a description in doubles', function ()
         ->set('pairDocumentOther', '')
         ->call('submit')
         ->assertHasErrors('pairDocumentOther');
+});
+
+test('registration errors clear as each field is corrected', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('nextStep')
+        ->assertHasErrors(['regFirstName', 'regLastName', 'regBirthDate', 'regTournamentCategoryId'])
+        ->set('regFirstName', 'Juan')
+        ->assertHasNoErrors('regFirstName')
+        ->assertHasErrors('regLastName')
+        ->set('regBirthDate', '1998-03-01')
+        ->assertHasNoErrors('regBirthDate')
+        ->set('regGender', 'male')
+        ->set('regTournamentCategoryId', $category->id)
+        ->assertHasNoErrors('regTournamentCategoryId');
+});
+
+test('choosing a gender rechecks a category that was not open to the previous one', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament, gender: 'female');
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->set('regGender', 'male')
+        ->set('regTournamentCategoryId', $category->id)
+        ->call('nextStep')
+        ->assertHasErrors('regTournamentCategoryId')
+        ->set('regGender', 'female')
+        ->assertHasNoErrors('regTournamentCategoryId');
+});
+
+test('a phone number clears the error on the email, and the other way round', function () {
+    $tournament = openTournament();
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('nextStep')
+        ->assertHasErrors(['regPhoneNumber', 'regEmail'])
+        ->set('regPhoneNumber', '09171234567')
+        ->assertHasNoErrors(['regPhoneNumber', 'regEmail']);
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('nextStep')
+        ->set('regEmail', 'juan@example.com')
+        ->assertHasNoErrors(['regPhoneNumber', 'regEmail']);
+});
+
+test('a future birthdate keeps its error until it is a past date', function () {
+    $tournament = openTournament();
+
+    Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('nextStep')
+        ->set('regBirthDate', now()->addYear()->toDateString())
+        ->assertHasErrors('regBirthDate')
+        ->set('regBirthDate', '1998-03-01')
+        ->assertHasNoErrors('regBirthDate');
+});
+
+test('describing an others ID clears the missing description error', function () {
+    $tournament = openTournament();
+    $category = openCategory($tournament);
+
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        ->set('ownDocumentType', 'others')
+        ->set('ownDocumentOther', '')
+        ->call('nextStep')
+        ->call('submit')
+        ->assertHasErrors('ownDocumentOther')
+        ->set('ownDocumentOther', 'Postal ID')
+        ->assertHasNoErrors('ownDocumentOther');
 });

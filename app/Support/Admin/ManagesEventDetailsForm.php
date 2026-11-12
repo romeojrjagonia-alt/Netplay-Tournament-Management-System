@@ -4,6 +4,7 @@ namespace App\Support\Admin;
 
 use App\Models\Tournament;
 use App\Support\Badminton\GameRules;
+use App\Support\Forms\ClearsResolvedErrors;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -19,6 +20,7 @@ use Livewire\WithFileUploads;
  */
 trait ManagesEventDetailsForm
 {
+    use ClearsResolvedErrors;
     use WithFileUploads;
 
     public ?Tournament $tournament = null;
@@ -150,7 +152,39 @@ trait ManagesEventDetailsForm
      */
     protected function validateDetails(): array
     {
-        return $this->validate([
+        return $this->validate($this->detailRules());
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->detailRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'dateStart' => ['dateEnd'],
+            'dateEnd' => ['dateStart'],
+            'registrationStart' => ['registrationEnd'],
+            'registrationEnd' => ['registrationStart'],
+            'timeStart' => ['timeEnd'],
+            'timeEnd' => ['timeStart'],
+            'tiebreakerFirst' => ['tiebreakerSecond'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function detailRules(): array
+    {
+        return [
             'name' => ['required', 'string', 'max:255'],
             'format' => ['required', 'in:single_elimination,round_robin'],
             'sport' => ['required', Rule::in(array_keys($this->sports))],
@@ -166,7 +200,7 @@ trait ManagesEventDetailsForm
             'tiebreakerFirst' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES))],
             'tiebreakerSecond' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES)), 'different:tiebreakerFirst'],
             'poster' => ['nullable', 'image', 'max:5120'],
-        ]);
+        ];
     }
 
     /**

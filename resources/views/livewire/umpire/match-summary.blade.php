@@ -18,6 +18,7 @@ new class extends Component {
     {
         $this->matchId = $matchId;
         unset($this->match);
+        $this->dispatch('match-summary-loaded');
     }
 
     #[Computed]
@@ -60,8 +61,15 @@ new class extends Component {
     }
 }; ?>
 
-<div>
+<div x-data="{ loading: false }" @open-match-summary.window="loading = true; setTimeout(() => loading = false, 10000)" @match-summary-loaded.window="loading = false">
     <flux:modal name="match-summary" class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
+    {{-- Shown while the match is being fetched, so the previous match never flashes. --}}
+    <div x-show="loading" x-cloak class="flex items-center justify-center gap-3 py-16 text-black/60">
+        <span class="size-6 animate-spin rounded-full border-[3px] border-[#0d5750]/20 border-t-[#0d5750]" aria-hidden="true"></span>
+        <span class="text-sm">Loading match summary…</span>
+    </div>
+
+    <div x-show="! loading">
         @if ($this->match)
             @php
                 $match = $this->match;
@@ -129,5 +137,6 @@ new class extends Component {
         @else
             <p class="py-6 text-center text-sm text-black/60">Match summary is not available.</p>
         @endif
+    </div>
     </flux:modal>
 </div>
