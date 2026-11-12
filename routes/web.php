@@ -24,7 +24,7 @@ Volt::route('applications/{reference}/payment', 'applications.payment')
     ->name('applications.payment');
 
 Route::get('dashboard', function () {
-    return match (auth()->user()->role) {
+    return match (auth()->user()->activeRole()) {
         'admin' => redirect()->route('admin.dashboard'),
         'player' => redirect()->route('player.dashboard'),
         'umpire' => redirect()->route('umpire.dashboard'),

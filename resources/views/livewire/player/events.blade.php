@@ -9,6 +9,7 @@ use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Support\Applications\IdDocumentTypes;
 use App\Support\Forms\ClearsResolvedErrors;
+use App\Support\Officials\OfficialConflicts;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -281,6 +282,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             return;
         }
 
+        if (OfficialConflicts::officiatesIn(auth()->user(), $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->resetRegistrationForm();
 
         $this->dispatch('modal-close', name: 'tournament-details');
@@ -363,6 +370,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
     public function selectPairPlayer(int $playerId): void
     {
+        $partnerUser = Player::query()->with('user')->find($playerId)?->user;
+
+        if ($partnerUser && OfficialConflicts::officiatesIn($partnerUser, $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot pick this partner', message: OfficialConflicts::partnerOfficiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->pairPlayerId = $playerId;
     }
 
@@ -396,6 +411,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     public function submitRegistration(): void
     {
+        if (OfficialConflicts::officiatesIn(auth()->user(), $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->validate($this->documentRules());
 
         $tournamentCategoryId = $this->regTournamentCategoryId;

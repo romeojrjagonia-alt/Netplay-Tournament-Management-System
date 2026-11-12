@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Models\User;
 use App\Support\Bracket\BracketsViewerData;
+use App\Support\Officials\OfficialConflicts;
 use App\Support\Scheduling\InsufficientSlotsException;
 use App\Support\Scheduling\RoundRobinScheduler;
 use App\Support\Scheduling\SingleEliminationScheduler;
@@ -269,6 +270,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             'editTime.required_with' => 'Choose a time as well as a date.',
         ]);
 
+        // An entrant in this tournament can't also be one of its umpires.
+        if ($this->editUmpireId && ($umpire = User::find($this->editUmpireId)) && OfficialConflicts::isEnteredIn($umpire, $this->tournament)) {
+            $this->addError('editUmpireId', OfficialConflicts::enteredMessage($umpire->name));
+
+            return;
+        }
+
         $match = $this->tournamentCategory->matches()->findOrFail($this->editingMatchId);
 
         abort_if($match->status === 'completed', 403);
@@ -422,6 +430,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     public function umpires(): Collection
     {
         return User::query()->where('role', 'umpire')->orderBy('name')->get();
+    }
+
+    /**
+     * Umpires who are entered in this tournament as players, who can't be assigned to its matches.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function enteredUmpireIds(): array
+    {
+        return OfficialConflicts::enteredUmpireIds($this->tournament);
     }
 
     /**
@@ -900,7 +919,9 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                                                 <select wire:model="editUmpireId" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
                                                     <option value="">Unassigned</option>
                                                     @foreach ($this->umpires as $umpire)
-                                                        <option value="{{ $umpire->id }}">{{ $umpire->name }}</option>
+                                                        <option value="{{ $umpire->id }}" @disabled(in_array($umpire->id, $this->enteredUmpireIds, true) && $umpire->id !== $editUmpireId)>
+                                                            {{ $umpire->name }}@if (in_array($umpire->id, $this->enteredUmpireIds, true)) (entered as a player)@endif
+                                                        </option>
                                                     @endforeach
                                                 </select>
                                                 @error('editUmpireId') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror

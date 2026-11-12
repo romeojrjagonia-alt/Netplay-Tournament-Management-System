@@ -3,6 +3,7 @@
 use App\Models\Matches;
 use App\Models\Tournament;
 use App\Models\User;
+use App\Support\Officials\OfficialConflicts;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
@@ -35,6 +36,12 @@ new #[Layout('components.layouts.admin', ['title' => 'Match Officials'])] class 
         $this->validate([
             "umpireByCategory.$tournamentCategoryId" => ['nullable', Rule::exists('users', 'id')->where('role', 'umpire')],
         ], [], ["umpireByCategory.$tournamentCategoryId" => 'umpire']);
+
+        if ($umpireId !== '' && ($umpire = User::find($umpireId)) && OfficialConflicts::isEnteredIn($umpire, $this->tournament)) {
+            $this->dispatch('system-message', title: 'Cannot assign', message: OfficialConflicts::enteredMessage($umpire->name), variant: 'danger');
+
+            return;
+        }
 
         $updated = $tournamentCategory->matches()
             ->where('status', '!=', 'completed')
@@ -75,6 +82,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Match Officials'])] class 
             ])
             ->orderBy('id')
             ->get();
+    }
+
+    /**
+     * Umpires who are entered in this tournament as players, who can't be assigned to its matches.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function enteredUmpireIds(): array
+    {
+        return OfficialConflicts::enteredUmpireIds($this->tournament);
     }
 
     /**
@@ -146,7 +164,9 @@ new #[Layout('components.layouts.admin', ['title' => 'Match Officials'])] class 
                                 class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs text-black">
                             <option value="">No umpire</option>
                             @foreach ($this->umpires as $row)
-                                <option value="{{ $row['user']->id }}">{{ $row['user']->name }}</option>
+                                <option value="{{ $row['user']->id }}" @disabled(in_array($row['user']->id, $this->enteredUmpireIds, true))>
+                                    {{ $row['user']->name }}@if (in_array($row['user']->id, $this->enteredUmpireIds, true)) (entered as a player)@endif
+                                </option>
                             @endforeach
                         </select>
 

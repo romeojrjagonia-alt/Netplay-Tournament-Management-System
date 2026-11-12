@@ -17,7 +17,7 @@ class EnsureUserHasRole
     {
         $user = $request->user();
 
-        if ($user && ! in_array($user->role, $roles, true)) {
+        if ($user && ! in_array($user->activeRole(), $roles, true)) {
             return new RedirectResponse(route($user->homeRouteName()));
         }
 

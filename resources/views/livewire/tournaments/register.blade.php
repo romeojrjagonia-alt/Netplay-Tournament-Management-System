@@ -8,6 +8,7 @@ use App\Models\Tournament;
 use App\Models\TournamentCategory;
 use App\Support\Applications\IdDocumentTypes;
 use App\Support\Forms\ClearsResolvedErrors;
+use App\Support\Officials\OfficialConflicts;
 use App\Support\Players\NameMatcher;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -113,6 +114,13 @@ new class extends Component {
             return;
         }
 
+        // Someone who officiates in this tournament can't also enter it.
+        if (($user = $this->applicantUser()) && OfficialConflicts::officiatesIn($user, $tournament)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->reset();
         $this->resetValidation();
         unset($this->isPairStep, $this->isReviewStep);
@@ -177,6 +185,14 @@ new class extends Component {
 
     public function selectPairPlayer(int $playerId): void
     {
+        $partnerUser = Player::query()->with('user')->find($playerId)?->user;
+
+        if ($partnerUser && OfficialConflicts::officiatesIn($partnerUser, $this->tournament)) {
+            $this->dispatch('system-message', title: 'Cannot pick this partner', message: OfficialConflicts::partnerOfficiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->pairPlayerId = Player::query()->whereKey($playerId)->value('id');
     }
 
@@ -207,6 +223,12 @@ new class extends Component {
      */
     public function submit(): void
     {
+        if (($user = $this->applicantUser()) && OfficialConflicts::officiatesIn($user, $this->tournament)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->validate($this->profileStepRules());
 
         if ($this->isDoublesRegistration) {

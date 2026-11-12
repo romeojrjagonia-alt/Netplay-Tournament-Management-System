@@ -54,6 +54,10 @@
                         </flux:modal.trigger>
                     @endif
 
+                    @if (auth()->user()->canSwitchRoles())
+                        <livewire:account.role-switch />
+                    @endif
+
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
                         <button type="submit" class="grid w-full grid-cols-[27px_1fr] items-center gap-2.5 p-2.5 text-left text-sm text-black hover:bg-[#f5faf9]">

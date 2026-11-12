@@ -236,7 +236,7 @@ new class extends Component {
                     </div>
                 @endunless
 
-                <div class="flex justify-end gap-3">
+                <div class="flex flex-wrap justify-end gap-3">
                     @if ($editing)
                         <button type="button" wire:click="cancelEditing"
                                 class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-6 py-2 text-sm text-black transition hover:bg-black/5">

@@ -118,20 +118,54 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function isPlayer(): bool
     {
-        return $this->role === 'player';
+        return $this->activeRole() === 'player';
     }
 
     public function isUmpire(): bool
+    {
+        return $this->activeRole() === 'umpire';
+    }
+
+    /**
+     * Session key set while an umpire is using the site as a player.
+     */
+    public const PLAYER_MODE_SESSION_KEY = 'acting_as_player';
+
+    /**
+     * Umpires can step into a player's shoes and back again. Their stored role
+     * never changes: the choice lives in the session and ends when they sign out.
+     */
+    public function canSwitchRoles(): bool
     {
         return $this->role === 'umpire';
     }
 
     /**
-     * The route name for this user's home dashboard, based on role.
+     * Whether this umpire is currently using the site as a player. Only ever
+     * true for the signed-in user themselves.
+     */
+    public function isInPlayerMode(): bool
+    {
+        return $this->canSwitchRoles()
+            && auth()->id() === $this->getKey()
+            && session()->get(self::PLAYER_MODE_SESSION_KEY) === true;
+    }
+
+    /**
+     * The role the account is acting as right now: its stored role, except an
+     * umpire in player mode, who is treated as a player.
+     */
+    public function activeRole(): ?string
+    {
+        return $this->isInPlayerMode() ? 'player' : $this->role;
+    }
+
+    /**
+     * The route name for this user's home dashboard, based on the role they are acting as.
      */
     public function homeRouteName(): string
     {
-        return match ($this->role) {
+        return match ($this->activeRole()) {
             'admin' => 'admin.dashboard',
             'player' => 'player.dashboard',
             'umpire' => 'umpire.dashboard',
