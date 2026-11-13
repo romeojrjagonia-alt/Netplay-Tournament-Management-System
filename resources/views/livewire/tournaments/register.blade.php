@@ -1,5 +1,6 @@
 <?php
 
+use App\Rules\PhoneNumber;
 use App\Mail\ApplicationReceived;
 use App\Models\ApplicationPlayer;
 use App\Models\Player;
@@ -460,7 +461,7 @@ new class extends Component {
             'regSkillLevel' => ['required', 'string', 'max:255'],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255', 'required_without:regPhoneNumber'],
-            'regPhoneNumber' => ['nullable', 'string', 'max:255', 'required_without:regEmail'],
+            'regPhoneNumber' => ['nullable', 'string', new PhoneNumber, 'required_without:regEmail'],
         ];
     }
 
@@ -517,7 +518,7 @@ new class extends Component {
             'pairClub' => ['nullable', 'string', 'max:255'],
             // The partner's contact details are optional; only the registrant's are required.
             'pairEmail' => ['nullable', 'email', 'max:255'],
-            'pairPhoneNumber' => ['nullable', 'string', 'max:255'],
+            'pairPhoneNumber' => ['nullable', 'string', new PhoneNumber],
         ];
     }
 

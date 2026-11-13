@@ -126,3 +126,17 @@ input[type='month']::-webkit-calendar-picker-indicator {
 [x-cloak] {
     display: none !important;
 }
+
+/*
+ * Every modal here has a white panel, but Flux's close button turns white on
+ * hover in dark mode, which makes it vanish. Darken it instead. This sits in
+ * the utilities layer because the white comes from an !important utility, and
+ * an !important rule outside the layer would lose to it.
+ */
+@layer utilities {
+    [data-flux-modal] button[aria-label='Close modal']:hover,
+    [data-flux-modal] button[aria-label='Close modal']:focus-visible {
+        color: #18181b !important;
+        background-color: rgb(0 0 0 / 0.08) !important;
+    }
+}

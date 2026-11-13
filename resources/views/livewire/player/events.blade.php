@@ -1,5 +1,6 @@
 <?php
 
+use App\Rules\PhoneNumber;
 use App\Actions\Applications\CancelApplication;
 use App\Models\ApplicationPlayer;
 use App\Models\PaymentDetail;
@@ -741,7 +742,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'regSkillLevel' => ['required', 'string', 'max:255'],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255'],
-            'regPhoneNumber' => ['nullable', 'string', 'max:255'],
+            'regPhoneNumber' => ['nullable', 'string', new PhoneNumber],
         ];
 
         if ($this->isDoublesRegistration) {
@@ -776,7 +777,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'pairSkillLevel' => ['required', 'string', 'max:255'],
             'pairClub' => ['nullable', 'string', 'max:255'],
             'pairEmail' => ['nullable', 'email', 'max:255'],
-            'pairPhoneNumber' => ['nullable', 'string', 'max:255'],
+            'pairPhoneNumber' => ['nullable', 'string', new PhoneNumber],
             'pairPhoto' => ['nullable', 'image', 'max:4096'],
         ];
     }

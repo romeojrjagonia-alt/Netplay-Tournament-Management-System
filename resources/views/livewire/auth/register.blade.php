@@ -1,5 +1,6 @@
 <?php
 
+use App\Rules\PhoneNumber;
 use App\Models\Player;
 use App\Models\User;
 use App\Rules\AccountPassword;
@@ -141,7 +142,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
             'password' => $this->viaGoogle ? ['nullable'] : ['required', 'string', new AccountPassword, 'confirmed'],
             'birthDate' => ['required', 'date', 'before:today'],
-            'phoneNumber' => ['required', 'string', 'max:255'],
+            'phoneNumber' => ['required', 'string', new PhoneNumber],
             'gender' => ['required', 'in:male,female'],
             'purok' => ['required', 'string', 'max:255'],
             'city' => ['required', 'string', 'max:255'],

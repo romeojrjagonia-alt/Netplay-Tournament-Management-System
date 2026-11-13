@@ -1,5 +1,6 @@
 <?php
 
+use App\Rules\PhoneNumber;
 use App\Actions\Players\MergeDuplicatePlayers;
 use App\Actions\Players\MergePlayerRecords;
 use App\Actions\Players\PruneUnusedGuests;
@@ -166,7 +167,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
             'role' => ['required', Rule::in(self::ROLES)],
             'password' => [$editing ? 'nullable' : 'required', 'confirmed', new AccountPassword],
             'birthDate' => [$profile, 'date', 'before:today'],
-            'phoneNumber' => [$profile, 'string', 'max:255'],
+            'phoneNumber' => [$profile, 'string', new PhoneNumber],
             'gender' => [$profile, 'in:male,female'],
             'purok' => [$profile, 'string', 'max:255'],
             'city' => [$profile, 'string', 'max:255'],
@@ -901,7 +902,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                     </label>
                     <label class="flex flex-col gap-1 text-[11px]">
                         Phone number
-                        <input type="text" wire:model="phoneNumber" placeholder="e.g. 09xxxxxxxxx" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                        <input type="tel" wire:model="phoneNumber" placeholder="e.g. 09123456789" inputmode="numeric" maxlength="11" autocomplete="tel" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
                         @error('phoneNumber') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                     </label>
                 </div>

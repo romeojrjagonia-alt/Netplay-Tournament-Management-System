@@ -1,5 +1,6 @@
 <?php
 
+use App\Rules\PhoneNumber;
 use App\Livewire\Actions\SendVerificationEmail;
 use App\Models\Player;
 use App\Support\Profile\ChangesPassword;
@@ -87,7 +88,7 @@ new class extends Component {
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore(Auth::id())],
             'address' => ['required', 'string', 'max:255'],
-            'phoneNumber' => ['nullable', 'string', 'max:255'],
+            'phoneNumber' => ['nullable', 'string', new PhoneNumber],
             'photo' => ['nullable', 'image', 'max:2048'],
         ]);
 
@@ -257,7 +258,7 @@ new class extends Component {
             <div>
                 <p class="text-xs font-bold text-black">Contact Number</p>
                 @if ($editing)
-                    <input type="text" wire:model="phoneNumber" placeholder="Contact Number"
+                    <input type="tel" wire:model="phoneNumber" placeholder="e.g. 09123456789" inputmode="numeric" maxlength="11" autocomplete="tel" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)"
                            class="mt-1 w-full rounded-[5px] bg-[#11776e]/15 px-2.5 py-2 text-sm text-black focus:outline-none">
                     @error('phoneNumber')
                         <p class="text-[11px] text-red-600">{{ $message }}</p>

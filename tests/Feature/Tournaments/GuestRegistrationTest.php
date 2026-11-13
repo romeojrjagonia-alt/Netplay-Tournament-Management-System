@@ -469,14 +469,14 @@ test('a category refuses applications once its slots are taken', function () {
     $category = openCategory($tournament);
     $category->update(['max_slots' => 2]);
 
-    foreach (['0917000001' => 'Alpha', '0917000002' => 'Bravo'] as $phone => $first) {
+    foreach (['09170000001' => 'Alpha', '09170000002' => 'Bravo'] as $phone => $first) {
         fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => $phone, 'first' => $first])
             ->call('nextStep')
             ->call('submit')
             ->assertHasNoErrors();
     }
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000003', 'first' => 'Late'])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000003', 'first' => 'Late'])
         ->call('nextStep')
         ->call('submit')
         ->assertHasErrors('registration')
@@ -490,13 +490,13 @@ test('a rejected application frees its slot', function () {
     $category = openCategory($tournament);
     $category->update(['max_slots' => 1]);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000001'])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000001'])
         ->call('nextStep')
         ->call('submit');
 
     PlayerApplication::firstOrFail()->update(['status' => 'rejected']);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '0917000002', 'first' => 'Next'])
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000002', 'first' => 'Next'])
         ->call('nextStep')
         ->call('submit')
         ->assertHasNoErrors();
