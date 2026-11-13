@@ -1173,8 +1173,9 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         @endif
     </flux:modal>
 
-    <flux:modal name="tournament-registration" class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
-        <div class="flex flex-col gap-[20px] p-[5px]">
+    <flux:modal name="tournament-registration" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
+        <div class="relative flex flex-col gap-[20px] p-[5px] pr-10" x-data="exitGuard('tournament-registration')" x-on:input="touch()" x-on:change="touch()" x-on:modal-show.window="reset($event)">
+            <x-exit-guard />
             <div>
                 <p class="text-[15px] text-black">Tournament Registraion</p>
                 <p class="text-[20px] font-bold text-black">{{ $this->viewingTournament?->name }}</p>
@@ -1380,7 +1381,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
             <div class="grid grid-cols-2 gap-[20px]">
                 @if ($regStep === 1)
-                    <button type="button" wire:click="cancelRegistration"
+                    <button type="button" x-on:click="request()"
                             class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                         Cancel
                     </button>

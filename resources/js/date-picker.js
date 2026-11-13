@@ -35,6 +35,8 @@ export default (options) => ({
 
     set value(next) {
         this.$wire.$set(options.model, next, options.live);
+        // So a form watching for edits sees a date being chosen like any other input.
+        this.$root.dispatchEvent(new Event('input', { bubbles: true }));
     },
 
     get selected() {

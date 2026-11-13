@@ -2,6 +2,7 @@
 
 use App\Models\Tournament;
 use App\Models\User;
+use Livewire\Volt\Volt;
 
 test('welcome page renders the landing page sections', function () {
     $response = $this->get('/');
@@ -184,4 +185,30 @@ test('the explore list says so when nothing is open, and has no search for a sho
         ->assertSee('0 tournaments accepting registrations right now.')
         ->assertSee('Coming Soon! Stay Tuned!')
         ->assertDontSee('Search tournaments');
+});
+
+test('the registration modal does not close when the user clicks outside it or presses Escape', function () {
+    $tournament = openTournamentNamed('Progress Cup');
+
+    $this->get('/')
+        ->assertSee('data-modal="guest-registration"', false)
+        ->assertSee('disable-click-outside', false)
+        ->assertSee('x-on:cancel.prevent', false);
+});
+
+test('closing the registration modal asks before discarding progress', function () {
+    $tournament = openTournamentNamed('Confirm Cup');
+
+    // The form is filled in once a tournament has been chosen, so render it with one.
+    $html = Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->assertSee('Discard your registration?')
+        ->assertSee('Everything you have entered so far will be lost.')
+        ->assertSee('Keep editing')
+        ->html();
+
+    expect($html)->toContain("exitGuard('guest-registration')")
+        // The X and Cancel both go through the check instead of closing outright.
+        ->and(substr_count($html, 'x-on:click="request()"'))->toBeGreaterThanOrEqual(2)
+        // Nothing on the form closes the modal directly (only the post-submission link does).
+        ->and($html)->not->toContain('$flux.modal(\'guest-registration\').close()');
 });

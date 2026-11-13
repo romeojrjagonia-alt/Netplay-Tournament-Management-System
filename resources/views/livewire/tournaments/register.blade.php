@@ -726,9 +726,10 @@ new class extends Component {
 }; ?>
 
 <div>
-<flux:modal name="guest-registration" class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
+<flux:modal name="guest-registration" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
 @if ($tournament)
-<div class="flex flex-col gap-5 pt-2 pr-4">
+<div class="relative flex flex-col gap-5 pt-2 pr-10" x-data="exitGuard('guest-registration')" x-on:input="touch()" x-on:change="touch()" x-on:modal-show.window="reset($event)">
+<x-exit-guard />
     <div>
         <p class="text-sm text-teal-800">{{ $tournament->sport ?: 'Badminton' }} Tournament Registration</p>
         <h2 class="text-2xl font-bold text-black">{{ $tournament->name }}</h2>
@@ -984,7 +985,7 @@ new class extends Component {
 
         <div class="grid grid-cols-2 gap-5">
             @if ($regStep === 1)
-                <button type="button" x-on:click="$flux.modal('guest-registration').close()"
+                <button type="button" x-on:click="request()"
                         class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                     Cancel
                 </button>

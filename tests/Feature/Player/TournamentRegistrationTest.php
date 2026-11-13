@@ -324,3 +324,30 @@ test('registration modal errors clear as each field is corrected', function () {
         ->set('regBirthDate', now()->subYears(25)->toDateString())
         ->assertHasNoErrors('regBirthDate');
 });
+
+test('the dashboard registration modal does not close on an outside click or Escape', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $this->actingAs($user)
+        ->get(route('player.events'))
+        ->assertOk()
+        ->assertSee('data-modal="tournament-registration"', false)
+        ->assertSee('disable-click-outside', false)
+        ->assertSee('x-on:cancel.prevent', false);
+});
+
+test('closing the dashboard registration modal asks before discarding progress', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $response = $this->actingAs($user)
+        ->get(route('player.events'))
+        ->assertOk()
+        ->assertSee("exitGuard('tournament-registration')", false)
+        ->assertSee('Discard your registration?')
+        ->assertSee('Keep editing');
+
+    expect(substr_count($response->getContent(), 'x-on:click="request()"'))->toBeGreaterThanOrEqual(2)
+        ->and($response->getContent())->not->toContain('wire:click="cancelRegistration"');
+});
