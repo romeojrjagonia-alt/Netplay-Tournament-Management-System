@@ -1,12 +1,14 @@
 {{-- The public landing page body, shared by the home route and the login / sign-up modals. --}}
 
         @php
-            $activeTournaments = \App\Models\Tournament::query()
+            $openTournaments = \App\Models\Tournament::query()
                 ->acceptingRegistrations()
                 ->with('tournamentCategories.category')
                 ->orderBy('registration_end')
-                ->take(3)
                 ->get();
+
+            // The landing page shows the three closing soonest; "Explore More" lists them all.
+            $activeTournaments = $openTournaments->take(3);
 
             // Annual tournaments are a fixed, client-curated list (held every year by OBC),
             // not driven by tournament records. Posters live in public/images/annual.
@@ -128,14 +130,85 @@
 
         {{-- ============ ACTIVE TOURNAMENTS ============ --}}
         <section id="tournaments" class="w-full bg-[#031b17] px-6 pt-8 pb-20 sm:px-10">
-            <div data-center-target class="mx-auto flex max-w-6xl flex-col gap-8">
+            <div data-center-target class="mx-auto flex max-w-6xl flex-col gap-8"
+                 x-data="{
+                    exploreOpen: false,
+                    search: '',
+                    names: @js($openTournaments->pluck('name')->map(fn ($name) => mb_strtolower($name))->values()),
+                    matches(index) { return ! this.search.trim() || this.names[index].includes(this.search.trim().toLowerCase()) },
+                    get noMatches() { return this.names.length > 0 && ! this.names.some((_, index) => this.matches(index)) },
+                 }"
+                 x-effect="document.body.classList.toggle('overflow-hidden', exploreOpen)"
+                 x-on:keydown.escape.window="exploreOpen = false">
                 <div class="flex items-end justify-between">
                     <div>
                         <p class="text-sm text-lime-300">Tournament List</p>
                         <h2 class="text-2xl font-bold text-white uppercase">Active Tournaments</h2>
                     </div>
-                    <a href="#" class="border-b border-lime-300 text-sm text-lime-300">Explore More</a>
+                    <button type="button" x-on:click="exploreOpen = true; search = ''"
+                            class="cursor-pointer border-b border-lime-300 text-sm text-lime-300">Explore More</button>
                 </div>
+
+                {{-- Every tournament open for registration, not only the three cards below. --}}
+                <template x-teleport="body">
+                    <div x-show="exploreOpen" x-cloak x-transition.opacity
+                         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+                         x-on:click.self="exploreOpen = false" role="dialog" aria-modal="true" aria-label="Tournaments open for registration">
+                        <div class="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white text-black shadow-2xl">
+                            <button type="button" x-on:click="exploreOpen = false" aria-label="Close"
+                                    class="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/10 text-lg text-black hover:bg-black/20">&times;</button>
+
+                            <div class="flex flex-col gap-3 border-b border-black/10 p-5 pr-14">
+                                <div>
+                                    <h3 class="text-xl font-bold">Open for registration</h3>
+                                    <p class="text-xs text-black/60">{{ $openTournaments->count() }} {{ \Illuminate\Support\Str::plural('tournament', $openTournaments->count()) }} accepting registrations right now.</p>
+                                </div>
+
+                                @if ($openTournaments->count() > 4)
+                                    <input type="search" x-model="search" placeholder="Search tournaments"
+                                           class="w-full rounded-[5px] bg-[#11776e]/10 px-3 py-2 text-sm text-black placeholder:text-black/50 focus:outline-none">
+                                @endif
+                            </div>
+
+                            <div class="flex flex-col gap-3 overflow-y-auto p-5">
+                                @forelse ($openTournaments as $open)
+                                    <div x-show="matches({{ $loop->index }})"
+                                         class="flex gap-4 rounded-lg border border-black/10 p-3">
+                                        @if ($open->poster_url)
+                                            <img src="{{ $open->poster_url }}" alt="" class="size-20 shrink-0 rounded object-cover">
+                                        @else
+                                            <div class="flex size-20 shrink-0 items-center justify-center rounded bg-slate-100 text-[10px] text-slate-400">No poster</div>
+                                        @endif
+
+                                        <div class="flex min-w-0 flex-1 flex-col gap-1">
+                                            <p class="truncate text-sm font-bold">{{ $open->name }}</p>
+                                            <p class="text-[11px] text-black/60">
+                                                {{ ucfirst((string) $open->sport) }}@if ($open->format) &middot; {{ ucwords(str_replace('_', ' ', $open->format)) }}@endif
+                                            </p>
+                                            <p class="text-[11px]">{{ $open->date_range_label }}@if ($open->location) &middot; {{ $open->location }}@endif</p>
+                                            <p class="text-[11px] text-black/60">
+                                                Register by {{ $open->registration_end->format('F j, Y') }}
+                                                @if ($open->tournamentCategories->isNotEmpty())
+                                                    &middot; {{ $open->tournamentCategories->count() }} {{ \Illuminate\Support\Str::plural('category', $open->tournamentCategories->count()) }}
+                                                @endif
+                                            </p>
+                                        </div>
+
+                                        <button type="button"
+                                                x-on:click="exploreOpen = false; $dispatch('open-guest-registration', { tournamentId: {{ $open->id }} })"
+                                                class="my-auto shrink-0 cursor-pointer rounded-full bg-emerald-900 px-5 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                                            Register
+                                        </button>
+                                    </div>
+                                @empty
+                                    <p class="py-8 text-center text-sm font-bold text-black/60">Coming Soon! Stay Tuned!</p>
+                                @endforelse
+
+                                <p x-show="noMatches" x-cloak class="py-8 text-center text-sm text-black/60">No tournaments match your search.</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
 
                 @if ($activeTournaments->isEmpty())
                     <p class="w-full text-center text-lg font-bold text-white">Coming Soon! Stay Tuned!</p>

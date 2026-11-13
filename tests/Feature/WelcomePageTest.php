@@ -115,3 +115,73 @@ test('an active tournament card opens a details view with venue, sport and categ
         ->assertSee('JAL Court')
         ->assertSee('Register now');
 });
+
+function openTournamentNamed(string $name, array $overrides = []): Tournament
+{
+    return Tournament::create(array_merge([
+        'name' => $name,
+        'format' => 'single_elimination',
+        'sport' => 'Badminton',
+        'scoring_system' => 'Best of 3 to 21',
+        'location' => 'OBC Badminton Facility',
+        'date_start' => now()->addDays(10)->toDateString(),
+        'date_end' => now()->addDays(12)->toDateString(),
+        'registration_start' => now()->subDay()->toDateString(),
+        'registration_end' => now()->addDays(5)->toDateString(),
+        'status' => 'published',
+    ], $overrides));
+}
+
+test('explore more opens a list of every tournament open for registration', function () {
+    foreach (range(1, 5) as $number) {
+        openTournamentNamed("Open Cup $number", ['registration_end' => now()->addDays(5 + $number)->toDateString()]);
+    }
+
+    $response = $this->get('/');
+
+    // A button, not a dead link, and the modal it opens.
+    $response->assertSee('Explore More')
+        ->assertSee('exploreOpen = true', false)
+        ->assertSee('Open for registration')
+        ->assertSee('5 tournaments accepting registrations right now.')
+        ->assertSee('Search tournaments');
+
+    // Only three cards on the page, yet all five are in the list.
+    $html = $response->getContent();
+
+    foreach (range(1, 5) as $number) {
+        expect(substr_count($html, "Open Cup $number"))->toBeGreaterThanOrEqual(1);
+    }
+
+    expect(substr_count($html, 'aria-label="View details of '))->toBe(3)
+        ->and(substr_count($html, 'Register by '))->toBe(5);
+});
+
+test('each tournament in the explore list has a Register button that opens the registration modal', function () {
+    $tournament = openTournamentNamed('Single Cup');
+
+    $this->get('/')
+        ->assertSee("exploreOpen = false; \$dispatch('open-guest-registration', { tournamentId: {$tournament->id} })", false);
+});
+
+test('the explore list leaves out tournaments that are not accepting registrations', function () {
+    openTournamentNamed('Visible Cup');
+    openTournamentNamed('Draft Cup', ['status' => 'draft']);
+    openTournamentNamed('Closed Cup', ['registration_end' => now()->subDay()->toDateString()]);
+    openTournamentNamed('Finished Cup', ['date_start' => now()->subDays(10)->toDateString(), 'date_end' => now()->subDays(8)->toDateString()]);
+
+    $this->get('/')
+        ->assertSee('1 tournament accepting registrations right now.')
+        ->assertSee('Visible Cup')
+        ->assertDontSee('Draft Cup')
+        ->assertDontSee('Closed Cup')
+        ->assertDontSee('Finished Cup');
+});
+
+test('the explore list says so when nothing is open, and has no search for a short list', function () {
+    $this->get('/')
+        ->assertSee('Explore More')
+        ->assertSee('0 tournaments accepting registrations right now.')
+        ->assertSee('Coming Soon! Stay Tuned!')
+        ->assertDontSee('Search tournaments');
+});
