@@ -339,3 +339,42 @@ it('shows the overflow option on the schedule page when matches do not fit', fun
 
     expect(Matches::where('tournament_category_id', $tournamentCategory->id)->whereNull('scheduled_at')->count())->toBe(3);
 });
+
+it('schedules the overflow past the end date only when allowed', function () {
+    $tournament = regenTournament(overrides: ['date_end' => '2035-03-03']);
+    $tournamentCategory = regenCategory($tournament, 4);
+
+    app(RoundRobinScheduler::class)->generate($tournamentCategory, new TimetableOptions(60, 0, 1, allowOutsideDateRange: true));
+
+    $matches = Matches::where('tournament_category_id', $tournamentCategory->id)->get();
+
+    expect($matches)->toHaveCount(6)
+        ->and($matches->whereNull('scheduled_at'))->toHaveCount(0)
+        ->and($matches->filter(fn ($match) => $match->scheduled_at->gt('2035-03-03 23:59:59')))->not->toBeEmpty();
+});
+
+it('keeps in-range matches in range when out-of-range scheduling is allowed but not needed', function () {
+    $tournament = regenTournament();
+    $tournamentCategory = regenCategory($tournament, 4);
+
+    app(RoundRobinScheduler::class)->generate($tournamentCategory, new TimetableOptions(60, 0, 1, allowOutsideDateRange: true));
+
+    expect(Matches::where('tournament_category_id', $tournamentCategory->id)->get()
+        ->filter(fn ($match) => $match->scheduled_at->gt('2035-03-11 23:59:59')))->toBeEmpty();
+});
+
+it('lets the schedule page generate past the end date after the overflow is offered', function () {
+    $tournament = regenTournament(overrides: ['date_end' => '2035-03-03']);
+    $tournamentCategory = regenCategory($tournament, 4);
+
+    Volt::actingAs(regenAdmin())
+        ->test('admin.events.schedule.show', ['tournament' => $tournament, 'tournamentCategory' => $tournamentCategory])
+        ->set('matchDuration', '60')
+        ->set('courtCount', '1')
+        ->call('generate')
+        ->assertSet('canGenerateUndated', true)
+        ->call('generateOutsideDateRange')
+        ->assertSet('canGenerateUndated', false);
+
+    expect(Matches::where('tournament_category_id', $tournamentCategory->id)->whereNull('scheduled_at')->count())->toBe(0);
+});

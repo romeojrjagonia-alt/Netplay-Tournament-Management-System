@@ -3,6 +3,7 @@
 use App\Rules\PhoneNumber;
 use App\Mail\ApplicationReceived;
 use App\Models\ApplicationPlayer;
+use App\Models\Category;
 use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
@@ -76,6 +77,12 @@ new class extends Component {
 
     public ?string $submittedReferenceCode = null;
 
+    /** The data-privacy dialog is showing and waiting for an answer. */
+    public bool $showConsent = false;
+
+    #[\Livewire\Attributes\Locked]
+    public bool $consented = false;
+
     /**
      * @var array<string, string>
      */
@@ -96,6 +103,7 @@ new class extends Component {
 
             $this->tournament = $tournament;
             $this->prefillFromAccount();
+            $this->showConsent = true;
         }
     }
 
@@ -128,8 +136,10 @@ new class extends Component {
 
         $this->tournament = $tournament;
         $this->prefillFromAccount();
+        $this->showConsent = true;
 
         $this->dispatch('modal-show', name: 'guest-registration');
+        $this->dispatch('modal-show', name: 'data-consent');
     }
 
     /**
@@ -160,7 +170,7 @@ new class extends Component {
             $this->regBirthDate = $player->birth_date?->format('Y-m-d') ?? '';
             $this->regGender = $player->gender ?? '';
             $this->regAddress = $player->address ?? '';
-            $this->regSkillLevel = $player->level ?? '';
+            $this->regSkillLevel = in_array($player->level, Category::PLAYER_LEVELS, true) ? $player->level : '';
             $this->regClub = $player->club ?? '';
             $this->regPhoneNumber = $player->phone_number ?? '';
         }
@@ -236,7 +246,17 @@ new class extends Component {
             $this->validate($this->pairStepRules());
         }
 
-        $this->validate($this->documentRules());
+        if ($documentRules = $this->documentRules()) {
+            $this->validate($documentRules);
+        }
+
+        // Nothing is stored until the registrant agrees to the data notice.
+        if (! $this->consented) {
+            $this->showConsent = true;
+            $this->dispatch('modal-show', name: 'data-consent');
+
+            return;
+        }
 
         // Staff entering a field of walk-ins from one desk aren't throttled.
         if (! auth()->user()?->isAdmin()) {
@@ -278,26 +298,21 @@ new class extends Component {
                 $application = PlayerApplication::create([
                     'tournament_category_id' => $tournamentCategoryId,
                     'status' => 'pending_verification',
+                    'data_consent_at' => now(),
                 ]);
 
                 ApplicationPlayer::create([
                     'application_id' => $application->id,
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
-                    'id_document_type' => $this->ownDocumentType,
-                    'id_document_other' => $this->ownDocumentType === 'others' ? trim($this->ownDocumentOther) : null,
-                    'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
-                ]);
+                ] + $this->resolveIdDocument($applicant, $this->ownDocument, $this->ownDocumentType, $this->ownDocumentOther));
 
                 if ($partner) {
                     ApplicationPlayer::create([
                         'application_id' => $application->id,
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairMode === 'search' ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
-                        'id_document_type' => $this->pairDocumentType,
-                        'id_document_other' => $this->pairDocumentType === 'others' ? trim($this->pairDocumentOther) : null,
-                        'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
-                    ]);
+                    ] + $this->resolveIdDocument($partner, $this->pairDocument, $this->pairDocumentType, $this->pairDocumentOther));
                 }
 
                 return $application;
@@ -312,6 +327,78 @@ new class extends Component {
         $this->sendReferenceCodeEmail($application);
 
         $this->submittedReferenceCode = $application->reference_code;
+    }
+
+    /**
+     * The registrant agreed to the data-collection notice: they can now fill in the form.
+     */
+    public function acceptConsent(): void
+    {
+        $this->consented = true;
+        $this->showConsent = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+    }
+
+    /**
+     * The registrant refused: nothing was saved, so close and clear the form.
+     */
+    public function declineConsent(): void
+    {
+        $this->reset();
+        $this->resetValidation();
+
+        $this->dispatch('modal-close', name: 'data-consent');
+        $this->dispatch('modal-close', name: 'guest-registration');
+        $this->dispatch('system-message', title: 'Registration cancelled', message: 'You did not consent to the collection of your data, so no application was submitted.', variant: 'danger');
+    }
+
+    /**
+     * The ID kept on the player's record is the one used: it is asked for
+     * once and never replaced. Only a player with none on file has the
+     * uploaded one stored (and saved to their record for next time).
+     *
+     * @return array{id_document_type: ?string, id_document_other: ?string, id_document_path: ?string}
+     */
+    private function resolveIdDocument(Player $player, mixed $file, string $type, string $other): array
+    {
+        if (! $player->hasIdOnFile()) {
+            if ($file === null) {
+                throw new \RuntimeException('A valid ID is required for every player in the entry.');
+            }
+
+            $player->update([
+                'id_document_type' => $type,
+                'id_document_other' => $type === IdDocumentTypes::OTHERS ? trim($other) : null,
+                'id_document_path' => $file->store('id-documents', 'public'),
+            ]);
+        }
+
+        return [
+            'id_document_type' => $player->id_document_type,
+            'id_document_other' => $player->id_document_other,
+            'id_document_path' => $player->id_document_path,
+        ];
+    }
+
+    /**
+     * Whether the signed-in applicant's valid ID is already on file.
+     */
+    #[Computed]
+    public function ownHasIdOnFile(): bool
+    {
+        return (bool) $this->applicantUser()?->player?->hasIdOnFile();
+    }
+
+    /**
+     * Whether the partner picked from the search already has a valid ID on file.
+     */
+    #[Computed]
+    public function pairHasIdOnFile(): bool
+    {
+        return $this->pairMode === 'search'
+            && $this->pairPlayerId !== null
+            && (bool) Player::query()->find($this->pairPlayerId)?->hasIdOnFile();
     }
 
     /**
@@ -458,7 +545,7 @@ new class extends Component {
             'regBirthDate' => ['required', 'date', 'before:today'],
             'regGender' => ['required', 'in:male,female'],
             'regAddress' => ['required', 'string', 'max:255'],
-            'regSkillLevel' => ['required', 'string', 'max:255'],
+            'regSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255', 'required_without:regPhoneNumber'],
             'regPhoneNumber' => ['nullable', 'string', new PhoneNumber, 'required_without:regEmail'],
@@ -481,13 +568,17 @@ new class extends Component {
      */
     private function documentRules(): array
     {
-        $rules = [
-            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
-            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
-            'ownDocument' => ['required', 'image', 'max:4096'],
-        ];
+        $rules = [];
 
-        if ($this->isDoublesRegistration) {
+        if (! $this->ownHasIdOnFile) {
+            $rules = [
+                'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+                'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
+                'ownDocument' => ['required', 'image', 'max:4096'],
+            ];
+        }
+
+        if ($this->isDoublesRegistration && ! $this->pairHasIdOnFile) {
             $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
             $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
             $rules['pairDocument'] = ['required', 'image', 'max:4096'];
@@ -514,7 +605,7 @@ new class extends Component {
             'pairBirthDate' => ['required', 'date', 'before:today'],
             'pairGender' => ['required', 'in:male,female'],
             'pairAddress' => ['required', 'string', 'max:255'],
-            'pairSkillLevel' => ['required', 'string', 'max:255'],
+            'pairSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'pairClub' => ['nullable', 'string', 'max:255'],
             // The partner's contact details are optional; only the registrant's are required.
             'pairEmail' => ['nullable', 'email', 'max:255'],
@@ -816,13 +907,14 @@ new class extends Component {
                         <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" />
                         <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                     </div>
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                        <x-player.registration-field label="Skill Level" model="regSkillLevel" placeholder="e.g. Beginner" />
+                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                        <x-player.registration-select label="Skill Level" model="regSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" />
                         <x-player.registration-field label="Club (optional)" model="regClub" placeholder="e.g. OBC Badminton Club" />
+                        <x-player.registration-field label="Phone Number" model="regPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
                     </div>
-                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                        <x-player.registration-field label="Phone Number (phone or email required)" model="regPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
-                        <x-player.registration-field label="Email (phone or email required — we'll send your reference code)" model="regEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                    <div class="flex flex-col gap-[5px]">
+                        <x-player.registration-field label="Email" model="regEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                        <p class="text-xs text-black/60">Give a phone number or an email (at least one). We'll send your reference code to the email.</p>
                     </div>
 
                     <x-player.registration-select
@@ -893,14 +985,12 @@ new class extends Component {
                             <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" />
                             <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
                         </div>
-                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                            <x-player.registration-field label="Skill Level" model="pairSkillLevel" placeholder="e.g. Beginner" />
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-select label="Skill Level" model="pairSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" />
                             <x-player.registration-field label="Club (optional)" model="pairClub" placeholder="e.g. OBC Badminton Club" />
+                            <x-player.registration-field label="Phone (optional)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
                         </div>
-                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
-                            <x-player.registration-field label="Phone Number (optional)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
-                            <x-player.registration-field label="Email (optional)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
-                        </div>
+                        <x-player.registration-field label="Email (optional)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
 
                         <button type="button" wire:click="searchPairAgain"
                                 class="cursor-pointer self-start text-sm text-[#138177] underline">
@@ -931,6 +1021,11 @@ new class extends Component {
                         @endif
                     </dl>
 
+                    @if ($this->ownHasIdOnFile)
+                        <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                            Your valid ID is already on file, so you don't need to upload it again.
+                        </p>
+                    @else
                     <div class="flex flex-col gap-[10px]">
                         <p class="text-sm font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
                         <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
@@ -950,8 +1045,13 @@ new class extends Component {
                             @enderror
                         </div>
                     </div>
+                    @endif
 
-                    @if ($this->isDoublesRegistration)
+                    @if ($this->isDoublesRegistration && $this->pairHasIdOnFile)
+                        <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                            Your partner's valid ID is already on file.
+                        </p>
+                    @elseif ($this->isDoublesRegistration)
                         <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
                             <p class="text-sm font-bold text-black">Partner's valid ID</p>
                             <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
@@ -1013,4 +1113,8 @@ new class extends Component {
 </div>
 @endif
 </flux:modal>
-</div>
+<flux:modal name="data-consent" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
+    @if ($showConsent)
+        <x-consent-dialog />
+    @endif
+</flux:modal></div>

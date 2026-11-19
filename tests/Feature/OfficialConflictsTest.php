@@ -101,7 +101,7 @@ test('an umpire cannot submit a registration for a tournament they officiate in'
         ->set('regTournamentCategoryId', $category->id)
         ->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertDispatched('system-message', title: 'Cannot register');
 
     expect(PlayerApplication::where('tournament_category_id', $category->id)->count())->toBe(0);

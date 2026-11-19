@@ -2,9 +2,13 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 beforeEach(function () {
     config([
@@ -127,7 +131,9 @@ test('a google signup skips the account step and creates a verified passwordless
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
-        ->call('register')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
+        ->call('acceptConsent')->call('register')
         ->assertHasNoErrors()
         ->assertRedirect(route('player.dashboard', absolute: false));
 

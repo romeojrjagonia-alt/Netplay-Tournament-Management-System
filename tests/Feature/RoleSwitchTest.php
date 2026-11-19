@@ -251,7 +251,7 @@ function roleSwitchRegister(TournamentCategory $tournamentCategory): void
         ->assertHasNoErrors()
         ->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 }
 

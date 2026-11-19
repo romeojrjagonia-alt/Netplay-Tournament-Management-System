@@ -2,9 +2,13 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 test('registration screen can be rendered', function () {
     $response = $this->get('/register');
@@ -77,7 +81,7 @@ test('final step requires valid profile details before registering', function ()
         ->set('password', 'Password123')
         ->set('password_confirmation', 'Password123')
         ->call('nextStep')
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasErrors(['birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province'])
         ->assertSet('step', 3);
 
@@ -103,8 +107,10 @@ test('completing the wizard creates a user and player and logs them in', functio
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('club', 'OBC Badminton Club')
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasNoErrors()
         ->assertRedirect(route('player.dashboard', absolute: false));
 

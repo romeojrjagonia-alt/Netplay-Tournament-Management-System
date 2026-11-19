@@ -3,9 +3,13 @@
 use App\Mail\UmpireSignupCode;
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Features\SupportTesting\Testable;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 function umpireWizardReadyToRegister(): Testable
 {
@@ -23,7 +27,9 @@ function umpireWizardReadyToRegister(): Testable
         ->set('gender', 'male')
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
-        ->set('province', 'Misamis Occidental');
+        ->set('province', 'Misamis Occidental')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'));
 }
 
 function lastUmpireCode(): string
@@ -43,7 +49,7 @@ test('an umpire gets a code by email and no account exists yet', function () {
     Mail::fake();
 
     umpireWizardReadyToRegister()
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasNoErrors()
         ->assertSet('awaitingCode', true)
         ->assertSee('Verify your email');
@@ -59,7 +65,7 @@ test('an umpire gets a code by email and no account exists yet', function () {
 test('the correct code creates a verified umpire and signs them in', function () {
     Mail::fake();
 
-    $component = umpireWizardReadyToRegister()->call('register');
+    $component = umpireWizardReadyToRegister()->call('acceptConsent')->call('register');
 
     $component->set('verificationCode', lastUmpireCode())
         ->call('verifyCode')
@@ -79,7 +85,7 @@ test('a wrong code is rejected and creates nothing', function () {
     Mail::fake();
 
     umpireWizardReadyToRegister()
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->set('verificationCode', '000000')
         ->call('verifyCode')
         ->assertHasErrors('verificationCode')
@@ -92,7 +98,7 @@ test('a wrong code is rejected and creates nothing', function () {
 test('too many wrong codes discards the sign-up', function () {
     Mail::fake();
 
-    $component = umpireWizardReadyToRegister()->call('register');
+    $component = umpireWizardReadyToRegister()->call('acceptConsent')->call('register');
 
     foreach (range(1, 5) as $attempt) {
         $component->set('verificationCode', '000000')->call('verifyCode');
@@ -109,7 +115,7 @@ test('cancelling the verification creates no account and restarts the form', fun
     Mail::fake();
 
     umpireWizardReadyToRegister()
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->call('cancelVerification')
         ->assertSet('awaitingCode', false)
         ->assertSet('step', 1)
@@ -121,7 +127,7 @@ test('cancelling the verification creates no account and restarts the form', fun
 test('a code can only be resent after sixty seconds', function () {
     Mail::fake();
 
-    $component = umpireWizardReadyToRegister()->call('register');
+    $component = umpireWizardReadyToRegister()->call('acceptConsent')->call('register');
 
     $component->call('resendCode')->assertHasErrors('verificationCode');
     Mail::assertSent(UmpireSignupCode::class, 1);
@@ -135,7 +141,7 @@ test('a code can only be resent after sixty seconds', function () {
 test('an old code stops working once a new one is sent', function () {
     Mail::fake();
 
-    $component = umpireWizardReadyToRegister()->call('register');
+    $component = umpireWizardReadyToRegister()->call('acceptConsent')->call('register');
     $firstCode = lastUmpireCode();
 
     $this->travel(61)->seconds();
@@ -157,7 +163,7 @@ test('an old code stops working once a new one is sent', function () {
 test('an expired code is refused', function () {
     Mail::fake();
 
-    $component = umpireWizardReadyToRegister()->call('register');
+    $component = umpireWizardReadyToRegister()->call('acceptConsent')->call('register');
     $code = lastUmpireCode();
 
     $this->travel(11)->minutes();
@@ -185,7 +191,9 @@ test('players still register without a code', function () {
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
-        ->call('register')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
+        ->call('acceptConsent')->call('register')
         ->assertSet('awaitingCode', false)
         ->assertRedirect(route('player.dashboard', absolute: false));
 

@@ -2,7 +2,9 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Livewire\Volt\Volt;
 
 function actingAsAdmin(): User
@@ -36,6 +38,8 @@ function fillSignupProfile($component, array $overrides = [])
 }
 
 it('lets an admin add a verified account with the chosen role and the sign-up profile', function (string $role) {
+    Notification::fake();
+
     $component = Volt::actingAs(actingAsAdmin())
         ->test('admin.users.index')
         ->call('openCreateModal');
@@ -43,8 +47,6 @@ it('lets an admin add a verified account with the chosen role and the sign-up pr
     fillSignupProfile($component)
         ->set('email', 'pedro@example.test')
         ->set('role', $role)
-        ->set('password', 'SecretPass1')
-        ->set('password_confirmation', 'SecretPass1')
         ->call('save')
         ->assertHasNoErrors()
         ->assertSee('pedro@example.test');
@@ -54,7 +56,6 @@ it('lets an admin add a verified account with the chosen role and the sign-up pr
     expect($user->name)->toBe('Pedro D. Reyes')
         ->and($user->role)->toBe($role)
         ->and($user->email_verified_at)->not->toBeNull()
-        ->and(Hash::check('SecretPass1', $user->password))->toBeTrue()
         ->and($user->player->name)->toBe('Pedro D. Reyes')
         ->and($user->player->email)->toBe('pedro@example.test')
         ->and($user->player->birth_date->toDateString())->toBe('1999-05-05')
@@ -72,68 +73,70 @@ it('validates new account details', function () {
         ->call('openCreateModal')
         ->set('email', 'taken@example.test')
         ->set('role', 'superuser')
-        ->set('password', 'short')
         ->call('save')
-        ->assertHasErrors(['firstName', 'lastName', 'email', 'role', 'password', 'birthDate', 'gender', 'phoneNumber', 'purok', 'city', 'province']);
+        ->assertHasErrors(['firstName', 'lastName', 'email', 'role', 'birthDate', 'gender', 'phoneNumber', 'purok', 'city', 'province']);
 });
 
-it('lets an admin edit a user without changing the password', function () {
-    $user = User::factory()->create(['role' => 'player', 'email' => 'old@example.test']);
-    $oldPassword = $user->password;
+it('emails a new account a link to set its own password instead of letting the admin pick one', function () {
+    Notification::fake();
+
+    $component = Volt::actingAs(actingAsAdmin())
+        ->test('admin.users.index')
+        ->call('openCreateModal');
+
+    fillSignupProfile($component)
+        ->set('email', 'invited@example.test')
+        ->set('role', 'player')
+        ->call('save')
+        ->assertHasNoErrors();
+
+    $user = User::where('email', 'invited@example.test')->first();
+
+    Notification::assertSentTo($user, ResetPassword::class);
+});
+
+it('has no way for an admin to edit a user\'s details or password', function () {
+    $component = Volt::actingAs(actingAsAdmin())->test('admin.users.index');
+
+    expect(method_exists($component->instance(), 'openEditModal'))->toBeFalse()
+        ->and(property_exists($component->instance(), 'password'))->toBeFalse();
+
+    $component->assertDontSee('Edit')->assertDontSee('New password');
+});
+
+it('lets an admin change only the role of another user', function () {
+    $user = User::factory()->create(['role' => 'player', 'name' => 'Same Name', 'email' => 'same@example.test']);
+    $password = $user->password;
 
     Volt::actingAs(actingAsAdmin())
         ->test('admin.users.index')
-        ->call('openEditModal', $user->id)
-        ->assertSet('email', 'old@example.test')
-        ->set('firstName', 'Renamed')
-        ->set('lastName', 'User')
-        ->set('middleInitial', '')
-        ->set('email', 'new@example.test')
-        ->set('role', 'umpire')
-        ->call('save')
-        ->assertHasNoErrors();
+        ->call('setRole', $user->id, 'umpire');
 
     $user->refresh();
 
-    expect($user->name)->toBe('Renamed User')
-        ->and($user->email)->toBe('new@example.test')
-        ->and($user->role)->toBe('umpire')
-        ->and($user->password)->toBe($oldPassword);
+    expect($user->role)->toBe('umpire')
+        ->and($user->name)->toBe('Same Name')
+        ->and($user->email)->toBe('same@example.test')
+        ->and($user->password)->toBe($password);
 });
 
-it('lets an admin set a new password while editing', function () {
+it('rejects an unknown role', function () {
     $user = User::factory()->create(['role' => 'player']);
 
     Volt::actingAs(actingAsAdmin())
         ->test('admin.users.index')
-        ->call('openEditModal', $user->id)
-        ->set('password', 'BrandNew123')
-        ->set('password_confirmation', 'BrandNew123')
-        ->call('save')
-        ->assertHasNoErrors();
+        ->call('setRole', $user->id, 'superuser')
+        ->assertStatus(422);
 
-    expect(Hash::check('BrandNew123', $user->fresh()->password))->toBeTrue();
+    expect($user->fresh()->role)->toBe('player');
 });
 
-it('allows keeping the same email when editing', function () {
-    $user = User::factory()->create(['role' => 'player']);
-
-    Volt::actingAs(actingAsAdmin())
-        ->test('admin.users.index')
-        ->call('openEditModal', $user->id)
-        ->call('save')
-        ->assertHasNoErrors();
-});
-
-it('stops an admin from removing their own admin role', function () {
+it('stops an admin from changing their own role', function () {
     $admin = actingAsAdmin();
 
     Volt::actingAs($admin)
         ->test('admin.users.index')
-        ->call('openEditModal', $admin->id)
-        ->set('role', 'player')
-        ->call('save')
-        ->assertHasErrors(['role']);
+        ->call('setRole', $admin->id, 'player');
 
     expect($admin->fresh()->role)->toBe('admin');
 });
@@ -209,8 +212,6 @@ test('a player account created by an admin gets a player record and can open the
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
         ->set('email', 'adminmade@example.com')
-        ->set('password', 'Password123')
-        ->set('password_confirmation', 'Password123')
         ->call('save')
         ->assertHasNoErrors();
 
@@ -238,60 +239,15 @@ test('a player account that has no player record gets one the first time it is u
     expect($user->fresh()->player?->name)->toBe('Orphan Account');
 });
 
-test('switching an account to the player role creates its player record', function () {
+test('switching an account to the player role gets its player record the first time it is used', function () {
     $this->actingAs(User::factory()->create(['role' => 'admin']));
     $umpire = User::factory()->create(['role' => 'umpire']);
 
-    Volt::test('admin.users.index')
-        ->call('openEditModal', $umpire->id)
-        ->set('role', 'player')
-        ->call('save')
-        ->assertHasNoErrors();
+    Volt::test('admin.users.index')->call('setRole', $umpire->id, 'player');
+
+    $this->actingAs($umpire->fresh())->get(route('player.dashboard'))->assertOk();
 
     expect($umpire->fresh()->player)->not->toBeNull();
-});
-
-it('prefills the sign-up profile when editing and updates the player record', function () {
-    $user = User::factory()->create(['role' => 'player', 'name' => 'Ana M. Lopez']);
-    Player::create([
-        'user_id' => $user->id,
-        'name' => 'Ana M. Lopez',
-        'birth_date' => '2000-01-01',
-        'gender' => 'female',
-        'phone_number' => '09170001111',
-        'address' => 'Purok 2, Ozamiz City, Misamis Occidental',
-    ]);
-
-    Volt::actingAs(actingAsAdmin())
-        ->test('admin.users.index')
-        ->call('openEditModal', $user->id)
-        ->assertSet('firstName', 'Ana')
-        ->assertSet('middleInitial', 'M')
-        ->assertSet('lastName', 'Lopez')
-        ->assertSet('purok', 'Purok 2')
-        ->assertSet('city', 'Ozamiz City')
-        ->assertSet('province', 'Misamis Occidental')
-        ->assertSet('gender', 'female')
-        ->set('phoneNumber', '09179998888')
-        ->call('save')
-        ->assertHasNoErrors();
-
-    expect($user->fresh()->player->phone_number)->toBe('09179998888')
-        ->and($user->fresh()->player->birth_date->toDateString())->toBe('2000-01-01');
-});
-
-it('requires passwords to follow the account password rules', function () {
-    $component = Volt::actingAs(actingAsAdmin())
-        ->test('admin.users.index')
-        ->call('openCreateModal');
-
-    fillSignupProfile($component)
-        ->set('email', 'rules@example.test')
-        ->set('role', 'player')
-        ->set('password', 'alllowercase1')
-        ->set('password_confirmation', 'alllowercase1')
-        ->call('save')
-        ->assertHasErrors('password');
 });
 
 test('the users list shows each user\'s uploaded profile picture', function () {

@@ -30,6 +30,10 @@ class Player extends Model
         'club',
         'photo_path',
         'level',
+        'id_document_type',
+        'id_document_other',
+        'id_document_path',
+        'data_consent_at',
     ];
 
     /**
@@ -41,6 +45,7 @@ class Player extends Model
     {
         return [
             'birth_date' => 'date',
+            'data_consent_at' => 'datetime',
         ];
     }
 
@@ -81,6 +86,15 @@ class Player extends Model
     protected function photoUrl(): Attribute
     {
         return Attribute::get(fn (): ?string => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
+    }
+
+    /**
+     * Whether a valid ID is already on file. It is asked for once, at
+     * sign-up or on the first tournament entry, and reused after that.
+     */
+    public function hasIdOnFile(): bool
+    {
+        return filled($this->id_document_type) && filled($this->id_document_path);
     }
 
     /**

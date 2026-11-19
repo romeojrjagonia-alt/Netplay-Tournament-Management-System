@@ -10,6 +10,8 @@ Route::get('/', function () {
     return view('welcome');
 })->name('home');
 
+Route::view('privacy', 'privacy')->name('privacy');
+
 // Public (no account needed): walk-in players register and pay for tournaments
 // using the reference code issued with their application.
 // The registration form is a modal on the landing page; this address (used by

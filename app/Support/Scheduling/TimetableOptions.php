@@ -13,5 +13,6 @@ final readonly class TimetableOptions
         public int $durationMinutes = 45,
         public int $breakMinutes = 0,
         public int $courts = 1,
+        public bool $allowOutsideDateRange = false,
     ) {}
 }

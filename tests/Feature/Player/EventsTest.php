@@ -330,16 +330,16 @@ test('the registration form prefills the account email, not a stale player email
         ->assertSet('regEmail', 'new@example.com');
 });
 
-test('an admin changing a player account email also updates the player contact email', function () {
+test('a player changing their own account email also updates the player contact email', function () {
     $user = User::factory()->create(['role' => 'player', 'email' => 'old@example.com']);
     $player = Player::create(['user_id' => $user->id, 'name' => $user->name, 'email' => 'old@example.com']);
 
-    $this->actingAs(User::factory()->create(['role' => 'admin']));
+    $this->actingAs($user);
 
-    Volt::test('admin.users.index')
-        ->call('openEditModal', $user->id)
+    Volt::test('settings.profile')
+        ->set('name', $user->name)
         ->set('email', 'new@example.com')
-        ->call('save');
+        ->call('updateProfileInformation');
 
     expect($player->fresh()->email)->toBe('new@example.com');
 });

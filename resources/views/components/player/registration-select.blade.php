@@ -2,7 +2,7 @@
 
 <div {{ $attributes->class(['flex flex-col gap-[2px]']) }}>
     <label for="{{ $model }}" class="text-sm text-black">{{ $label }}</label>
-    <div class="flex h-11 items-center rounded-[5px] bg-[rgba(17,119,110,0.15)] px-[10px]">
+    <div class="flex h-11 items-center rounded-[5px] bg-[#eaf4f3] px-[10px]">
         <select
             id="{{ $model }}"
             wire:model{{ $live ? '.live' : '' }}="{{ $model }}"

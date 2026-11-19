@@ -120,7 +120,7 @@ test('submitting is refused for the applicant and for a partner with a pending a
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 10, 'image/jpeg'))
         ->set('pairDocumentType', 'passport')
         ->set('pairDocument', UploadedFile::fake()->create('id2.jpg', 10, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertDispatched('system-message');
 
     expect(PlayerApplication::count())->toBe(1);

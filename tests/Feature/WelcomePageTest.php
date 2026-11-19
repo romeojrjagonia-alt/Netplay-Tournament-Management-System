@@ -201,6 +201,7 @@ test('closing the registration modal asks before discarding progress', function 
 
     // The form is filled in once a tournament has been chosen, so render it with one.
     $html = Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('acceptConsent')
         ->assertSee('Discard your registration?')
         ->assertSee('Everything you have entered so far will be lost.')
         ->assertSee('Keep editing')

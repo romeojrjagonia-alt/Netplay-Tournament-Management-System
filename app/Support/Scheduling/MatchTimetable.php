@@ -22,6 +22,9 @@ use InvalidArgumentException;
  */
 class MatchTimetable
 {
+    /** How many days past the event's end date slots are offered when out-of-range scheduling is allowed. */
+    public const OUTSIDE_RANGE_DAYS = 60;
+
     /**
      * Date every schedulable match in the category.
      *
@@ -131,7 +134,13 @@ class MatchTimetable
         $courts = array_map('strval', range(1, max(1, $options->courts)));
         $slots = [];
 
-        for ($date = $tournament->date_start->copy()->startOfDay(); $date->lte($tournament->date_end); $date->addDay()) {
+        // Past the end date only when the admin has confirmed it; in-range
+        // slots still come first, so only the overflow spills out.
+        $lastDay = $options->allowOutsideDateRange
+            ? $tournament->date_end->copy()->addDays(self::OUTSIDE_RANGE_DAYS)
+            : $tournament->date_end;
+
+        for ($date = $tournament->date_start->copy()->startOfDay(); $date->lte($lastDay); $date->addDay()) {
             if (! in_array($date->format('D'), $days, true)) {
                 continue;
             }

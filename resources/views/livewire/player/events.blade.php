@@ -3,6 +3,7 @@
 use App\Rules\PhoneNumber;
 use App\Actions\Applications\CancelApplication;
 use App\Models\ApplicationPlayer;
+use App\Models\Category;
 use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
@@ -92,6 +93,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
     public string $pairDocumentOther = '';
     public $pairDocument = null;
+
+    /** The data-privacy dialog is showing and waiting for an answer. */
+    public bool $showConsent = false;
+
+    #[ivewireattributesocked]
+    public bool $consented = false;
 
     /**
      * @var array<string, string>
@@ -293,6 +300,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
         $this->dispatch('modal-close', name: 'tournament-details');
         $this->dispatch('modal-show', name: 'tournament-registration');
+        $this->dispatch('modal-show', name: 'data-consent');
     }
 
     private function resetRegistrationForm(): void
@@ -326,6 +334,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         $this->pairDocumentOther = '';
         $this->pairDocument = null;
 
+        // Consent comes first, before any personal detail is shown or typed.
+        $this->showConsent = true;
+        $this->consented = false;
+
         $player = auth()->user()->player;
 
         if ($player) {
@@ -333,7 +345,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             $this->regBirthDate = $player->birth_date?->format('Y-m-d') ?? '';
             $this->regGender = $player->gender ?? '';
             $this->regAddress = $player->address ?? '';
-            $this->regSkillLevel = $player->level ?? '';
+            $this->regSkillLevel = in_array($player->level, Category::PLAYER_LEVELS, true) ? $player->level : '';
             $this->regClub = $player->club ?? '';
             $this->regEmail = auth()->user()->email;
             $this->regPhoneNumber = $player->phone_number ?? '';
@@ -418,7 +430,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             return;
         }
 
-        $this->validate($this->documentRules());
+        if ($documentRules = $this->documentRules()) {
+            $this->validate($documentRules);
+        }
+
+        // Nothing is stored until the registrant agrees to the data notice.
+        if (! $this->consented) {
+            $this->showConsent = true;
+            $this->dispatch('modal-show', name: 'data-consent');
+
+            return;
+        }
 
         $tournamentCategoryId = $this->regTournamentCategoryId;
 
@@ -442,26 +464,21 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 $application = PlayerApplication::create([
                     'tournament_category_id' => $tournamentCategoryId,
                     'status' => 'pending_verification',
+                    'data_consent_at' => now(),
                 ]);
 
                 ApplicationPlayer::create([
                     'application_id' => $application->id,
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
-                    'id_document_type' => $this->ownDocumentType,
-                    'id_document_other' => $this->ownDocumentType === 'others' ? trim($this->ownDocumentOther) : null,
-                    'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
-                ]);
+                ] + $this->resolveIdDocument($applicant, $this->ownDocument, $this->ownDocumentType, $this->ownDocumentOther));
 
                 if ($partner) {
                     ApplicationPlayer::create([
                         'application_id' => $application->id,
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairViaSearch ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
-                        'id_document_type' => $this->pairDocumentType,
-                        'id_document_other' => $this->pairDocumentType === 'others' ? trim($this->pairDocumentOther) : null,
-                        'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
-                    ]);
+                    ] + $this->resolveIdDocument($partner, $this->pairDocument, $this->pairDocumentType, $this->pairDocumentOther));
                 }
             });
         } catch (\RuntimeException $e) {
@@ -476,6 +493,72 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         $this->dispatch('system-message', title: 'Application submitted', message: 'Waiting for organizer verification.', variant: 'success');
 
         unset($this->tournaments, $this->myApplications);
+    }
+
+    /**
+     * The registrant agreed to the data-collection notice: they can now fill in the form.
+     */
+    public function acceptRegistrationConsent(): void
+    {
+        $this->consented = true;
+        $this->showConsent = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+    }
+
+    /**
+     * The registrant refused: nothing was saved, so close the form.
+     */
+    public function declineRegistrationConsent(): void
+    {
+        $this->showConsent = false;
+        $this->consented = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+        $this->dispatch('modal-close', name: 'tournament-registration');
+        $this->dispatch('system-message', title: 'Registration cancelled', message: 'You did not consent to the collection of your data, so no application was submitted.', variant: 'danger');
+    }
+
+    /**
+     * The ID kept on the player's record is the one used: it is asked for
+     * once and never replaced. Only a player with none on file has the
+     * uploaded one stored (and saved to their record for next time).
+     *
+     * @return array{id_document_type: ?string, id_document_other: ?string, id_document_path: ?string}
+     */
+    private function resolveIdDocument(Player $player, mixed $file, string $type, string $other): array
+    {
+        if (! $player->hasIdOnFile()) {
+            if ($file === null) {
+                throw new \RuntimeException('A valid ID is required for every player in the entry.');
+            }
+
+            $player->update([
+                'id_document_type' => $type,
+                'id_document_other' => $type === IdDocumentTypes::OTHERS ? trim($other) : null,
+                'id_document_path' => $file->store('id-documents', 'public'),
+            ]);
+        }
+
+        return [
+            'id_document_type' => $player->id_document_type,
+            'id_document_other' => $player->id_document_other,
+            'id_document_path' => $player->id_document_path,
+        ];
+    }
+
+    #[Computed]
+    public function ownHasIdOnFile(): bool
+    {
+        return (bool) auth()->user()->player?->hasIdOnFile();
+    }
+
+    #[Computed]
+    public function pairHasIdOnFile(): bool
+    {
+        return $this->pairViaSearch
+            && $this->pairPlayerId !== null
+            && (bool) Player::query()->find($this->pairPlayerId)?->hasIdOnFile();
     }
 
     /**
@@ -688,13 +771,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     private function documentRules(): array
     {
-        $rules = [
-            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
-            'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
-            'ownDocument' => ['required', 'image', 'max:4096'],
-        ];
+        $rules = [];
 
-        if ($this->isDoublesRegistration) {
+        if (! $this->ownHasIdOnFile) {
+            $rules = [
+                'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+                'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
+                'ownDocument' => ['required', 'image', 'max:4096'],
+            ];
+        }
+
+        if ($this->isDoublesRegistration && ! $this->pairHasIdOnFile) {
             $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
             $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
             $rules['pairDocument'] = ['required', 'image', 'max:4096'];
@@ -739,7 +826,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'regBirthDate' => ['required', 'date', 'before:today'],
             'regGender' => ['required', 'in:male,female'],
             'regAddress' => ['required', 'string', 'max:255'],
-            'regSkillLevel' => ['required', 'string', 'max:255'],
+            'regSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255'],
             'regPhoneNumber' => ['nullable', 'string', new PhoneNumber],
@@ -774,7 +861,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'pairBirthDate' => ['required', 'date', 'before:today'],
             'pairGender' => ['required', 'in:male,female'],
             'pairAddress' => ['required', 'string', 'max:255'],
-            'pairSkillLevel' => ['required', 'string', 'max:255'],
+            'pairSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'pairClub' => ['nullable', 'string', 'max:255'],
             'pairEmail' => ['nullable', 'email', 'max:255'],
             'pairPhoneNumber' => ['nullable', 'string', new PhoneNumber],
@@ -1209,7 +1296,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                         </div>
                         <div class="flex gap-[5px]">
-                            <x-player.registration-field label="Skill Level" model="regSkillLevel" placeholder="e.g. Beginner" class="flex-1" />
+                            <x-player.registration-select label="Skill Level" model="regSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" class="flex-1" />
                             <x-player.registration-field label="Club" model="regClub" placeholder="e.g. OBC Badminton Club" class="flex-1" />
                         </div>
                         <div class="flex gap-[5px]">
@@ -1306,7 +1393,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                             </div>
                             <div class="flex gap-[5px]">
-                                <x-player.registration-field label="Skill Level" model="pairSkillLevel" placeholder="e.g. Beginner" class="flex-1" />
+                                <x-player.registration-select label="Skill Level" model="pairSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" class="flex-1" />
                                 <x-player.registration-field label="Club" model="pairClub" placeholder="e.g. OBC Badminton Club" class="flex-1" />
                             </div>
                             <div class="flex gap-[5px]">
@@ -1330,6 +1417,11 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         </div>
                     @else
                         <div wire:key="reg-step-documents" class="contents">
+                        @if ($this->ownHasIdOnFile)
+                            <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                                Your valid ID is already on file, so you don't need to upload it again.
+                            </p>
+                        @else
                         <div class="flex flex-col gap-[10px]">
                             <p class="text-sm font-bold text-black">Your valid document</p>
                             <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
@@ -1350,8 +1442,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 @enderror
                             </div>
                         </div>
+                        @endif
 
-                        @if ($this->isDoublesRegistration)
+                        @if ($this->isDoublesRegistration && $this->pairHasIdOnFile)
+                            <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                                Your partner's valid ID is already on file.
+                            </p>
+                        @elseif ($this->isDoublesRegistration)
                             <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
                                 <p class="text-sm font-bold text-black">Pair's valid document</p>
                                 <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
@@ -1408,4 +1505,9 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         </div>
     </flux:modal>
 
+<flux:modal name="data-consent" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
+    @if ($showConsent)
+        <x-consent-dialog accept="acceptRegistrationConsent" decline="declineRegistrationConsent" />
+    @endif
+</flux:modal>
 </div>

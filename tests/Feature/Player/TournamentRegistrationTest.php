@@ -121,7 +121,7 @@ test('a player can submit a singles application with one document', function () 
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->sole();
@@ -170,7 +170,7 @@ test('doubles registration with a pair found by search creates two application p
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('pairDocumentType', 'passport')
         ->set('pairDocument', UploadedFile::fake()->create('pair-id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->sole();
@@ -216,7 +216,7 @@ test('doubles registration with a pair that has never played creates a new playe
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('pairDocumentType', 'passport')
         ->set('pairDocument', UploadedFile::fake()->create('pair-id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $newPlayer = Player::where('name', 'Mark Santos')->sole();
@@ -257,7 +257,7 @@ test('a player cannot re-apply to the same category while an application is stil
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasErrors(['registration']);
 
     expect(PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->count())->toBe(1);
@@ -294,7 +294,7 @@ test('a player can re-apply to the same category after a rejected application', 
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     expect(PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->count())->toBe(2);

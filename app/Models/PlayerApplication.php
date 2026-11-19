@@ -21,6 +21,7 @@ class PlayerApplication extends Model
         'status',
         'draw_position',
         'rejection_reason',
+        'data_consent_at',
     ];
 
     /**

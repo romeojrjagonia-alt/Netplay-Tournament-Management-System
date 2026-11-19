@@ -176,7 +176,7 @@ test('a guest registers for singles without an account and gets a reference code
     fillGuestDetails($component, $category)
         ->call('nextStep')
         ->assertSet('regStep', 2)
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::firstOrFail();
@@ -206,7 +206,7 @@ test('a returning guest reuses their player record matched by phone number and n
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['first' => 'JUAN', 'last' => 'cruz'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     expect(Player::count())->toBe(1)
         ->and($existing->fresh()->name)->toBe('Juan Cruz')
@@ -219,9 +219,9 @@ test('a guest cannot enter the same category twice', function () {
     $category = openCategory($tournament);
 
     foreach (range(1, 2) as $attempt) {
-        $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
             ->call('nextStep')
-            ->call('submit');
+            ->call('acceptConsent')->call('submit');
     }
 
     $component->assertHasErrors('registration');
@@ -233,7 +233,7 @@ test('doubles registration collects a partner without an account', function () {
     $tournament = openTournament();
     $category = openCategory($tournament, teamSize: 2);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->assertSet('regStep', 2)
         ->call('nextStep')
@@ -251,7 +251,7 @@ test('doubles registration collects a partner without an account', function () {
         ->set('pairPhoneNumber', '09181112222')
         ->call('nextStep')
         ->assertSet('regStep', 3)
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::firstOrFail();
@@ -264,7 +264,7 @@ test('a doubles partner cannot be the applicant themselves', function () {
     $tournament = openTournament();
     $category = openCategory($tournament, teamSize: 2);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->call('enterPairManually')
         ->set('pairFirstName', 'Juan')
@@ -275,7 +275,7 @@ test('a doubles partner cannot be the applicant themselves', function () {
         ->set('pairSkillLevel', 'Beginner')
         ->set('pairPhoneNumber', '09171234567')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors('registration');
 
     expect(PlayerApplication::count())->toBe(0);
@@ -296,7 +296,7 @@ test('an email alone is enough to register', function () {
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'juan@example.com'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(Player::firstOrFail())
@@ -312,7 +312,7 @@ test('an email-only registration does not collide with an unrelated player witho
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'new@example.com'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     expect(Player::count())->toBe(2)
         ->and(ApplicationPlayer::where('player_id', $bystander->id)->exists())->toBeFalse();
@@ -327,7 +327,7 @@ test('a guest is matched to an account holder by the email on the account', func
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '', 'email' => 'MEMBER@example.com', 'first' => 'Member', 'last' => 'Player'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     expect(Player::count())->toBe(1)
         ->and(ApplicationPlayer::where('player_id', $member->id)->exists())->toBeTrue()
@@ -346,7 +346,7 @@ test('a doubles partner is found by name search and only the name is exposed', f
         'level' => 'Level B',
     ]);
 
-    $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->set('pairSearch', 'Pedro')
         ->assertSee('Pedro Santos')
@@ -357,7 +357,7 @@ test('a doubles partner is found by name search and only the name is exposed', f
         ->assertSet('pairPlayerId', $partner->id)
         ->call('nextStep')
         ->assertSet('regStep', 3)
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::firstOrFail();
@@ -375,7 +375,7 @@ test('a doubles partner entered by email is matched to an existing account holde
     $user = User::factory()->create(['role' => 'player', 'email' => 'pedro@example.com']);
     $partner = Player::create(['user_id' => $user->id, 'name' => 'Pedro Santos']);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->call('enterPairManually')
         ->set('pairFirstName', 'Pedro')
@@ -386,7 +386,7 @@ test('a doubles partner entered by email is matched to an existing account holde
         ->set('pairSkillLevel', 'Beginner')
         ->set('pairEmail', 'pedro@example.com')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(Player::count())->toBe(2)
@@ -401,7 +401,7 @@ test('the reference code is emailed when an email is given', function () {
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['email' => 'juan@example.com'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     Mail::assertSent(ApplicationReceived::class, fn ($mail) => $mail->hasTo('juan@example.com'));
 });
@@ -417,7 +417,7 @@ test('a signed-in player keeps their own player record when registering', functi
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09999999999'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     expect(Player::count())->toBe(1)
         ->and(ApplicationPlayer::where('player_id', $player->id)->exists())->toBeTrue();
@@ -435,7 +435,7 @@ test('an admin registers a walk-in without the walk-in being tied to the admin a
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000001'])
         ->assertSet('regFirstName', 'Juan')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $walkIn = Player::where('phone_number', '09170000001')->firstOrFail();
@@ -457,7 +457,7 @@ test('an admin is not throttled when registering many walk-ins', function () {
             'first' => 'Walkin'.chr(64 + $i),
         ])
             ->call('nextStep')
-            ->call('submit')
+            ->call('acceptConsent')->call('submit')
             ->assertHasNoErrors();
     }
 
@@ -472,13 +472,13 @@ test('a category refuses applications once its slots are taken', function () {
     foreach (['09170000001' => 'Alpha', '09170000002' => 'Bravo'] as $phone => $first) {
         fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => $phone, 'first' => $first])
             ->call('nextStep')
-            ->call('submit')
+            ->call('acceptConsent')->call('submit')
             ->assertHasNoErrors();
     }
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000003', 'first' => 'Late'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors('registration')
         ->assertDispatched('system-message', variant: 'danger');
 
@@ -492,13 +492,13 @@ test('a rejected application frees its slot', function () {
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000001'])
         ->call('nextStep')
-        ->call('submit');
+        ->call('acceptConsent')->call('submit');
 
     PlayerApplication::firstOrFail()->update(['status' => 'rejected']);
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09170000002', 'first' => 'Next'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(PlayerApplication::where('status', '!=', 'rejected')->count())->toBe(1);
@@ -520,7 +520,7 @@ test('the guest form stores each player\'s ID document with the entry', function
         ->set('pairSkillLevel', 'Beginner')
         ->set('pairPhoneNumber', '0918 765 4321')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $documents = ApplicationPlayer::query()->orderBy('id')->get();
@@ -543,7 +543,7 @@ test('the guest form requires an ID document for the player and the partner', fu
         ->call('nextStep')
         ->set('ownDocument', null)
         ->set('ownDocumentType', '')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors(['ownDocumentType', 'ownDocument']);
 
     expect(PlayerApplication::count())->toBe(0);
@@ -559,7 +559,7 @@ test('a different name on a shared phone number is a separate player and never e
 
     $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['first' => 'Maria', 'last' => 'Reyes'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(Player::count())->toBe(2)
@@ -573,9 +573,9 @@ test('the already-entered error does not reveal the player name', function () {
     $category = openCategory($tournament);
 
     foreach (range(1, 2) as $attempt) {
-        $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+        $component = fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
             ->call('nextStep')
-            ->call('submit');
+            ->call('acceptConsent')->call('submit');
     }
 
     $component->assertDispatched('system-message', message: 'You already have a pending application for this tournament.');
@@ -594,7 +594,7 @@ test('the same name and birthdate is the same person even with a new phone or em
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09999999999', 'email' => 'new@example.com'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(Player::count())->toBe(1)
@@ -610,7 +610,7 @@ test('the same name with a different birthdate and phone is a different person',
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['phone' => '09999999999'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     expect(Player::count())->toBe(2);
@@ -637,7 +637,7 @@ test('the confirmation screen and the reference email invite guests to sign in',
 
     fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category, ['email' => 'juan@example.com'])
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertSee('with the same email so this registration stays with your account');
 
     Mail::assertSent(ApplicationReceived::class, fn ($mail) => str_contains($mail->render(), 'Sign in to NetPlay'));
@@ -649,7 +649,7 @@ test('a doubles registration shows the documents step after the partner step, an
 
     $partner = Player::create(['name' => 'Pedro Santos', 'phone_number' => '09181112222']);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->assertSee('Search for your partner by name')
         ->assertDontSee('Your valid ID')
@@ -670,7 +670,7 @@ test('a doubles partner can be registered without a phone number or email', func
     $tournament = openTournament();
     $category = openCategory($tournament, teamSize: 2);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->call('enterPairManually')
         ->set('pairFirstName', 'Pedro')
@@ -682,7 +682,7 @@ test('a doubles partner can be registered without a phone number or email', func
         ->call('nextStep')
         ->assertHasNoErrors()
         ->assertSet('regStep', 3)
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $partner = Player::firstWhere('name', 'Pedro Santos');
@@ -696,7 +696,7 @@ test('the registrant still needs a phone number or email', function () {
     $tournament = openTournament();
     $category = openCategory($tournament);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->set('regPhoneNumber', '')
         ->set('regEmail', '')
         ->call('nextStep')
@@ -707,11 +707,11 @@ test('student id, driver\'s license and others are accepted ID types', function 
     $tournament = openTournament();
     $category = openCategory($tournament);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->set('ownDocumentType', $type)
         ->set('ownDocumentOther', 'Postal ID')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasNoErrors();
 
     $document = ApplicationPlayer::firstOrFail();
@@ -724,11 +724,11 @@ test('choosing others requires saying what kind of ID it is', function () {
     $tournament = openTournament();
     $category = openCategory($tournament);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->set('ownDocumentType', 'others')
         ->set('ownDocumentOther', '')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors('ownDocumentOther');
 
     expect(PlayerApplication::count())->toBe(0);
@@ -739,13 +739,13 @@ test('the partner\'s others ID also needs a description in doubles', function ()
     $category = openCategory($tournament, teamSize: 2);
     $partner = Player::create(['name' => 'Pedro Santos', 'phone_number' => '09181112222']);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->call('nextStep')
         ->call('selectPairPlayer', $partner->id)
         ->call('nextStep')
         ->set('pairDocumentType', 'others')
         ->set('pairDocumentOther', '')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors('pairDocumentOther');
 });
 
@@ -809,11 +809,11 @@ test('describing an others ID clears the missing description error', function ()
     $tournament = openTournament();
     $category = openCategory($tournament);
 
-    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament]), $category)
+    fillGuestDetails(Volt::test('tournaments.register', ['tournament' => $tournament])->call('acceptConsent'), $category)
         ->set('ownDocumentType', 'others')
         ->set('ownDocumentOther', '')
         ->call('nextStep')
-        ->call('submit')
+        ->call('acceptConsent')->call('submit')
         ->assertHasErrors('ownDocumentOther')
         ->set('ownDocumentOther', 'Postal ID')
         ->assertHasNoErrors('ownDocumentOther');

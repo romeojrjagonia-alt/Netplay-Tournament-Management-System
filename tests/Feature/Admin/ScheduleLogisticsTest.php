@@ -146,3 +146,59 @@ it('renders the scheduled email', function () {
 
     expect($html)->toContain('Audit Open')->toContain('9:30 AM')->toContain('Juan Torres')->toContain('3');
 });
+
+it('saves a match inside the tournament dates without any warning', function () {
+    $match = logisticsMatch();
+
+    logisticsPage($match)
+        ->call('editMatch', $match->id)
+        ->set('editDate', '2026-10-22')
+        ->set('editTime', '09:30')
+        ->call('saveMatch')
+        ->assertNotDispatched('outside-date-range-warning')
+        ->assertSet('editingMatchId', null);
+
+    expect($match->fresh()->scheduled_at->format('Y-m-d'))->toBe('2026-10-22');
+});
+
+it('warns before scheduling a match outside the tournament dates and does not save yet', function (string $date) {
+    $match = logisticsMatch();
+
+    logisticsPage($match)
+        ->call('editMatch', $match->id)
+        ->set('editDate', $date)
+        ->set('editTime', '09:30')
+        ->call('saveMatch')
+        ->assertDispatched('outside-date-range-warning')
+        ->assertSet('editingMatchId', $match->id);
+
+    expect($match->fresh()->scheduled_at)->toBeNull();
+})->with(['before the start' => '2026-10-19', 'after the end' => '2026-10-23']);
+
+it('saves an out-of-range match once the admin confirms the warning', function () {
+    $match = logisticsMatch();
+
+    logisticsPage($match)
+        ->call('editMatch', $match->id)
+        ->set('editDate', '2026-10-25')
+        ->set('editTime', '09:30')
+        ->call('saveMatch', true)
+        ->assertNotDispatched('outside-date-range-warning')
+        ->assertSet('editingMatchId', null);
+
+    expect($match->fresh()->scheduled_at->format('Y-m-d H:i'))->toBe('2026-10-25 09:30');
+});
+
+it('leaves the match unscheduled when the admin cancels the warning', function () {
+    $match = logisticsMatch();
+
+    logisticsPage($match)
+        ->call('editMatch', $match->id)
+        ->set('editDate', '2026-10-25')
+        ->set('editTime', '09:30')
+        ->call('saveMatch')
+        ->assertDispatched('outside-date-range-warning')
+        ->call('cancelEditMatch');
+
+    expect($match->fresh()->scheduled_at)->toBeNull();
+});

@@ -124,6 +124,7 @@
         @endisset
 
         <livewire:verify-email-prompt />
+        <livewire:account.id-prompt />
 
         <x-system-modal />
 

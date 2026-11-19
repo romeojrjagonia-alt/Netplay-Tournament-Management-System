@@ -61,6 +61,24 @@ class Category extends Model
     ];
 
     /**
+     * The skill levels a player can pick (Supermixed is a category, not a
+     * player level), weakest first.
+     *
+     * @var list<string>
+     */
+    public const PLAYER_LEVELS = [
+        'Beginner',
+        'Intermediate',
+        'Level G',
+        'Level F',
+        'Level E',
+        'Level D',
+        'Level C',
+        'Level B',
+        'Level A',
+    ];
+
+    /**
      * The age bracket as shown to admins. No bounds means open to all ages.
      */
     protected function ageLabel(): Attribute

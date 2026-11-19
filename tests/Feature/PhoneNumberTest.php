@@ -4,10 +4,14 @@ use App\Models\Player;
 use App\Models\Tournament;
 use App\Models\User;
 use App\Rules\PhoneNumber;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ViewErrorBag;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 it('accepts an 11-digit mobile number starting with 09', function (string $number) {
     expect(Validator::make(['phone' => $number], ['phone' => [new PhoneNumber]])->passes())->toBeTrue();
@@ -59,8 +63,10 @@ it('rejects a long phone number when signing up', function () {
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('phoneNumber', '091234567890123')
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasErrors(['phoneNumber']);
 
     expect(User::where('email', 'juan@example.com')->exists())->toBeFalse();
@@ -69,7 +75,7 @@ it('rejects a long phone number when signing up', function () {
 it('shows the phone error on sign-up and clears it once the number is right', function () {
     Volt::test('auth.register')
         ->call('selectUserType', 'player')
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasErrors('phoneNumber')
         ->set('phoneNumber', '0912345')
         ->assertHasErrors('phoneNumber')

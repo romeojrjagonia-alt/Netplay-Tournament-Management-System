@@ -55,6 +55,7 @@ it('uses the picker for birthdates on the public registration page', function ()
     ]);
 
     Volt::test('tournaments.register', ['tournament' => $tournament])
+        ->call('acceptConsent')
         ->assertSeeHtml('datePicker(')
         ->assertSeeHtml(pickerOption('model', 'regBirthDate'))
         ->assertSeeHtml(pickerOption('max', now()->toDateString()))

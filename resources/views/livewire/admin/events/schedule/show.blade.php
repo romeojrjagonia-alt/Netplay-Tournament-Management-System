@@ -128,7 +128,16 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->runGeneration($roundRobin, $singleElimination, true);
     }
 
-    private function runGeneration(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination, bool $allowUndated): void
+    /**
+     * Generate with matches allowed on the event's days past its end date.
+     * The page asks the admin to confirm this first.
+     */
+    public function generateOutsideDateRange(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, false, true);
+    }
+
+    private function runGeneration(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination, bool $allowUndated, bool $allowOutsideDateRange = false): void
     {
         abort_unless(in_array($this->tournament->format, ['round_robin', 'single_elimination'], true), 403);
 
@@ -146,7 +155,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                 'courtCount' => 'number of courts',
             ]);
 
-            $timetable = new TimetableOptions((int) $this->matchDuration, (int) $this->breakMinutes, (int) $this->courtCount);
+            $timetable = new TimetableOptions((int) $this->matchDuration, (int) $this->breakMinutes, (int) $this->courtCount, $allowOutsideDateRange);
         }
 
         $this->canGenerateUndated = false;
@@ -258,7 +267,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
      * court clears the "players notified" mark so the new details are
      * emailed again.
      */
-    public function saveMatch(): void
+    public function saveMatch(bool $confirmedOutsideDateRange = false): void
     {
         $this->validate([
             'editDate' => ['nullable', 'date', 'required_with:editTime'],
@@ -281,6 +290,14 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         abort_if($match->status === 'completed', 403);
 
+        // Outside the event's dates is allowed, but only once the admin has
+        // seen the warning and confirmed.
+        if ($this->editDate !== '' && ! $confirmedOutsideDateRange && $this->isOutsideDateRange($this->editDate)) {
+            $this->dispatch('outside-date-range-warning', message: $this->outsideDateRangeMessage());
+
+            return;
+        }
+
         $scheduledAt = $this->editDate !== '' ? Carbon::parse($this->editDate.' '.$this->editTime) : null;
         $court = trim($this->editCourt) !== '' ? trim($this->editCourt) : null;
 
@@ -299,6 +316,21 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->cancelEditMatch();
         unset($this->rounds, $this->pendingNotificationCount);
         $this->say('Match details saved.');
+    }
+
+    private function isOutsideDateRange(string $date): bool
+    {
+        $day = Carbon::parse($date)->startOfDay();
+
+        return $day->lt($this->tournament->date_start->copy()->startOfDay())
+            || $day->gt($this->tournament->date_end->copy()->startOfDay());
+    }
+
+    private function outsideDateRangeMessage(): string
+    {
+        return 'This date is outside the tournament dates ('
+            .$this->tournament->date_start->format('M j').' to '.$this->tournament->date_end->format('M j, Y')
+            .'). Do you want to schedule the match anyway?';
     }
 
     /**
@@ -657,6 +689,18 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                         <button type="button" wire:click="generateWithUndatedOverflow" class="w-fit cursor-pointer rounded-[5px] bg-amber-600 px-4 py-2 text-xs font-medium text-white">
                             Generate anyway, leave the overflow undated
                         </button>
+                        <button
+                            type="button"
+                            x-on:click="$dispatch('system-confirm', {
+                                title: 'Outside the tournament dates',
+                                message: @js('Some matches will be scheduled after the tournament ends on '.$tournament->date_end->format('M j, Y').', on the event\'s allowed days. Do you want to continue?'),
+                                confirmLabel: 'Continue',
+                                confirm: () => $wire.generateOutsideDateRange(),
+                            })"
+                            class="w-fit cursor-pointer rounded-[5px] border border-amber-600 px-4 py-2 text-xs font-medium text-amber-800"
+                        >
+                            Schedule the overflow after the end date
+                        </button>
                     </div>
                 @endif
             </div>
@@ -895,7 +939,15 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                                 <x-admin.schedule-match-card :match="$match" />
 
                                 @if ($editingMatchId === $match->id)
-                                    <form wire:submit="saveMatch" class="flex flex-col gap-3 rounded-[10px] bg-white p-4">
+                                    <form
+                                        wire:submit="saveMatch"
+                                        x-on:outside-date-range-warning.window="$dispatch('system-confirm', {
+                                            title: 'Outside the tournament dates',
+                                            message: $event.detail.message,
+                                            confirmLabel: 'Continue',
+                                            confirm: () => $wire.saveMatch(true),
+                                        })"
+                                        class="flex flex-col gap-3 rounded-[10px] bg-white p-4">
                                         <div class="grid grid-cols-2 gap-3">
                                             <label class="flex flex-col gap-1 text-[11px] text-black">
                                                 Date

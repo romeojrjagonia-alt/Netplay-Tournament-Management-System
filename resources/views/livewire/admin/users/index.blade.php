@@ -33,8 +33,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
     public bool $showRejectLinkModal = false;
 
-    public ?int $editingUserId = null;
-
     public string $firstName = '';
 
     public string $lastName = '';
@@ -60,10 +58,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
     public string $email = '';
 
     public string $role = 'umpire';
-
-    public string $password = '';
-
-    public string $password_confirmation = '';
 
     public string $search = '';
 
@@ -115,72 +109,30 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
         $this->showFormModal = true;
     }
 
-    public function openEditModal(int $userId): void
-    {
-        $user = User::with('player')->findOrFail($userId);
-        $player = $user->player;
-
-        $this->resetForm();
-        $this->editingUserId = $user->id;
-
-        [$this->firstName, $this->lastName, $this->middleInitial] = $this->splitName($user->name);
-        $this->email = $user->email;
-        $this->role = $user->role;
-
-        if ($player) {
-            $this->birthDate = $player->birth_date?->format('Y-m-d') ?? '';
-            $this->phoneNumber = $player->phone_number ?? '';
-            $this->gender = in_array($player->gender, ['male', 'female'], true) ? $player->gender : '';
-            $this->club = $player->club ?? '';
-
-            // Addresses are stored as "purok, city, province".
-            $parts = array_map('trim', explode(',', (string) $player->address));
-
-            if (count($parts) === 3) {
-                [$this->purok, $this->city, $this->province] = $parts;
-            } else {
-                $this->purok = (string) $player->address;
-            }
-        }
-
-        $this->showFormModal = true;
-    }
-
     /**
-     * Accounts created or edited here are trusted: the admin vouches for the
-     * email address, so new accounts are marked verified straight away. The
-     * form mirrors sign-up, and every account gets a player record like a
-     * self sign-up does. The profile fields are required when creating; when
-     * editing they only need to be valid if filled in, so older accounts
-     * with an empty profile can still be edited.
+     * Admins can add accounts but never change a user's details or password:
+     * the account owner does that themselves. A new account is created with
+     * an unusable random password and the owner is emailed a link to set
+     * their own (the same flow as "Forgot password"). The admin vouches for
+     * the email address, so the account is marked verified straight away.
      */
     public function save(): void
     {
-        $editing = $this->editingUserId !== null ? User::findOrFail($this->editingUserId) : null;
-        $profile = $editing ? 'nullable' : 'required';
-
         $data = $this->validate([
             'firstName' => ['required', 'string', 'max:255'],
             'lastName' => ['required', 'string', 'max:255'],
             'middleInitial' => ['nullable', 'string', 'max:5'],
-            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore($editing?->id)],
+            'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')],
             'role' => ['required', Rule::in(self::ROLES)],
-            'password' => [$editing ? 'nullable' : 'required', 'confirmed', new AccountPassword],
-            'birthDate' => [$profile, 'date', 'before:today'],
-            'phoneNumber' => [$profile, 'string', new PhoneNumber],
-            'gender' => [$profile, 'in:male,female'],
-            'purok' => [$profile, 'string', 'max:255'],
-            'city' => [$profile, 'string', 'max:255'],
-            'province' => [$profile, 'string', 'max:255'],
+            'birthDate' => ['required', 'date', 'before:today'],
+            'phoneNumber' => ['required', 'string', new PhoneNumber],
+            'gender' => ['required', 'in:male,female'],
+            'purok' => ['required', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'province' => ['required', 'string', 'max:255'],
             'club' => ['nullable', 'string', 'max:255'],
             'profilePhoto' => ['nullable', 'image', 'max:2048'],
         ]);
-
-        if ($editing?->is(auth()->user()) && $data['role'] !== 'admin') {
-            $this->addError('role', 'You can\'t remove your own admin role.');
-
-            return;
-        }
 
         $fullName = collect([
             $data['firstName'],
@@ -188,39 +140,30 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
             $data['lastName'],
         ])->filter()->implode(' ');
 
-        $attributes = [
+        $user = User::create([
             'name' => $fullName,
             'email' => $data['email'],
             'role' => $data['role'],
-        ];
-
-        if (filled($data['password'])) {
-            $attributes['password'] = $data['password'];
-        }
-
-        if ($editing) {
-            $editing->update($attributes);
-            $user = $editing;
-            $message = "{$data['email']} was updated.";
-            $title = 'User updated';
-        } else {
-            $user = User::create($attributes + ['email_verified_at' => now()]);
-            $message = "Account created for {$data['email']}. Share the password with them securely.";
-            $title = 'User created';
-        }
+            'password' => Str::random(40),
+            'email_verified_at' => now(),
+        ]);
 
         $this->saveProfile($user, $data, $fullName);
+
+        $status = Password::sendResetLink(['email' => $user->email]);
 
         $this->showFormModal = false;
         $this->resetForm();
         unset($this->users);
 
-        $this->dispatch('system-message', title: $title, message: $message, variant: 'success');
+        $this->dispatch('system-message', title: 'User created', message: $status === Password::RESET_LINK_SENT
+            ? "Account created for {$user->email}. A link to set their password was emailed to them."
+            : "Account created for {$user->email}, but the password email could not be sent. They can use \"Forgot password\" to set one.", variant: $status === Password::RESET_LINK_SENT ? 'success' : 'danger');
     }
 
     /**
      * The player record every account has (as with sign-up): the contact
-     * email follows the account, and only fields the admin filled in change.
+     * email follows the account.
      *
      * @param  array<string, mixed>  $data
      */
@@ -232,50 +175,41 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
             'name' => $fullName,
             'email' => $user->email,
             'club' => $data['club'] !== '' ? $data['club'] : null,
+            'birth_date' => $data['birthDate'],
+            'gender' => $data['gender'],
+            'phone_number' => $data['phoneNumber'],
+            'address' => "{$data['purok']}, {$data['city']}, {$data['province']}",
         ];
 
-        foreach (['birthDate' => 'birth_date', 'gender' => 'gender', 'phoneNumber' => 'phone_number'] as $field => $column) {
-            if (filled($data[$field])) {
-                $attributes[$column] = $data[$field];
-            }
-        }
-
-        if (filled($data['purok']) && filled($data['city']) && filled($data['province'])) {
-            $attributes['address'] = "{$data['purok']}, {$data['city']}, {$data['province']}";
-        }
-
         if ($this->profilePhoto) {
-            $previousPhoto = $player->photo_path;
             $attributes['photo_path'] = $this->profilePhoto->store('player-photos', 'public');
-
-            if ($previousPhoto) {
-                Storage::disk('public')->delete($previousPhoto);
-            }
         }
 
         $player->update($attributes);
     }
 
     /**
-     * Best-effort split of a combined "First M. Last" name back into its
-     * parts, for pre-filling the form.
-     *
-     * @return array{0: string, 1: string, 2: string} [first, last, middleInitial]
+     * The one account change an admin may make: which role it has.
      */
-    private function splitName(string $name): array
+    public function setRole(int $userId, string $role): void
     {
-        $parts = explode(' ', trim($name));
+        abort_unless(in_array($role, self::ROLES, true), 422);
 
-        if (count($parts) >= 3 && str_ends_with($parts[1], '.') && mb_strlen($parts[1]) <= 3) {
-            return [$parts[0], implode(' ', array_slice($parts, 2)), rtrim($parts[1], '.')];
+        $user = User::findOrFail($userId);
+
+        if ($user->is(auth()->user())) {
+            $this->dispatch('system-message', title: 'Can\'t change role', message: 'You can\'t change your own role.', variant: 'danger');
+
+            return;
         }
 
-        if (count($parts) >= 2) {
-            return [$parts[0], implode(' ', array_slice($parts, 1)), ''];
-        }
+        $user->update(['role' => $role]);
 
-        return [$parts[0] ?? '', '', ''];
+        unset($this->users);
+
+        $this->dispatch('system-message', title: 'Role updated', message: "{$user->email} is now ".($role === 'admin' ? 'an' : 'a')." {$role}.", variant: 'success');
     }
+
     public function delete(int $userId): void
     {
         $user = User::findOrFail($userId);
@@ -540,7 +474,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
 
     private function resetForm(): void
     {
-        $this->reset('editingUserId', 'firstName', 'lastName', 'middleInitial', 'email', 'role', 'password', 'password_confirmation', 'birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province', 'club', 'profilePhoto');
+        $this->reset('firstName', 'lastName', 'middleInitial', 'email', 'role', 'birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province', 'club', 'profilePhoto');
         $this->resetValidation();
     }
 }; ?>
@@ -684,10 +618,14 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                     </button>
 
                     <div x-show="open" x-cloak x-bind:style="`top: ${top}px; right: ${right}px`" class="fixed z-50 flex w-36 flex-col rounded-[5px] bg-white p-1 text-xs text-black shadow-lg ring-1 ring-black/10">
-                        <button type="button" wire:click="openEditModal({{ $user->id }})" x-on:click="open = false" class="flex cursor-pointer items-center gap-2 rounded-[5px] px-3 py-2 text-left hover:bg-[#e7f0ef]">
-                            <flux:icon.pencil-square class="size-4" />
-                            Edit
-                        </button>
+                        @if ($user->id !== auth()->id())
+                            @foreach (array_diff($this::ROLES, [$user->role]) as $newRole)
+                                <button type="button" wire:click="setRole({{ $user->id }}, '{{ $newRole }}')" x-on:click="open = false" class="flex cursor-pointer items-center gap-2 rounded-[5px] px-3 py-2 text-left hover:bg-[#e7f0ef]">
+                                    <flux:icon.arrows-right-left class="size-4" />
+                                    Make {{ $newRole }}
+                                </button>
+                            @endforeach
+                        @endif
                         @if ($user->role === 'player')
                             <button type="button" wire:click="openLinkModal({{ $user->id }})" x-on:click="open = false" class="flex cursor-pointer items-center gap-2 rounded-[5px] px-3 py-2 text-left hover:bg-[#e7f0ef]">
                                 <flux:icon.link class="size-4" />
@@ -831,9 +769,9 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
     <flux:modal wire:model.self="showFormModal" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
         <form wire:submit="save" class="flex max-h-[80vh] flex-col gap-5 text-black">
             <div class="flex flex-col gap-1">
-                <h2 class="text-base font-bold">{{ $editingUserId ? 'Edit User' : 'Add User' }}</h2>
+                <h2 class="text-base font-bold">Add User</h2>
                 <p class="text-sm text-black/70">
-                    {{ $editingUserId ? 'Update this account. Leave the password blank to keep the current one.' : 'The same details as sign-up. Accounts added here are verified automatically and can sign in right away.' }}
+                    The same details as sign-up. The account is verified automatically and the user is emailed a link to set their own password. Details can't be edited afterwards.
                 </p>
             </div>
 
@@ -871,19 +809,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                     <input type="email" wire:model="email" autocomplete="off" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
                     @error('email') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
                 </label>
-
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label class="flex flex-col gap-1 text-[11px]">
-                        {{ $editingUserId ? 'New password (optional)' : 'Password' }}
-                        <input type="password" wire:model="password" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
-                        @error('password') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
-                    </label>
-                    <label class="flex flex-col gap-1 text-[11px]">
-                        Confirm password
-                        <input type="password" wire:model="password_confirmation" autocomplete="new-password" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
-                    </label>
-                </div>
-                <p class="text-[10px] text-black/60">{{ \App\Rules\AccountPassword::HINT }}</p>
 
                 <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <label class="flex flex-col gap-1 text-[11px]">
@@ -943,7 +868,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Users'])] class extends Co
                     Cancel
                 </button>
                 <button type="submit" wire:loading.attr="disabled" wire:target="save,profilePhoto" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-4 py-2 text-xs font-medium text-white disabled:opacity-60">
-                    {{ $editingUserId ? 'Save Changes' : 'Add User' }}
+                    Add User
                 </button>
             </div>
         </form>

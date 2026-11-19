@@ -4,7 +4,9 @@ use App\Rules\PhoneNumber;
 use App\Models\Player;
 use App\Models\User;
 use App\Rules\AccountPassword;
+use App\Support\Applications\IdDocumentTypes;
 use App\Support\Forms\ClearsResolvedErrors;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use App\Mail\UmpireSignupCode;
 use Illuminate\Support\Facades\Cache;
@@ -50,6 +52,17 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     public string $club = '';
     public $profilePhoto = null;
 
+    /** A valid ID is collected once, here, and reused for every tournament entry. */
+    public string $idDocumentType = '';
+    public string $idDocumentOther = '';
+    public $idDocument = null;
+
+    /** The data-privacy dialog is showing and waiting for an answer. */
+    public bool $showConsent = false;
+
+    #[Locked]
+    public bool $consented = false;
+
     /**
      * Umpire sign-up is only completed after the visitor proves they own the
      * email address. Until then nothing is stored in the database; the
@@ -78,6 +91,9 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
      */
     public function mount(): void
     {
+        // Consent comes first, before any personal detail is typed.
+        $this->showConsent = true;
+
         $google = Session::get('google_signup');
 
         if ($google !== null) {
@@ -149,6 +165,9 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             'province' => ['required', 'string', 'max:255'],
             'club' => ['nullable', 'string', 'max:255'],
             'profilePhoto' => ['nullable', 'image', 'max:2048'],
+            'idDocumentType' => ['required', Rule::in(array_keys(IdDocumentTypes::TYPES))],
+            'idDocumentOther' => ['nullable', 'required_if:idDocumentType,'.IdDocumentTypes::OTHERS, 'string', 'max:100'],
+            'idDocument' => ['required', 'image', 'max:4096'],
         ];
     }
 
@@ -197,6 +216,13 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
         $this->validate($this->signupRules());
 
+        // Nothing is collected or stored until the visitor agrees.
+        if (! $this->consented) {
+            $this->showConsent = true;
+
+            return;
+        }
+
         $fullName = collect([
             $this->firstName,
             $this->middleInitial !== '' ? $this->middleInitial.'.' : null,
@@ -212,6 +238,25 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
         }
 
         $this->createAccount($fullName, $google, emailVerified: false);
+    }
+
+    /**
+     * The visitor agreed to the data-collection notice: they can now fill in the form.
+     */
+    public function acceptConsent(): void
+    {
+        $this->consented = true;
+        $this->showConsent = false;
+    }
+
+    /**
+     * The visitor refused: nothing was saved, so just leave the sign-up.
+     */
+    public function declineConsent(): void
+    {
+        Session::forget('google_signup');
+
+        $this->redirect(route('home'), navigate: true);
     }
 
     /**
@@ -354,6 +399,7 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
 
         $this->reset();
         $this->resetErrorBag();
+        $this->showConsent = true;
         $this->dispatch('system-message', title: 'Sign-up not completed', message: $message, variant: 'danger');
     }
 
@@ -363,8 +409,9 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
     private function createAccount(string $fullName, ?array $google, bool $emailVerified): void
     {
         $photoPath = $this->profilePhoto?->store('player-photos', 'public');
+        $idPath = $this->idDocument->store('id-documents', 'public');
 
-        $user = DB::transaction(function () use ($fullName, $photoPath, $google, $emailVerified) {
+        $user = DB::transaction(function () use ($fullName, $photoPath, $idPath, $google, $emailVerified) {
             $user = User::create([
                 'name' => $fullName,
                 'email' => $this->email,
@@ -384,6 +431,10 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                 'club' => $this->club !== '' ? $this->club : null,
                 'photo_path' => $photoPath,
                 'email' => $user->email,
+                'id_document_type' => $this->idDocumentType,
+                'id_document_other' => $this->idDocumentType === IdDocumentTypes::OTHERS ? trim($this->idDocumentOther) : null,
+                'id_document_path' => $idPath,
+                'data_consent_at' => now(),
             ]);
 
             return $user;
@@ -602,6 +653,40 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
                                 <p class="text-[11px] text-red-600">{{ $message }}</p>
                             @enderror
                         </div>
+
+                        <div class="flex w-full flex-col gap-3 border-t border-black/10 pt-3.5 sm:px-8">
+                            <p class="text-xs font-bold text-black">Valid ID <span class="font-normal text-black/60">(asked once, then reused for every tournament)</span></p>
+
+                            <div class="flex flex-col gap-0.5">
+                                <label for="idDocumentType" class="text-xs text-black">Type of Document</label>
+                                <select id="idDocumentType" wire:model.live="idDocumentType"
+                                        class="w-full rounded-[5px] bg-[#11776e]/15 px-2.5 py-2.5 text-xs text-black focus:outline-none">
+                                    <option value="">Select document type</option>
+                                    @foreach (\App\Support\Applications\IdDocumentTypes::TYPES as $value => $label)
+                                        <option value="{{ $value }}">{{ $label }}</option>
+                                    @endforeach
+                                </select>
+                                @error('idDocumentType')
+                                    <p class="text-[11px] text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+
+                            @if ($idDocumentType === \App\Support\Applications\IdDocumentTypes::OTHERS)
+                                <x-auth.field label="Specify the type of ID" model="idDocumentOther" placeholder="e.g. Postal ID, Company ID" class="w-full" />
+                            @endif
+
+                            <div x-data="{ fileName: '' }" class="flex flex-col gap-0.5">
+                                <label for="idDocument"
+                                       class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#138177] bg-[#11776e]/15 min-w-0 px-2.5 py-6 text-center text-xs text-black/50">
+                                    <span class="max-w-full truncate" x-text="fileName || 'Upload photo of your ID'"></span>
+                                </label>
+                                <input id="idDocument" type="file" wire:model="idDocument" accept="image/*" class="hidden"
+                                       x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                                @error('idDocument')
+                                    <p class="text-[11px] text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
                     </div>
                 </div>
             @endif
@@ -641,6 +726,16 @@ new #[Layout('components.layouts.auth.signup')] class extends Component {
             @endif
         </div>
     </div>
+
+    @if ($showConsent)
+        <div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div class="absolute inset-0 bg-black/60"></div>
+
+            <div class="relative w-full max-w-lg rounded-[20px] bg-white p-8 shadow-2xl">
+                <x-consent-dialog />
+            </div>
+        </div>
+    @endif
 
     @if ($awaitingCode)
         <div class="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="verify-title">
