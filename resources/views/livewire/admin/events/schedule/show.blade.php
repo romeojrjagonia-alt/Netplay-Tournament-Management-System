@@ -936,7 +936,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                     <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         @foreach ($matches as $match)
                             <div wire:key="match-{{ $match->id }}" class="flex flex-col gap-2">
-                                <x-admin.schedule-match-card :match="$match" />
+                                <x-admin.schedule-match-card :match="$match" :tournament="$tournament" />
 
                                 @if ($editingMatchId === $match->id)
                                     <form

@@ -202,3 +202,19 @@ it('leaves the match unscheduled when the admin cancels the warning', function (
 
     expect($match->fresh()->scheduled_at)->toBeNull();
 });
+
+it('marks a match card red only when scheduled outside the tournament dates', function (string $scheduledAt, bool $flagged) {
+    $match = logisticsMatch();
+    $match->update(['scheduled_at' => $scheduledAt]);
+
+    $page = logisticsPage($match);
+
+    $flagged
+        ? $page->assertSeeHtml('bg-red-700')->assertSee('OUTSIDE DATES')
+        : $page->assertDontSeeHtml('bg-red-700')->assertDontSee('OUTSIDE DATES');
+})->with([
+    'before the start' => ['2026-10-19 09:00:00', true],
+    'after the end' => ['2026-10-23 09:00:00', true],
+    'last day, late evening' => ['2026-10-22 23:30:00', false],
+    'first day' => ['2026-10-20 08:00:00', false],
+]);
