@@ -21,13 +21,18 @@ class RoundRobinScheduler
      * Insert every pairing for the category's approved entries, in approval
      * order.
      *
+     * With `$timetable`, every match is also given a date, time and court from
+     * the event's schedule. If they don't all fit, nothing is generated unless
+     * `$allowUndated` lets the overflow stay undated.
+     *
      * @return int the number of matches created
      *
      * @throws InvalidArgumentException when the draw can't be generated
+     * @throws InsufficientSlotsException when the matches don't fit the event's time slots
      */
-    public function generate(TournamentCategory $tournamentCategory): int
+    public function generate(TournamentCategory $tournamentCategory, ?TimetableOptions $timetable = null, bool $allowUndated = false): int
     {
-        return DB::transaction(function () use ($tournamentCategory): int {
+        return DB::transaction(function () use ($tournamentCategory, $timetable, $allowUndated): int {
             // Re-checked inside the transaction so a double-click can't
             // generate the same draw twice.
             if ($tournamentCategory->hasGeneratedDraw()) {
@@ -65,6 +70,14 @@ class RoundRobinScheduler
                     }
 
                     $created++;
+                }
+            }
+
+            if ($timetable !== null) {
+                $unplaced = app(MatchTimetable::class)->assign($tournamentCategory, $timetable);
+
+                if ($unplaced > 0 && ! $allowUndated) {
+                    throw new InsufficientSlotsException($unplaced, $created);
                 }
             }
 

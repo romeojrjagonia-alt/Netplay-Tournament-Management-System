@@ -6,6 +6,8 @@
     'suffix' => 'NetPlay',
     'nav' => null,
     'profilePhotoUrl' => null,
+    'showHeader' => true,
+    'profileModalName' => 'player-profile',
 ])
 
 {{--
@@ -25,7 +27,7 @@
                  class="fixed inset-0 z-30 bg-black/40 lg:hidden" style="display: none;"></div>
 
             <aside
-                class="fixed inset-y-0 left-0 z-40 flex w-[222px] shrink-0 -translate-x-full flex-col bg-white transition-transform duration-200 lg:static lg:z-auto lg:translate-x-0"
+                class="fixed inset-y-0 left-0 z-40 flex h-dvh w-[222px] shrink-0 -translate-x-full flex-col overflow-hidden bg-white transition-transform duration-200 lg:sticky lg:top-0 lg:z-auto lg:translate-x-0 lg:self-start"
                 :class="sidebarOpen && 'translate-x-0'"
             >
                 <div class="flex items-center justify-between py-8 pr-4 pl-6 lg:justify-center lg:px-0">
@@ -43,6 +45,19 @@
                 </nav>
 
                 <div class="border-t-[1.5px] border-[#ebebeb] p-2.5">
+                    @if (isset($profileModal) && $profileModalName !== 'player-profile')
+                        <flux:modal.trigger :name="$profileModalName">
+                            <button type="button" class="grid w-full cursor-pointer grid-cols-[27px_1fr] items-center gap-2.5 p-2.5 text-left text-sm text-black hover:bg-[#f5faf9]">
+                                <flux:icon name="user-circle" class="col-start-1 size-5 justify-self-center" />
+                                <span class="col-start-2">My Profile</span>
+                            </button>
+                        </flux:modal.trigger>
+                    @endif
+
+                    @if (auth()->user()->canSwitchRoles())
+                        <livewire:account.role-switch />
+                    @endif
+
                     <form method="POST" action="{{ route('logout') }}">
                         @csrf
                         <button type="submit" class="grid w-full grid-cols-[27px_1fr] items-center gap-2.5 p-2.5 text-left text-sm text-black hover:bg-[#f5faf9]">
@@ -53,8 +68,17 @@
                 </div>
             </aside>
 
-            <div class="flex flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
-                <header class="flex items-center justify-between gap-3 border-b border-white/50 px-4 py-4 sm:px-7">
+            <div class="flex min-w-0 flex-1 flex-col bg-gradient-to-b from-[#051c1a] to-[#178279]">
+                @unless ($showHeader)
+                    <div class="px-4 pt-4 lg:hidden">
+                        <button type="button" class="cursor-pointer text-white" x-on:click="sidebarOpen = true" aria-label="Open menu">
+                            <flux:icon.bars-3 class="size-6" />
+                        </button>
+                    </div>
+                @endunless
+
+                <header @class(['sticky top-0 z-20 border-b border-white/50 bg-[#051c1a] px-4 py-4 sm:px-7', 'hidden' => ! $showHeader])>
+                  <div class="mx-auto flex w-full max-w-[1440px] items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
                         <button type="button" class="cursor-pointer text-white lg:hidden" x-on:click="sidebarOpen = true" aria-label="Open menu">
                             <flux:icon.bars-3 class="size-6" />
@@ -65,7 +89,7 @@
 
                     <div>
                         @isset($profileModal)
-                            <flux:modal.trigger name="player-profile">
+                            <flux:modal.trigger :name="$profileModalName">
                                 <button type="button" class="flex h-[38px] cursor-pointer items-center gap-1.5 rounded-full bg-white py-0.5 pr-5 pl-0.5" aria-label="Open your profile">
                                     <x-portal.avatar :photo-url="$profilePhotoUrl" :initials="auth()->user()->initials()" class="size-[34px] text-[10px]" />
                                     <span class="flex flex-col justify-center text-left" x-data="{ roleName: @js($roleName) }" x-on:profile-updated.window="roleName = $event.detail.name">
@@ -74,8 +98,6 @@
                                     </span>
                                 </button>
                             </flux:modal.trigger>
-
-                            {{ $profileModal }}
                         @else
                             <div class="flex h-[38px] items-center gap-1.5 rounded-full bg-white py-0.5 pr-5 pl-0.5">
                                 <x-portal.avatar :photo-url="$profilePhotoUrl" :initials="auth()->user()->initials()" class="size-[34px] text-[10px]" />
@@ -86,13 +108,25 @@
                             </div>
                         @endisset
                     </div>
+                  </div>
                 </header>
 
                 <main class="flex-1 overflow-auto p-4 sm:p-7">
-                    {{ $slot }}
+                    <div class="mx-auto w-full max-w-[1440px]">
+                        {{ $slot }}
+                    </div>
                 </main>
             </div>
         </div>
+
+        @isset($profileModal)
+            {{ $profileModal }}
+        @endisset
+
+        <livewire:verify-email-prompt />
+        <livewire:account.id-prompt />
+
+        <x-system-modal />
 
         @fluxScripts
     </body>

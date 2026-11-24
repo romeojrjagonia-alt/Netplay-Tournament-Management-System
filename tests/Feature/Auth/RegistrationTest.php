@@ -2,8 +2,13 @@
 
 use App\Models\Player;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Livewire\Volt\Volt;
+
+beforeEach(fn () => Storage::fake('public'));
 
 test('registration screen can be rendered', function () {
     $response = $this->get('/register');
@@ -35,7 +40,7 @@ test('selecting a user type advances to step two', function () {
 
 test('step two requires valid account details before advancing', function () {
     Volt::test('auth.register')
-        ->call('selectUserType', 'umpire')
+        ->call('selectUserType', 'player')
         ->call('nextStep')
         ->set('password', 'short')
         ->set('password_confirmation', 'mismatch')
@@ -51,8 +56,8 @@ test('completing step two advances to the final profile step', function () {
         ->set('firstName', 'Juan')
         ->set('lastName', 'Dela Cruz')
         ->set('email', 'juan@example.com')
-        ->set('password', 'password123')
-        ->set('password_confirmation', 'password123')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Password123')
         ->call('nextStep')
         ->assertHasNoErrors()
         ->assertSet('step', 3);
@@ -73,17 +78,19 @@ test('final step requires valid profile details before registering', function ()
         ->set('firstName', 'Juan')
         ->set('lastName', 'Dela Cruz')
         ->set('email', 'juan@example.com')
-        ->set('password', 'password123')
-        ->set('password_confirmation', 'password123')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Password123')
         ->call('nextStep')
-        ->call('register')
-        ->assertHasErrors(['birthDate', 'gender', 'purok', 'city', 'province'])
+        ->call('acceptConsent')->call('register')
+        ->assertHasErrors(['birthDate', 'phoneNumber', 'gender', 'purok', 'city', 'province'])
         ->assertSet('step', 3);
 
     $this->assertGuest();
 });
 
 test('completing the wizard creates a user and player and logs them in', function () {
+    Notification::fake();
+
     Volt::test('auth.register')
         ->call('selectUserType', 'player')
         ->call('nextStep')
@@ -91,16 +98,19 @@ test('completing the wizard creates a user and player and logs them in', functio
         ->set('lastName', 'Dela Cruz')
         ->set('middleInitial', 'D')
         ->set('email', 'juan@example.com')
-        ->set('password', 'password123')
-        ->set('password_confirmation', 'password123')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Password123')
         ->call('nextStep')
         ->set('birthDate', '2000-02-04')
+        ->set('phoneNumber', '09171234567')
         ->set('gender', 'male')
         ->set('purok', 'Purok 5')
         ->set('city', 'Ozamiz City')
         ->set('province', 'Misamis Occidental')
+        ->set('idDocumentType', 'national_id')
+        ->set('idDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('club', 'OBC Badminton Club')
-        ->call('register')
+        ->call('acceptConsent')->call('register')
         ->assertHasNoErrors()
         ->assertRedirect(route('player.dashboard', absolute: false));
 
@@ -109,12 +119,16 @@ test('completing the wizard creates a user and player and logs them in', functio
     expect($user)->not->toBeNull();
     expect($user->name)->toBe('Juan D. Dela Cruz');
     expect($user->role)->toBe('player');
-    expect($user->email_verified_at)->not->toBeNull();
+    expect($user->email_verified_at)->toBeNull();
+
+    Notification::assertNothingSent();
+    expect(session('verification_prompt'))->toBe('signup');
 
     $player = Player::where('user_id', $user->id)->first();
 
     expect($player)->not->toBeNull();
     expect($player->address)->toBe('Purok 5, Ozamiz City, Misamis Occidental');
+    expect($player->email)->toBe('juan@example.com');
     expect($player->club)->toBe('OBC Badminton Club');
     expect($player->age)->toBeGreaterThan(20);
 
@@ -131,8 +145,53 @@ test('registration rejects an email that is already taken', function () {
         ->set('firstName', 'Juan')
         ->set('lastName', 'Dela Cruz')
         ->set('email', 'juan@example.com')
-        ->set('password', 'password123')
-        ->set('password_confirmation', 'password123')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Password123')
         ->call('nextStep')
         ->assertHasErrors(['email' => 'unique']);
+});
+
+test('sign-up errors clear as each field is corrected', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->call('nextStep')
+        ->assertHasErrors(['firstName', 'lastName', 'email', 'password'])
+        ->set('firstName', 'Juan')
+        ->assertHasNoErrors('firstName')
+        ->assertHasErrors(['lastName', 'email', 'password'])
+        ->set('lastName', 'Dela Cruz')
+        ->set('email', 'juan@example.com')
+        ->assertHasNoErrors(['lastName', 'email']);
+});
+
+test('a bad email keeps its error until it is a valid address', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->call('nextStep')
+        ->set('email', 'not-an-email')
+        ->assertHasErrors('email')
+        ->set('email', 'juan@example.com')
+        ->assertHasNoErrors('email');
+});
+
+test('the password error clears once the confirmation matches', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->set('password', 'Password123')
+        ->set('password_confirmation', 'Different123')
+        ->call('nextStep')
+        ->assertHasErrors('password')
+        ->set('password_confirmation', 'Password123')
+        ->assertHasNoErrors('password');
+});
+
+test('sign-up fields nobody has touched are not flagged while another is filled in', function () {
+    Volt::test('auth.register')
+        ->call('selectUserType', 'player')
+        ->call('nextStep')
+        ->set('firstName', 'Juan')
+        ->assertHasNoErrors();
 });

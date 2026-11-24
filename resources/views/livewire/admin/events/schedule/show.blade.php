@@ -1,12 +1,23 @@
 <?php
 
 use App\Actions\Applications\RerouteApplication;
+use App\Actions\Matches\NotifyPlayersOfSchedule;
+use App\Actions\Matches\ResetDraw;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Models\User;
+use App\Support\Bracket\BracketsViewerData;
+use App\Support\Officials\OfficialConflicts;
+use App\Support\Scheduling\InsufficientSlotsException;
 use App\Support\Scheduling\RoundRobinScheduler;
+use App\Support\Scheduling\SingleEliminationScheduler;
+use App\Support\Scheduling\TimetableOptions;
 use App\Support\Standings\RoundRobinStandings;
+use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -18,15 +29,37 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public int $selectedCategoryId;
 
-    public ?string $notice = null;
-
-    public ?string $errorMessage = null;
-
     public ?int $reroutingApplicationId = null;
 
     public ?int $rerouteDestinationId = null;
 
     public bool $overrideEligibility = false;
+
+    public ?int $editingMatchId = null;
+
+    public string $editDate = '';
+
+    public string $editTime = '';
+
+    public string $editCourt = '';
+
+    public ?int $editUmpireId = null;
+
+    public bool $autoDate = true;
+
+    public string $matchDuration = '45';
+
+    public string $breakMinutes = '0';
+
+    public string $courtCount = '1';
+
+    public bool $canGenerateUndated = false;
+
+    /**
+     * A fingerprint of the category's matches as last rendered, so the
+     * background check can tell when a result has come in.
+     */
+    public string $matchesVersion = '';
 
     public function mount(Tournament $tournament, TournamentCategory $tournamentCategory): void
     {
@@ -36,6 +69,35 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->tournament = $tournament;
         $this->tournamentCategory = $tournamentCategory;
         $this->selectedCategoryId = $tournamentCategory->id;
+        $this->matchesVersion = $this->currentMatchesVersion();
+    }
+
+    /**
+     * Polled while the page is visible. When no match has changed it skips the
+     * render, so the check costs one small aggregate query and no view or
+     * bracket rebuild; when a result has come in, the page re-renders and the
+     * bracket redraws itself.
+     */
+    public function refreshWhenResultsChange(): void
+    {
+        $version = $this->currentMatchesVersion();
+
+        if ($version === $this->matchesVersion) {
+            $this->skipRender();
+
+            return;
+        }
+
+        $this->matchesVersion = $version;
+    }
+
+    private function currentMatchesVersion(): string
+    {
+        $summary = $this->tournamentCategory->matches()
+            ->selectRaw("count(*) as total, sum(case when status = 'completed' then 1 else 0 end) as finished, max(updated_at) as latest")
+            ->first();
+
+        return $summary->total.'|'.$summary->finished.'|'.$summary->latest;
     }
 
     public function updatedSelectedCategoryId(int $id): void
@@ -45,23 +107,251 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->redirect(route('admin.events.schedule.show', [$this->tournament, $category]), navigate: true);
     }
 
-    public function generate(RoundRobinScheduler $scheduler): void
+    public function updated(string $property): void
     {
-        abort_unless($this->tournament->format === 'round_robin', 403);
+        if (in_array($property, ['autoDate', 'matchDuration', 'breakMinutes', 'courtCount'], true)) {
+            $this->canGenerateUndated = false;
+        }
+    }
 
-        $this->notice = null;
-        $this->errorMessage = null;
+    public function generate(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, false);
+    }
+
+    /**
+     * Generate even though some matches don't fit the event's time slots;
+     * those are left without a date and time for the admin to set by hand.
+     */
+    public function generateWithUndatedOverflow(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, true);
+    }
+
+    /**
+     * Generate with matches allowed on the event's days past its end date.
+     * The page asks the admin to confirm this first.
+     */
+    public function generateOutsideDateRange(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination): void
+    {
+        $this->runGeneration($roundRobin, $singleElimination, false, true);
+    }
+
+    private function runGeneration(RoundRobinScheduler $roundRobin, SingleEliminationScheduler $singleElimination, bool $allowUndated, bool $allowOutsideDateRange = false): void
+    {
+        abort_unless(in_array($this->tournament->format, ['round_robin', 'single_elimination'], true), 403);
+
+        $scheduler = $this->tournament->format === 'round_robin' ? $roundRobin : $singleElimination;
+        $timetable = null;
+
+        if ($this->autoDate) {
+            $this->validate([
+                'matchDuration' => ['required', 'integer', 'min:5', 'max:240'],
+                'breakMinutes' => ['required', 'integer', 'min:0', 'max:120'],
+                'courtCount' => ['required', 'integer', 'min:1', 'max:50'],
+            ], attributes: [
+                'matchDuration' => 'match length',
+                'breakMinutes' => 'break',
+                'courtCount' => 'number of courts',
+            ]);
+
+            $timetable = new TimetableOptions((int) $this->matchDuration, (int) $this->breakMinutes, (int) $this->courtCount, $allowOutsideDateRange);
+        }
+
+        $this->canGenerateUndated = false;
 
         try {
-            $count = $scheduler->generate($this->tournamentCategory);
+            $count = $scheduler->generate($this->tournamentCategory, $timetable, $allowUndated);
+        } catch (InsufficientSlotsException $exception) {
+            $this->canGenerateUndated = true;
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
         } catch (InvalidArgumentException $exception) {
-            $this->errorMessage = $exception->getMessage();
+            $this->say($exception->getMessage(), 'danger');
 
             return;
         }
 
         $this->cancelReroute();
-        $this->notice = "Schedule generated: {$count} matches created.";
+        unset($this->hasDraw, $this->rounds, $this->pendingNotificationCount, $this->drawChanges);
+        $this->say("Schedule generated: {$count} matches created.".($timetable ? ' Dates, times and courts were assigned automatically.' : ''));
+    }
+
+    /**
+     * Throw the generated draw away so it can be rebuilt with the current
+     * entries. Single elimination returns to the pairing editor with the
+     * admin's arrangement intact.
+     */
+    public function regenerate(ResetDraw $resetDraw): void
+    {
+        try {
+            $resetDraw->handle($this->tournamentCategory);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
+        }
+
+        $this->reset('canGenerateUndated');
+        unset($this->hasDraw, $this->rounds, $this->pendingNotificationCount, $this->drawChanges, $this->entries, $this->bracketSlots);
+        $this->say($this->tournament->format === 'single_elimination'
+            ? 'Schedule cleared. Adjust the pairings if needed, then generate again.'
+            : 'Schedule cleared. Review the entries, then generate again.');
+    }
+
+    /**
+     * Swap two round-1 slots in the pre-generation bracket editor.
+     */
+    public function swapSlots(int $from, int $to, SingleEliminationScheduler $singleElimination): void
+    {
+        abort_unless($this->tournament->format === 'single_elimination', 403);
+
+        try {
+            $singleElimination->swap($this->tournamentCategory, $from, $to);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+        }
+
+        unset($this->bracketSlots, $this->entries);
+    }
+
+    /**
+     * Drop the admin's arrangement and return to the seeded default.
+     */
+    public function resetArrangement(SingleEliminationScheduler $singleElimination): void
+    {
+        abort_unless($this->tournament->format === 'single_elimination', 403);
+
+        try {
+            $singleElimination->resetArrangement($this->tournamentCategory);
+        } catch (InvalidArgumentException $exception) {
+            $this->say($exception->getMessage(), 'danger');
+
+            return;
+        }
+
+        unset($this->bracketSlots, $this->entries);
+        $this->say('Bracket reset to the seeded order.');
+    }
+
+    /**
+     * Show the admin a message in the shared system modal.
+     */
+    private function say(string $message, string $variant = 'success'): void
+    {
+        $this->dispatch('system-message', message: $message, variant: $variant);
+    }
+
+    public function editMatch(int $matchId): void
+    {
+        $match = $this->tournamentCategory->matches()->findOrFail($matchId);
+
+        $this->resetValidation();
+
+        $this->editingMatchId = $match->id;
+        $this->editDate = $match->scheduled_at?->format('Y-m-d') ?? '';
+        $this->editTime = $match->scheduled_at?->format('H:i') ?? '';
+        $this->editCourt = $match->court ?? '';
+        $this->editUmpireId = $match->assigned_umpire_id;
+    }
+
+    public function cancelEditMatch(): void
+    {
+        $this->reset('editingMatchId', 'editDate', 'editTime', 'editCourt', 'editUmpireId');
+        $this->resetValidation();
+    }
+
+    /**
+     * Save a match's date, time, court and umpire. A changed date, time or
+     * court clears the "players notified" mark so the new details are
+     * emailed again.
+     */
+    public function saveMatch(bool $confirmedOutsideDateRange = false): void
+    {
+        $this->validate([
+            'editDate' => ['nullable', 'date', 'required_with:editTime'],
+            'editTime' => ['nullable', 'date_format:H:i', 'required_with:editDate'],
+            'editCourt' => ['nullable', 'string', 'max:50'],
+            'editUmpireId' => ['nullable', Rule::exists('users', 'id')->where('role', 'umpire')],
+        ], [
+            'editDate.required_with' => 'Choose a date as well as a time.',
+            'editTime.required_with' => 'Choose a time as well as a date.',
+        ]);
+
+        // An entrant in this tournament can't also be one of its umpires.
+        if ($this->editUmpireId && ($umpire = User::find($this->editUmpireId)) && OfficialConflicts::isEnteredIn($umpire, $this->tournament)) {
+            $this->addError('editUmpireId', OfficialConflicts::enteredMessage($umpire->name));
+
+            return;
+        }
+
+        $match = $this->tournamentCategory->matches()->findOrFail($this->editingMatchId);
+
+        abort_if($match->status === 'completed', 403);
+
+        // Outside the event's dates is allowed, but only once the admin has
+        // seen the warning and confirmed.
+        if ($this->editDate !== '' && ! $confirmedOutsideDateRange && $this->isOutsideDateRange($this->editDate)) {
+            $this->dispatch('outside-date-range-warning', message: $this->outsideDateRangeMessage());
+
+            return;
+        }
+
+        $scheduledAt = $this->editDate !== '' ? Carbon::parse($this->editDate.' '.$this->editTime) : null;
+        $court = trim($this->editCourt) !== '' ? trim($this->editCourt) : null;
+
+        $match->fill([
+            'scheduled_at' => $scheduledAt,
+            'court' => $court,
+            'assigned_umpire_id' => $this->editUmpireId,
+        ]);
+
+        if ($match->isDirty(['scheduled_at', 'court'])) {
+            $match->schedule_notified_at = null;
+        }
+
+        $match->save();
+
+        $this->cancelEditMatch();
+        unset($this->rounds, $this->pendingNotificationCount);
+        $this->say('Match details saved.');
+    }
+
+    private function isOutsideDateRange(string $date): bool
+    {
+        $day = Carbon::parse($date)->startOfDay();
+
+        return $day->lt($this->tournament->date_start->copy()->startOfDay())
+            || $day->gt($this->tournament->date_end->copy()->startOfDay());
+    }
+
+    private function outsideDateRangeMessage(): string
+    {
+        return 'This date is outside the tournament dates ('
+            .$this->tournament->date_start->format('M j').' to '.$this->tournament->date_end->format('M j, Y')
+            .'). Do you want to schedule the match anyway?';
+    }
+
+    /**
+     * Email the players of every match in this category that has a time but
+     * hasn't been announced (or has changed since).
+     */
+    public function notifyPlayers(NotifyPlayersOfSchedule $notify): void
+    {
+
+        $result = $notify->handle($this->tournamentCategory);
+
+        unset($this->rounds, $this->pendingNotificationCount);
+
+        if ($result['matches'] === 0) {
+            $this->say('There are no scheduled matches with a new date and time to announce.', 'danger');
+
+            return;
+        }
+
+        $this->say("Sent {$result['emails']} ".Str::plural('email', $result['emails'])." for {$result['matches']} ".Str::plural('match', $result['matches']).'.'
+            .($result['without_email'] > 0 ? " {$result['without_email']} ".Str::plural('player', $result['without_email']).' had no email address on file.' : ''));
     }
 
     public function startReroute(int $applicationId): void
@@ -69,8 +359,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $this->reroutingApplicationId = $applicationId;
         $this->rerouteDestinationId = null;
         $this->overrideEligibility = false;
-        $this->notice = null;
-        $this->errorMessage = null;
     }
 
     public function cancelReroute(): void
@@ -85,7 +373,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
     public function reroute(RerouteApplication $reroute): void
     {
-        $this->errorMessage = null;
 
         $application = $this->tournamentCategory->playerApplications()
             ->where('status', 'approved')
@@ -93,7 +380,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         $destination = $this->tournament->tournamentCategories()->find($this->rerouteDestinationId);
 
         if (! $application || ! $destination) {
-            $this->errorMessage = 'Choose a destination category.';
+            $this->say('Choose a destination category.', 'danger');
 
             return;
         }
@@ -101,13 +388,13 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         try {
             $result = $reroute->handle($application, $destination, $this->overrideEligibility);
         } catch (InvalidArgumentException $exception) {
-            $this->errorMessage = $exception->getMessage();
+            $this->say($exception->getMessage(), 'danger');
 
             return;
         }
 
-        $this->notice = 'Entry moved to '.$destination->load('category')->category_label.'.'
-            .($result['fee_changed'] ? " Note: the registration fee changes from ₱{$result['from_fee']} to ₱{$result['to_fee']}; reconcile this with the player." : '');
+        $this->say('Entry moved to '.$destination->load('category')->category_label.'.'
+            .($result['fee_changed'] ? " Note: the registration fee changes from ₱{$result['from_fee']} to ₱{$result['to_fee']}; reconcile this with the player." : ''));
 
         $this->cancelReroute();
     }
@@ -135,10 +422,94 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             ->get();
     }
 
+    /**
+     * The round-1 line-up shown in the bracket editor: slots `2n` and
+     * `2n + 1` meet in match `n + 1`; a null `id` is a BYE.
+     *
+     * @return list<array{index: int, id: int|null, name: string|null}>
+     */
+    #[Computed]
+    public function bracketSlots(): array
+    {
+        $entries = $this->entries->keyBy('id');
+
+        return collect(app(SingleEliminationScheduler::class)->arrangement($this->tournamentCategory))
+            ->map(fn (?int $id, int $index): array => [
+                'index' => $index,
+                'id' => $id,
+                'name' => $id !== null
+                    ? $entries[$id]->applicationPlayers->map->player->filter()->pluck('name')->implode(' / ')
+                    : null,
+            ])
+            ->all();
+    }
+
+    /**
+     * The generated bracket in brackets-viewer.js's data format.
+     *
+     * @return array<string, mixed>
+     */
+    #[Computed]
+    public function viewerData(): array
+    {
+        return app(BracketsViewerData::class)->for($this->tournamentCategory);
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    #[Computed]
+    public function umpires(): Collection
+    {
+        return User::query()->where('role', 'umpire')->orderBy('name')->get();
+    }
+
+    /**
+     * Umpires who are entered in this tournament as players, who can't be assigned to its matches.
+     *
+     * @return list<int>
+     */
+    #[Computed]
+    public function enteredUmpireIds(): array
+    {
+        return OfficialConflicts::enteredUmpireIds($this->tournament);
+    }
+
+    /**
+     * Matches with a date and time whose players haven't been emailed yet.
+     */
+    #[Computed]
+    public function pendingNotificationCount(): int
+    {
+        return $this->tournamentCategory->matches()
+            ->where('status', 'scheduled')
+            ->whereNotNull('scheduled_at')
+            ->whereNull('schedule_notified_at')
+            ->count();
+    }
+
     #[Computed]
     public function hasDraw(): bool
     {
         return $this->tournamentCategory->hasGeneratedDraw();
+    }
+
+    /**
+     * How the approved entries differ from those the generated draw was built
+     * from, and whether regenerating is still possible.
+     *
+     * @return array{added: int, removed: int, outOfDate: bool, started: bool}
+     */
+    #[Computed]
+    public function drawChanges(): array
+    {
+        $changes = $this->tournamentCategory->drawEntryChanges();
+
+        return [
+            ...$changes,
+            'outOfDate' => $changes['added'] > 0 || $changes['removed'] > 0,
+            'started' => $this->tournamentCategory->hasStartedMatches(),
+        ];
     }
 
     /**
@@ -150,7 +521,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
     public function rounds(): Collection
     {
         return $this->tournamentCategory->matches()
-            ->with(['games.rallies', 'matchApplications.application.applicationPlayers.player'])
+            ->with(['games.rallies', 'tournamentCategory.tournament', 'assignedUmpire', 'matchApplications.application.applicationPlayers.player'])
             ->orderBy('round')
             ->orderBy('position')
             ->get()
@@ -188,7 +559,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         return [
             ...$destination->eligibilityIssuesFor($application),
-            'destination_has_draw' => $destination->hasGeneratedDraw(),
+            'destination_has_draw' => $destination->hasStartedMatches(),
             'fee_changed' => (float) $this->tournamentCategory->registration_fee !== (float) $destination->registration_fee,
             'from_fee' => (string) $this->tournamentCategory->registration_fee,
             'to_fee' => (string) $destination->registration_fee,
@@ -220,10 +591,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
         @if ($this->hasDraw)
             <div class="flex items-center gap-3">
-                <span title="Editing match logistics is coming soon" class="flex cursor-not-allowed items-center gap-1.5 rounded-[5px] bg-white/20 px-[20px] py-[7px] text-xs font-medium text-white/50">
-                    <flux:icon.pencil-square class="size-4" />
-                    Edit
-                </span>
+                <button
+                    type="button"
+                    x-on:click="$dispatch('system-confirm', {
+                        title: 'Email players?',
+                        message: @js('Email the players of '.$this->pendingNotificationCount.' scheduled '.Str::plural('match', $this->pendingNotificationCount).' about their match time?'),
+                        confirmLabel: 'Send emails',
+                        confirm: () => $wire.notifyPlayers(),
+                    })"
+                    @disabled($this->pendingNotificationCount === 0)
+                    class="flex items-center gap-1.5 rounded-[5px] bg-[#9cee69] px-[20px] py-[7px] text-xs font-medium text-[#051c1a] enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                    <flux:icon.envelope class="size-4" />
+                    Email players ({{ $this->pendingNotificationCount }})
+                </button>
                 <span title="Export is coming soon" class="flex cursor-not-allowed items-center gap-1.5 rounded-[5px] bg-white/20 px-[20px] py-[7px] text-xs font-medium text-white/50">
                     <flux:icon.arrow-down-tray class="size-4" />
                     Export
@@ -232,15 +613,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
         @endif
     </div>
 
-    @if ($notice)
-        <p class="rounded-[5px] bg-[#9cee69] px-4 py-2 text-xs font-medium text-[#051c1a]">{{ $notice }}</p>
-    @endif
 
-    @if ($errorMessage)
-        <p class="rounded-[5px] bg-red-100 px-4 py-2 text-xs font-medium text-red-700">{{ $errorMessage }}</p>
-    @endif
-
-    @if ($tournament->format !== 'round_robin')
+    @if (! in_array($tournament->format, ['round_robin', 'single_elimination'], true))
         <div class="flex h-[300px] flex-col items-center justify-center gap-2 rounded-[10px] bg-white">
             <p class="text-[22px] text-black/70 italic">Schedule generation for {{ str_replace('_', ' ', $tournament->format) }} is coming in a later phase</p>
         </div>
@@ -249,13 +623,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             <div class="flex items-center justify-between gap-4">
                 <div class="flex flex-col">
                     <span class="text-lg font-bold text-black">Confirmed Entries</span>
-                    <span class="text-xs text-black/60">{{ $this->entries->count() }} {{ Str::plural('entry', $this->entries->count()) }} · matches are generated in approval order</span>
+                    <span class="text-xs text-black/60">
+                        {{ $this->entries->count() }} {{ Str::plural('entry', $this->entries->count()) }} ·
+                        {{ $tournament->format === 'single_elimination' ? 'arrange the pairings, then generate' : 'matches are generated in approval order' }}
+                    </span>
                 </div>
 
                 <button
                     type="button"
-                    wire:click="generate"
-                    wire:confirm="Generate the round-robin schedule? This can't be undone, and entries can no longer be added or moved afterward."
+                    x-on:click="$dispatch('system-confirm', {
+                        title: 'Generate schedule?',
+                        message: @js('Generate the '.str_replace('_', ' ', $tournament->format).' schedule? If entries change afterward, you can regenerate it as long as no match has started.'),
+                        confirmLabel: 'Generate',
+                        confirm: () => $wire.generate(),
+                    })"
                     @disabled($this->entries->count() < 2)
                     class="rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white enabled:cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                 >
@@ -266,6 +647,63 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @if ($this->entries->count() < 2)
                 <p class="text-xs text-black/60">At least 2 confirmed entries are needed to generate a schedule.</p>
             @endif
+
+            <div class="flex flex-col gap-3 rounded-[10px] border border-black/10 p-4">
+                <label class="flex items-center gap-2 text-sm font-bold text-black">
+                    <input type="checkbox" wire:model.live="autoDate" class="size-[15px] rounded-[4px] border-2 border-[#0b4742]">
+                    Auto-assign dates, times and courts
+                </label>
+
+                @if ($autoDate)
+                    <p class="text-xs text-black/60">
+                        Uses the event's {{ $tournament->specific_days ?: 'days' }}
+                        @if ($tournament->time) from {{ $tournament->time }} @endif
+                        between {{ $tournament->date_start->format('M j') }} and {{ $tournament->date_end->format('M j, Y') }}.
+                        @if ($tournament->format === 'single_elimination')
+                            Rounds are scheduled in order; a round starts only after the previous one ends.
+                        @endif
+                    </p>
+
+                    <div class="grid grid-cols-3 gap-3">
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Match length (min)
+                            <input type="number" min="5" max="240" wire:model="matchDuration" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('matchDuration') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Break between (min)
+                            <input type="number" min="0" max="120" wire:model="breakMinutes" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('breakMinutes') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                        <label class="flex flex-col gap-1 text-[11px] text-black">
+                            Courts
+                            <input type="number" min="1" max="50" wire:model="courtCount" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                            @error('courtCount') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                        </label>
+                    </div>
+                @endif
+
+                @if ($canGenerateUndated)
+                    <div class="flex flex-col gap-2 rounded-[8px] bg-amber-50 p-3">
+                        <p class="text-xs text-amber-800">Not everything fits. You can generate anyway and set the remaining matches' times by hand, or unpublish the event and widen its dates, days or time window.</p>
+                        <button type="button" wire:click="generateWithUndatedOverflow" class="w-fit cursor-pointer rounded-[5px] bg-amber-600 px-4 py-2 text-xs font-medium text-white">
+                            Generate anyway, leave the overflow undated
+                        </button>
+                        <button
+                            type="button"
+                            x-on:click="$dispatch('system-confirm', {
+                                title: 'Outside the tournament dates',
+                                message: @js('Some matches will be scheduled after the tournament ends on '.$tournament->date_end->format('M j, Y').', on the event\'s allowed days. Do you want to continue?'),
+                                confirmLabel: 'Continue',
+                                confirm: () => $wire.generateOutsideDateRange(),
+                            })"
+                            class="w-fit cursor-pointer rounded-[5px] border border-amber-600 px-4 py-2 text-xs font-medium text-amber-800"
+                        >
+                            Schedule the overflow after the end date
+                        </button>
+                    </div>
+                @endif
+            </div>
 
             @if ($reroutingApplicationId)
                 <div class="flex flex-col gap-3 rounded-[10px] border border-[#3e948d] bg-[#eaf4f3] p-4">
@@ -288,7 +726,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                         @endif
 
                         @if ($issues['destination_has_draw'])
-                            <p class="text-xs font-medium text-red-700">The destination category already has a generated schedule.</p>
+                            <p class="text-xs font-medium text-red-700">A match has already started in the destination category, so entries can no longer be moved into it.</p>
                         @endif
 
                         @if ($issues['ineligible_players']->isNotEmpty())
@@ -319,6 +757,71 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                 </div>
             @endif
 
+            @if ($tournament->format === 'single_elimination' && $this->entries->count() >= 2)
+                <div
+                    x-data="{
+                        picked: null,
+                        dragging: null,
+                        move(from, to) {
+                            this.picked = null
+                            this.dragging = null
+                            if (from === null || from === to) { return }
+                            $wire.swapSlots(from, to)
+                        },
+                        pick(index) {
+                            if (this.picked === null) { this.picked = index } else { this.move(this.picked, index) }
+                        },
+                    }"
+                    class="flex flex-col gap-4"
+                >
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <p class="text-xs text-black/60">
+                            Drag a name onto another slot, or click one name and then another, to swap them. An entry paired with a BYE skips round 1.
+                        </p>
+                        <button type="button" wire:click="resetArrangement" class="cursor-pointer text-xs font-medium text-[#3e948d] underline">
+                            Reset to seeded order
+                        </button>
+                    </div>
+
+                    <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                        @foreach (collect($this->bracketSlots)->chunk(2) as $pair)
+                            <div wire:key="slot-pair-{{ $loop->index }}" class="flex flex-col gap-2 rounded-[10px] border border-black/10 p-3">
+                                <span class="text-[11px] font-bold tracking-wide text-black/60 uppercase">Round 1 · Match {{ $loop->iteration }}</span>
+
+                                @foreach ($pair as $slot)
+                                    <div
+                                        wire:key="slot-{{ $slot['index'] }}"
+                                        draggable="true"
+                                        x-on:dragstart="dragging = {{ $slot['index'] }}; $event.dataTransfer.effectAllowed = 'move'; $event.dataTransfer.setData('text/plain', '{{ $slot['index'] }}')"
+                                        x-on:dragover.prevent
+                                        x-on:drop.prevent="move(dragging, {{ $slot['index'] }})"
+                                        x-on:dragend="dragging = null"
+                                        x-on:click="pick({{ $slot['index'] }})"
+                                        x-bind:class="{
+                                            'ring-2 ring-[#3e948d]': picked === {{ $slot['index'] }},
+                                            'opacity-50': dragging === {{ $slot['index'] }},
+                                        }"
+                                        class="flex cursor-grab items-center gap-3 rounded-[8px] px-4 py-2.5 select-none active:cursor-grabbing {{ $slot['id'] ? 'bg-[#eaf4f3]' : 'border border-dashed border-black/20 bg-white' }}"
+                                    >
+                                        <flux:icon.bars-2 class="size-4 shrink-0 text-black/40" />
+
+                                        @if ($slot['id'])
+                                            <span class="flex-1 text-sm font-bold text-black">{{ $slot['name'] }}</span>
+                                            @if ($this->categories->count() > 1)
+                                                <button type="button" x-on:click.stop wire:click="startReroute({{ $slot['id'] }})" class="cursor-pointer text-xs font-medium text-[#3e948d] underline">
+                                                    Reroute
+                                                </button>
+                                            @endif
+                                        @else
+                                            <span class="flex-1 text-sm text-black/50 italic">BYE</span>
+                                        @endif
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endforeach
+                    </div>
+                </div>
+            @else
             @forelse ($this->entries as $entry)
                 <div wire:key="entry-{{ $entry->id }}" class="flex items-center gap-4 rounded-[10px] bg-[#eaf4f3] px-5 py-3">
                     <span class="flex size-6 items-center justify-center rounded-full bg-[#3e948d] text-[11px] font-bold text-white">{{ $loop->iteration }}</span>
@@ -335,8 +838,96 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @empty
                 <p class="py-10 text-center text-[22px] text-black/70 italic">No confirmed entries yet</p>
             @endforelse
+            @endif
         </div>
     @else
+        <div wire:poll.10s.visible="refreshWhenResultsChange" class="hidden" aria-hidden="true"></div>
+
+        @if ($this->drawChanges['outOfDate'])
+            <div class="flex flex-wrap items-center justify-between gap-4 rounded-[10px] bg-amber-50 p-4">
+                <div class="flex flex-col gap-1">
+                    <span class="text-sm font-bold text-amber-900">Entries changed since this schedule was generated</span>
+                    <span class="text-xs text-amber-800">
+                        @if ($this->drawChanges['added'] > 0)
+                            {{ $this->drawChanges['added'] }} {{ Str::plural('entry', $this->drawChanges['added']) }} not in the schedule.
+                        @endif
+                        @if ($this->drawChanges['removed'] > 0)
+                            {{ $this->drawChanges['removed'] }} scheduled {{ Str::plural('entry', $this->drawChanges['removed']) }} no longer confirmed here.
+                        @endif
+                        @if ($this->drawChanges['started'])
+                            A match has already started, so the schedule can no longer be regenerated.
+                        @else
+                            Regenerating clears every match date, court and umpire in this category.
+                        @endif
+                    </span>
+                </div>
+
+                @unless ($this->drawChanges['started'])
+                    <button
+                        type="button"
+                        x-on:click="$dispatch('system-confirm', {
+                            title: 'Regenerate schedule?',
+                            message: 'This deletes the current matches, including any dates, courts and umpires set for them, and returns to the entry list so you can generate a new schedule.',
+                            confirmLabel: 'Regenerate',
+                            confirm: () => $wire.regenerate(),
+                        })"
+                        class="cursor-pointer rounded-[5px] bg-amber-600 px-5 py-2 text-xs font-medium text-white"
+                    >
+                        Regenerate schedule
+                    </button>
+                @endunless
+            </div>
+        @endif
+
+        @if ($tournament->format === 'single_elimination')
+            <div
+                wire:ignore
+                wire:key="bracket-viewer-{{ md5(json_encode($this->viewerData)) }}"
+                x-data="{
+                    data: @js($this->viewerData),
+                    async init() {
+                        const version = '1.9.1'
+                        const base = `https://cdn.jsdelivr.net/npm/brackets-viewer@${version}/dist/`
+
+                        if (! document.getElementById('brackets-viewer-css')) {
+                            const link = document.createElement('link')
+                            link.id = 'brackets-viewer-css'
+                            link.rel = 'stylesheet'
+                            link.href = base + 'brackets-viewer.min.css'
+                            document.head.appendChild(link)
+                        }
+
+                        window.bracketsViewerReady ??= new Promise((resolve, reject) => {
+                            const script = document.createElement('script')
+                            script.src = base + 'brackets-viewer.min.js'
+                            script.onload = resolve
+                            script.onerror = reject
+                            document.head.appendChild(script)
+                        })
+
+                        try {
+                            await window.bracketsViewerReady
+                        } catch (error) {
+                            this.$refs.status.textContent = 'The bracket display could not be loaded. Check your internet connection and refresh.'
+                            window.bracketsViewerReady = undefined
+                            return
+                        }
+
+                        this.$refs.status.remove()
+                        window.bracketsViewer.render(this.data, {
+                            selector: '#bracket-viewer',
+                            participantOriginPlacement: 'before',
+                            highlightParticipantOnHover: true,
+                        })
+                    },
+                }"
+                class="overflow-x-auto rounded-[10px] bg-white p-4"
+            >
+                <p x-ref="status" class="text-xs text-black/60">Loading bracket…</p>
+                <div id="bracket-viewer" class="brackets-viewer"></div>
+            </div>
+        @endif
+
         <div class="flex flex-col gap-8">
             @foreach ($this->rounds as $round => $matches)
                 <section wire:key="round-{{ $round }}" class="flex flex-col gap-3">
@@ -344,8 +935,61 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
 
                     <div class="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                         @foreach ($matches as $match)
-                            <div wire:key="match-{{ $match->id }}">
-                                <x-admin.schedule-match-card :match="$match" />
+                            <div wire:key="match-{{ $match->id }}" class="flex flex-col gap-2">
+                                <x-admin.schedule-match-card :match="$match" :tournament="$tournament" />
+
+                                @if ($editingMatchId === $match->id)
+                                    <form
+                                        wire:submit="saveMatch"
+                                        x-on:outside-date-range-warning.window="$dispatch('system-confirm', {
+                                            title: 'Outside the tournament dates',
+                                            message: $event.detail.message,
+                                            confirmLabel: 'Continue',
+                                            confirm: () => $wire.saveMatch(true),
+                                        })"
+                                        class="flex flex-col gap-3 rounded-[10px] bg-white p-4">
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Date
+                                                <x-date-picker model="editDate" variant="bordered" size="xs" />
+                                                @error('editDate') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Time
+                                                <input type="time" wire:model="editTime" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                @error('editTime') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                        </div>
+                                        <div class="grid grid-cols-2 gap-3">
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Court
+                                                <input type="text" wire:model="editCourt" placeholder="e.g. 1" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                @error('editCourt') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                            <label class="flex flex-col gap-1 text-[11px] text-black">
+                                                Umpire
+                                                <select wire:model="editUmpireId" class="rounded-[5px] border border-black/20 px-2 py-1.5 text-xs">
+                                                    <option value="">Unassigned</option>
+                                                    @foreach ($this->umpires as $umpire)
+                                                        <option value="{{ $umpire->id }}" @disabled(in_array($umpire->id, $this->enteredUmpireIds, true) && $umpire->id !== $editUmpireId)>
+                                                            {{ $umpire->name }}@if (in_array($umpire->id, $this->enteredUmpireIds, true)) (entered as a player)@endif
+                                                        </option>
+                                                    @endforeach
+                                                </select>
+                                                @error('editUmpireId') <span class="text-[10px] text-red-600">{{ $message }}</span> @enderror
+                                            </label>
+                                        </div>
+                                        <div class="flex justify-end gap-2">
+                                            <button type="button" wire:click="cancelEditMatch" class="cursor-pointer rounded-[5px] border border-black/20 px-3 py-1.5 text-xs text-black">Cancel</button>
+                                            <button type="submit" class="cursor-pointer rounded-[5px] bg-[#3e948d] px-3 py-1.5 text-xs font-medium text-white">Save</button>
+                                        </div>
+                                    </form>
+                                @elseif ($match->status !== 'completed')
+                                    <div class="flex items-center justify-between gap-2 px-1 text-[11px] text-white">
+                                        <span>Umpire: {{ $match->assignedUmpire?->name ?? 'Unassigned' }}</span>
+                                        <button type="button" wire:click="editMatch({{ $match->id }})" class="cursor-pointer font-medium underline">Edit time, court &amp; umpire</button>
+                                    </div>
+                                @endif
                             </div>
                         @endforeach
                     </div>
@@ -353,6 +997,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
             @endforeach
         </div>
 
+        @if ($tournament->format === 'round_robin')
         <div class="flex flex-col gap-3 rounded-[10px] bg-white p-[30px]">
             <span class="text-lg font-bold text-black">Standings</span>
 
@@ -383,5 +1028,6 @@ new #[Layout('components.layouts.admin', ['title' => 'Schedule Matches'])] class
                 <p class="text-[10px] text-black/60">* Still tied after the configured tiebreakers.</p>
             @endif
         </div>
+        @endif
     @endif
 </div>

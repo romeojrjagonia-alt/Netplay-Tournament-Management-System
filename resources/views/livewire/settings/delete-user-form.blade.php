@@ -34,17 +34,22 @@ new class extends Component {
         </flux:button>
     </flux:modal.trigger>
 
-    <flux:modal name="confirm-user-deletion" :show="$errors->isNotEmpty()" focusable class="max-w-lg">
+    <flux:modal name="confirm-user-deletion" :show="$errors->isNotEmpty()" focusable class="max-w-lg dark:bg-white! dark:ring-black/5!">
         <form wire:submit="deleteUser" class="space-y-6">
             <div>
-                <flux:heading size="lg">{{ __('Are you sure you want to delete your account?') }}</flux:heading>
+                <h2 class="text-base font-bold text-black">{{ __('Are you sure you want to delete your account?') }}</h2>
 
-                <flux:subheading>
+                <p class="mt-1 text-sm text-black/70">
                     {{ __('Once your account is deleted, all of its resources and data will be permanently deleted. Please enter your password to confirm you would like to permanently delete your account.') }}
-                </flux:subheading>
+                </p>
             </div>
 
-            <flux:input wire:model="password" id="password" label="{{ __('Password') }}" type="password" name="password" />
+            <div class="flex flex-col gap-1">
+                <label for="password" class="text-xs text-black">{{ __('Password') }}</label>
+                <input wire:model="password" id="password" type="password" name="password" autocomplete="current-password"
+                       class="rounded-[5px] border border-black/20 px-2.5 py-2 text-sm text-black focus:outline-none focus:ring-2 focus:ring-[#3e948d]">
+                @error('password') <p class="text-[11px] text-red-600">{{ $message }}</p> @enderror
+            </div>
 
             <div class="flex justify-end space-x-2">
                 <flux:modal.close>

@@ -1,5 +1,10 @@
 <?php
 
+use App\Actions\Applications\NotifyEntryPlayers;
+use App\Mail\ApplicationApproved;
+use App\Mail\ApplicationRejected;
+use App\Mail\PaymentRejected;
+use App\Mail\PaymentVerified;
 use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
@@ -8,8 +13,13 @@ use Illuminate\Support\Collection;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 10;
+
     public function mount(): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
@@ -27,16 +37,35 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
     public ?int $viewingPaymentId = null;
 
+    public string $rejectionReason = '';
+
     public function selectTab(string $tab): void
     {
         $this->activeTab = $tab;
 
         $this->reset(['search', 'eventFilter', 'categoryFilter']);
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedEventFilter(): void
+    {
+        $this->resetPage();
+    }
+
+    public function updatedCategoryFilter(): void
+    {
+        $this->resetPage();
     }
 
     public function viewApplication(int $applicationId): void
     {
         $this->viewingApplicationId = $applicationId;
+        $this->rejectionReason = '';
     }
 
     public function viewPayment(int $paymentId): void
@@ -49,9 +78,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
      */
     public function approveApplication(int $applicationId): void
     {
-        PlayerApplication::where('status', 'pending_verification')
-            ->findOrFail($applicationId)
-            ->update(['status' => 'payment_pending']);
+        $application = PlayerApplication::where('status', 'pending_verification')->findOrFail($applicationId);
+        $application->update(['status' => 'payment_pending']);
+
+        $this->notifyEntry($application, ApplicationApproved::class);
 
         $this->viewingApplicationId = null;
 
@@ -60,13 +90,20 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
 
     public function rejectApplication(int $applicationId): void
     {
-        PlayerApplication::where('status', 'pending_verification')
-            ->findOrFail($applicationId)
-            ->update(['status' => 'rejected']);
+        $this->validate(['rejectionReason' => ['nullable', 'string', 'max:500']]);
+
+        $application = PlayerApplication::where('status', 'pending_verification')->findOrFail($applicationId);
+        $application->update([
+            'status' => 'rejected',
+            'rejection_reason' => trim($this->rejectionReason) !== '' ? trim($this->rejectionReason) : null,
+        ]);
+
+        $this->notifyEntry($application, ApplicationRejected::class);
 
         $this->viewingApplicationId = null;
+        $this->rejectionReason = '';
 
-        $this->closeModalAndNotify('application-details', 'Application rejected.', 'danger');
+        $this->closeModalAndNotify('application-details', 'Application rejected successfully.');
     }
 
     /**
@@ -79,6 +116,8 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         $payment->update(['payment_status' => 'verified']);
         $payment->application->update(['status' => 'approved']);
 
+        $this->notifyEntry($payment->application, PaymentVerified::class);
+
         $this->viewingPaymentId = null;
 
         $this->closeModalAndNotify('payment-details', 'Payment verified. The application is now fully approved.');
@@ -90,19 +129,35 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
      */
     public function rejectPayment(int $paymentId): void
     {
-        PaymentDetail::where('payment_status', 'pending')
-            ->findOrFail($paymentId)
-            ->update(['payment_status' => 'rejected']);
+        $payment = PaymentDetail::where('payment_status', 'pending')->findOrFail($paymentId);
+        $payment->update(['payment_status' => 'rejected']);
+
+        $this->notifyEntry($payment->application, PaymentRejected::class);
 
         $this->viewingPaymentId = null;
 
-        $this->closeModalAndNotify('payment-details', 'Payment rejected. The applicant can resubmit proof of payment.', 'danger');
+        $this->closeModalAndNotify('payment-details', 'Payment rejected successfully. The applicant can resubmit proof of payment.');
+    }
+
+    /**
+     * Tell the entry's players about the decision. A mail problem must never
+     * undo or block the admin's decision, so it is only logged.
+     *
+     * @param  class-string<\Illuminate\Mail\Mailable>  $mailable
+     */
+    private function notifyEntry(PlayerApplication $application, string $mailable): void
+    {
+        try {
+            app(NotifyEntryPlayers::class)->handle($application, $mailable);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function closeModalAndNotify(string $modal, string $message, string $variant = 'success'): void
     {
         $this->dispatch('modal-close', name: $modal);
-        $this->dispatch('admin-toast', message: $message, variant: $variant);
+        $this->dispatch('system-message', message: $message, variant: $variant);
     }
 
     /**
@@ -194,6 +249,26 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
     }
 
     /**
+     * The current page of the filtered application rows.
+     *
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, array<string, mixed>>
+     */
+    #[Computed]
+    public function pagedRows(): \Illuminate\Pagination\LengthAwarePaginator
+    {
+        $rows = $this->rows;
+        $page = min($this->getPage(), max(1, (int) ceil($rows->count() / self::PER_PAGE)));
+
+        return new \Illuminate\Pagination\LengthAwarePaginator(
+            $rows->forPage($page, self::PER_PAGE)->values(),
+            $rows->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => request()->url()],
+        );
+    }
+
+    /**
      * @return array<int, string>
      */
     #[Computed]
@@ -280,7 +355,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                     @endforeach
                 </select>
 
-                <label class="flex w-[265px] items-center gap-2.5 rounded-[5px] bg-white px-5 py-2.5">
+                <label class="flex w-full items-center sm:w-[265px] gap-2.5 rounded-[5px] bg-white px-5 py-2.5">
                     <flux:icon name="magnifying-glass" class="size-4 shrink-0 text-black/50" />
                     <input
                         type="search"
@@ -303,7 +378,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         </div>
 
         <div class="max-h-[450px] min-w-[900px] overflow-y-auto">
-            @forelse ($this->rows as $row)
+            @forelse ($this->pagedRows as $row)
                 <flux:modal.trigger :name="$activeTab === 'approvals' ? 'application-details' : 'payment-details'" wire:key="{{ $activeTab }}-{{ $row['application_id'] }}-{{ $row['payment_id'] }}">
                     <div
                         wire:click="{{ $activeTab === 'approvals' ? 'viewApplication('.$row['application_id'].')' : 'viewPayment('.$row['payment_id'].')' }}"
@@ -322,6 +397,10 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                 <p class="px-2.5 py-6 text-center text-xs text-black/50">No applications match your filters.</p>
             @endforelse
         </div>
+
+        @if ($this->pagedRows->hasPages())
+            <div class="bg-white px-4 py-3">{{ $this->pagedRows->links() }}</div>
+        @endif
     </div>
 
     <flux:modal name="application-details" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
@@ -365,7 +444,17 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
                         </div>
                     </div>
 
-                    <div class="flex items-center justify-end gap-[22px]">
+                    <div class="flex flex-col gap-1">
+                        <label for="rejectionReason" class="text-[11px] text-[#646464]">Reason for rejection (optional, shown to the applicant)</label>
+                        <textarea id="rejectionReason" wire:model="rejectionReason" rows="2" maxlength="500"
+                                  placeholder="e.g. Birth date doesn't match the category's age range"
+                                  class="w-full rounded-[5px] border border-[#d3d3d3] bg-white p-2.5 text-xs text-black placeholder:text-black/40 focus:outline-none"></textarea>
+                        @error('rejectionReason')
+                            <p class="text-[10px] text-red-600">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-end gap-[22px]">
                         <button type="button" wire:click="rejectApplication({{ $this->viewingApplication->id }})" class="w-[126px] cursor-pointer rounded-[5px] border border-[#bd6b6c] bg-white px-[30px] py-[10px] text-xs font-medium text-[#bd6b6c]">
                             Reject
                         </button>
@@ -451,13 +540,5 @@ new #[Layout('components.layouts.admin', ['title' => 'Dashboard'])] class extend
         </div>
     </flux:modal>
 
-    <flux:toast />
 
-    @script
-    <script>
-        this.$on('admin-toast', (event) => {
-            window.Flux.toast({ text: event.detail.message, variant: event.detail.variant });
-        });
-    </script>
-    @endscript
 </div>

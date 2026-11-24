@@ -23,6 +23,14 @@
     --color-zinc-900: #171717;
     --color-zinc-950: #0a0a0a;
 
+    --animate-marquee: marquee 50s linear infinite;
+
+    @keyframes marquee {
+        to {
+            transform: translateX(-50%);
+        }
+    }
+
     --color-accent: var(--color-neutral-800);
     --color-accent-content: var(--color-neutral-800);
     --color-accent-foreground: var(--color-white);
@@ -64,3 +72,71 @@ select:focus[data-flux-control] {
 /* \[:where(&)\]:size-4 {
     @apply size-4;
 } */
+
+
+/* Shared modal look: a solid white card over a dimmed (not blurred) page,
+   matching the login / sign-up modal. */
+[data-flux-modal] > dialog {
+    background-color: #fff;
+    border-radius: 20px;
+}
+
+[data-flux-modal] > dialog::backdrop {
+    background-color: rgb(0 0 0 / 0.7);
+    backdrop-filter: none;
+}
+
+/* Browser autofill paints its own (gray/blue) background and, on dark
+   themes, white text. Keep the field's own background: the long
+   background-color transition stops the UA fill from ever showing, and the
+   text colour stays readable. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+    -webkit-text-fill-color: #111827;
+    caret-color: #111827;
+    transition: background-color 600000s 0s, color 600000s 0s;
+}
+
+input:autofill,
+textarea:autofill,
+select:autofill {
+    color: #111827;
+}
+
+/* Date/time pickers sit on light fields. In a dark colour scheme the browser
+   draws the calendar/clock icon white, which disappears on them. */
+input[type='date'],
+input[type='time'],
+input[type='datetime-local'],
+input[type='month'] {
+    color-scheme: light;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator,
+input[type='month']::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.75;
+}
+
+[x-cloak] {
+    display: none !important;
+}
+
+/*
+ * Every modal here has a white panel, but Flux's close button turns white on
+ * hover in dark mode, which makes it vanish. Darken it instead. This sits in
+ * the utilities layer because the white comes from an !important utility, and
+ * an !important rule outside the layer would lose to it.
+ */
+@layer utilities {
+    [data-flux-modal] button[aria-label='Close modal']:hover,
+    [data-flux-modal] button[aria-label='Close modal']:focus-visible {
+        color: #18181b !important;
+        background-color: rgb(0 0 0 / 0.08) !important;
+    }
+}

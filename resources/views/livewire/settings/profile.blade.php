@@ -45,9 +45,18 @@ new class extends Component {
             $user->email_verified_at = null;
         }
 
+        $emailChanged = $user->isDirty('email');
+
         $user->save();
 
+        // Match notifications go to the player's contact email, so it must
+        // follow the account email the player just changed.
+        if ($emailChanged) {
+            $user->player?->update(['email' => $user->email]);
+        }
+
         $this->dispatch('profile-updated', name: $user->name);
+        $this->dispatch('system-message', title: 'Profile saved', message: 'Your profile information was updated.', variant: 'success');
     }
 
     /**
@@ -106,9 +115,6 @@ new class extends Component {
                     <flux:button variant="primary" type="submit" class="w-full">{{ __('Save') }}</flux:button>
                 </div>
 
-                <x-action-message class="me-3" on="profile-updated">
-                    {{ __('Saved.') }}
-                </x-action-message>
             </div>
         </form>
 

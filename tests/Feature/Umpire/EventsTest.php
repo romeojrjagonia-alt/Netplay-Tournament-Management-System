@@ -31,8 +31,8 @@ function umpireEventsTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-07-01',
-        'date_end' => '2026-07-31',
+        'date_start' => now()->subDay()->toDateString(),
+        'date_end' => now()->addMonth()->toDateString(),
         'time' => '9:00 AM - 5:00 PM',
         'specific_days' => 'SAT, SUN',
         'registration_start' => '2026-06-01',
@@ -84,4 +84,31 @@ test('only tournaments with a match assigned to the current umpire are listed', 
     Volt::test('umpire.events.index')
         ->assertSee('Inato Tournament')
         ->assertDontSee('Barangay Cup');
+});
+
+test('concluded events are archived and hidden from umpires', function () {
+    $umpire = User::factory()->create(['role' => 'umpire']);
+
+    foreach (['Live Cup' => null, 'Archived Cup' => now()] as $name => $concludedAt) {
+        $tournamentCategory = umpireEventsTournamentCategory(umpireEventsTournament(['name' => $name, 'concluded_at' => $concludedAt]));
+        Matches::create([
+            'tournament_category_id' => $tournamentCategory->id,
+            'bracket_type' => 'single_elimination',
+            'round' => 1,
+            'position' => 1,
+            'status' => 'scheduled',
+            'assigned_umpire_id' => $umpire->id,
+        ]);
+    }
+
+    $this->actingAs($umpire);
+
+    Volt::test('umpire.events.index')
+        ->assertSee('Live Cup')
+        ->assertDontSee('Archived Cup')
+        ->assertDontSee('Concluded Events');
+
+    $archived = Tournament::where('name', 'Archived Cup')->first();
+
+    Volt::test('umpire.events.show', ['tournament' => $archived])->assertNotFound();
 });

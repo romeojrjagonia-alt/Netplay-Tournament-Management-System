@@ -15,6 +15,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
     {
         abort_unless(auth()->user()->isUmpire(), 403);
 
+        // Concluded events are archived and only visible to admins.
+        abort_if($tournament->is_concluded, 404);
+
         abort_unless(
             Matches::whereIn('tournament_category_id', $tournament->tournamentCategories()->pluck('id'))
                 ->where('assigned_umpire_id', auth()->id())
@@ -115,23 +118,23 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
         </div>
     </div>
 
-    <div class="flex h-10 w-fit items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+    <div class="flex h-10 w-fit max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
         <button type="button" wire:click="selectTab('all')" @class([
-            'flex h-full items-center justify-center rounded-full px-4 text-xs',
+            'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
             'bg-[#0b4742] text-white' => $tab === 'all',
             'cursor-pointer text-[#0b4742]' => $tab !== 'all',
         ])>
             All Matches
         </button>
         <button type="button" wire:click="selectTab('upcoming')" @class([
-            'flex h-full items-center justify-center rounded-full px-4 text-xs',
+            'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
             'bg-[#0b4742] text-white' => $tab === 'upcoming',
             'cursor-pointer text-[#0b4742]' => $tab !== 'upcoming',
         ])>
             Upcoming Matches
         </button>
         <button type="button" wire:click="selectTab('concluded')" @class([
-            'flex h-full items-center justify-center rounded-full px-4 text-xs',
+            'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
             'bg-[#0b4742] text-white' => $tab === 'concluded',
             'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
         ])>
@@ -141,9 +144,25 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
 
     <div class="flex flex-col gap-[15px]">
         @forelse ($this->matches as $match)
-            <a href="{{ $match['status'] === 'completed' ? '#' : route('umpire.matches.scoring', $match['id']) }}"
-               @if ($match['status'] !== 'completed') wire:navigate @endif
-               wire:key="match-{{ $match['id'] }}">
+            @if ($match['status'] === 'completed')
+                <flux:modal.trigger name="match-summary" wire:key="match-{{ $match['id'] }}">
+                    <div wire:click="$dispatch('open-match-summary', { matchId: {{ $match['id'] }} })" class="cursor-pointer" role="button">
+                        <x-player.match-card
+                            :court="$match['court']"
+                            :match-time="$match['time']"
+                            :match-date="$match['date']"
+                            :round="$match['round']"
+                            :team-a-name="$match['teamAName']"
+                            :team-a-players="$match['teamAPlayers']"
+                            :team-b-name="$match['teamBName']"
+                            :team-b-players="$match['teamBPlayers']"
+                            :winner="$match['winner']"
+                            footer-note="Tap to view the summary and print the scoresheet."
+                        />
+                    </div>
+                </flux:modal.trigger>
+            @else
+            <a href="{{ route('umpire.matches.scoring', $match['id']) }}" wire:navigate wire:key="match-{{ $match['id'] }}">
                 <x-player.match-card
                     :court="$match['court']"
                     :match-time="$match['time']"
@@ -154,11 +173,14 @@ new #[Layout('components.layouts.umpire', ['title' => 'Event'])] class extends C
                     :team-b-name="$match['teamBName']"
                     :team-b-players="$match['teamBPlayers']"
                     :winner="$match['winner']"
-                    :footer-note="$match['status'] !== 'completed' ? 'Tap to open the scoreboard for this match.' : null"
+                    footer-note="Tap to open the scoreboard for this match."
                 />
             </a>
+            @endif
         @empty
             <p class="py-10 text-center text-sm text-white">No matches in this tournament match your filter.</p>
         @endforelse
     </div>
+
+    <livewire:umpire.match-summary />
 </div>

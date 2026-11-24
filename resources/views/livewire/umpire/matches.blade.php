@@ -4,9 +4,16 @@ use App\Models\Matches;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] class extends Component {
+    use WithPagination;
+
+    public const PER_PAGE = 8;
+
     public string $tab = 'all';
+
+    public string $search = '';
 
     public function mount(): void
     {
@@ -16,6 +23,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage();
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage();
     }
 
     /**
@@ -35,15 +48,21 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
     /**
      * This umpire's completed matches, most recent first.
      *
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, array<string, mixed>>
      */
     #[Computed]
     public function previousMatches()
     {
-        return $this->umpireMatches(['completed'])
-            ->sortByDesc('scheduled_at')
-            ->map(fn (Matches $match) => $this->matchViewData($match))
-            ->values();
+        $matches = $this->umpireMatches(['completed'])->sortByDesc('scheduled_at')->values();
+        $page = min($this->getPage(), max(1, (int) ceil($matches->count() / self::PER_PAGE)));
+
+        return new \Illuminate\Pagination\LengthAwarePaginator(
+            $matches->forPage($page, self::PER_PAGE)->map(fn (Matches $match) => $this->matchViewData($match))->values(),
+            $matches->count(),
+            self::PER_PAGE,
+            $page,
+            ['path' => request()->url()],
+        );
     }
 
     /**
@@ -55,6 +74,13 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         return Matches::query()
             ->where('assigned_umpire_id', auth()->id())
             ->whereIn('status', $statuses)
+            ->when(trim($this->search) !== '', function ($query) {
+                $term = '%'.trim($this->search).'%';
+
+                $query->where(fn ($query) => $query
+                    ->where('court', 'like', $term)
+                    ->orWhereHas('matchApplications.application.applicationPlayers.player', fn ($player) => $player->where('name', 'like', $term)));
+            })
             ->with(['matchApplications.application.applicationPlayers.player'])
             ->get();
     }
@@ -87,15 +113,18 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
             'teamBName' => 'Team B',
             'teamBPlayers' => $teamB?->applicationPlayers->pluck('player.name')->all() ?? [],
             'winner' => $winner,
+            'status' => $match->status,
+            'ready' => $match->matchApplications->count() >= 2,
         ];
     }
 }; ?>
 
 <div class="flex flex-col gap-5">
-    <div class="flex h-10 w-fit items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+    <div class="flex flex-wrap items-center justify-between gap-4">
+    <div class="flex h-10 w-fit max-w-full items-center gap-2 overflow-x-auto rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
         <button type="button" wire:click="selectTab('all')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'all',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'all',
                 ])>
@@ -103,7 +132,7 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         </button>
         <button type="button" wire:click="selectTab('upcoming')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'upcoming',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'upcoming',
                 ])>
@@ -111,12 +140,15 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
         </button>
         <button type="button" wire:click="selectTab('concluded')"
                 @class([
-                    'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                    'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                     'bg-[#0b4742] text-white' => $tab === 'concluded',
                     'cursor-pointer text-[#0b4742]' => $tab !== 'concluded',
                 ])>
             Concluded Matches
         </button>
+    </div>
+
+    <x-collapsible-search wire:model.live.debounce.300ms="search" placeholder="Search player or court" />
     </div>
 
     @if ($tab !== 'concluded')
@@ -125,8 +157,10 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
 
             <div class="flex flex-col gap-[17px]">
                 @forelse ($this->upcomingMatches as $match)
+                    <a @if ($match['ready']) href="{{ route('umpire.matches.scoring', $match['id']) }}" wire:navigate @endif
+                       wire:key="upcoming-{{ $match['id'] }}"
+                       @class(['block', 'cursor-not-allowed opacity-70' => ! $match['ready']])>
                     <x-player.match-card
-                        wire:key="upcoming-{{ $match['id'] }}"
                         :court="$match['court']"
                         :match-time="$match['time']"
                         :match-date="$match['date']"
@@ -135,8 +169,12 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
                         :team-a-players="$match['teamAPlayers']"
                         :team-b-name="$match['teamBName']"
                         :team-b-players="$match['teamBPlayers']"
-                        footer-note="You are assigned as umpire for this match."
+                        :live="null"
+                        :footer-note="! $match['ready']
+                            ? 'Waiting for both teams to be confirmed before scoring can start.'
+                            : ($match['status'] === 'in_progress' ? 'In progress. Tap to continue scoring this match.' : 'Tap to open the scoreboard and start scoring.')"
                     />
+                    </a>
                 @empty
                     <p class="py-10 text-center text-sm text-white">You have no upcoming assigned matches.</p>
                 @endforelse
@@ -150,8 +188,9 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
 
             <div class="flex flex-col gap-[17px]">
                 @forelse ($this->previousMatches as $match)
+                    <flux:modal.trigger name="match-summary" wire:key="previous-{{ $match['id'] }}">
+                    <div wire:click="$dispatch('open-match-summary', { matchId: {{ $match['id'] }} })" class="cursor-pointer" role="button">
                     <x-player.match-card
-                        wire:key="previous-{{ $match['id'] }}"
                         :court="$match['court']"
                         :match-time="$match['time']"
                         :match-date="$match['date']"
@@ -162,10 +201,18 @@ new #[Layout('components.layouts.umpire', ['title' => 'Assigned Matches'])] clas
                         :team-b-players="$match['teamBPlayers']"
                         :winner="$match['winner']"
                     />
+                    </div>
+                    </flux:modal.trigger>
                 @empty
                     <p class="py-10 text-center text-sm text-white">You have no match history yet.</p>
                 @endforelse
             </div>
+
+            @if ($this->previousMatches->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->previousMatches->links() }}</div>
+            @endif
         </div>
     @endif
+
+    <livewire:umpire.match-summary />
 </div>

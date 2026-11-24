@@ -16,10 +16,10 @@ function eventsIndexTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-09-01',
-        'date_end' => '2026-09-30',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -60,7 +60,7 @@ test('a non-admin cannot view the events index', function () {
     Volt::test('admin.events.index')->assertForbidden();
 });
 
-test('the all tab lists draft, published, and concluded tournaments', function () {
+test('there is no all events tab, and the published tab is shown first', function () {
     eventsIndexTournament(['name' => 'Draft Tournament', 'status' => 'draft']);
     eventsIndexTournament(['name' => 'Published Tournament', 'status' => 'published']);
     eventsIndexTournament(['name' => 'Concluded Tournament', 'status' => 'published', 'date_end' => '2026-01-01']);
@@ -68,12 +68,15 @@ test('the all tab lists draft, published, and concluded tournaments', function (
     $this->actingAs(eventsIndexAdmin());
 
     Volt::test('admin.events.index')
-        ->assertSee('Draft Tournament')
+        ->assertSet('tab', 'published')
+        ->assertDontSee('All Events')
+        ->assertSee('Published Events')
         ->assertSee('Published Tournament')
-        ->assertSee('Concluded Tournament');
+        ->assertDontSee('Draft Tournament')
+        ->assertDontSee('Concluded Tournament');
 });
 
-test('the published tab excludes drafts and concluded tournaments', function () {
+test('the draft tab only lists drafts', function () {
     eventsIndexTournament(['name' => 'Draft Tournament', 'status' => 'draft']);
     eventsIndexTournament(['name' => 'Published Tournament', 'status' => 'published']);
     eventsIndexTournament(['name' => 'Concluded Tournament', 'status' => 'published', 'date_end' => '2026-01-01']);
@@ -81,9 +84,9 @@ test('the published tab excludes drafts and concluded tournaments', function () 
     $this->actingAs(eventsIndexAdmin());
 
     Volt::test('admin.events.index')
-        ->set('tab', 'published')
-        ->assertDontSee('Draft Tournament')
-        ->assertSee('Published Tournament')
+        ->set('tab', 'draft')
+        ->assertSee('Draft Tournament')
+        ->assertDontSee('Published Tournament')
         ->assertDontSee('Concluded Tournament');
 });
 
@@ -111,7 +114,7 @@ test('search filters tournaments by name', function () {
         ->assertDontSee('Barangay Cup');
 });
 
-test('remaining slots and registered players only count approved entries', function () {
+test('remaining slots count every non-rejected entry while registered players count approved ones', function () {
     $tournament = eventsIndexTournament();
     $tournamentCategory = eventsIndexCategory($tournament, ['max_slots' => 10]);
 
@@ -125,8 +128,48 @@ test('remaining slots and registered players only count approved entries', funct
 
     $this->actingAs(eventsIndexAdmin());
 
-    // 10 slots, 1 approved entry -> 9 remaining; only the approved player counts as registered.
+    // 10 slots, 1 approved + 1 pending entry -> 8 remaining; only the approved player counts as registered.
     Volt::test('admin.events.index')
-        ->assertSeeHtml('text-4xl font-bold text-white">9<')
+        ->assertSeeHtml('text-4xl font-bold text-white">8<')
         ->assertSeeHtml('text-4xl font-bold text-white">1<');
+});
+
+test('the published tab lists the latest starting event first', function () {
+    eventsIndexTournament(['name' => 'Sooner Cup', 'status' => 'published', 'date_start' => now()->addDays(5)->toDateString(), 'date_end' => now()->addDays(6)->toDateString()]);
+    eventsIndexTournament(['name' => 'Later Cup', 'status' => 'published', 'date_start' => now()->addDays(30)->toDateString(), 'date_end' => now()->addDays(31)->toDateString()]);
+
+    $this->actingAs(eventsIndexAdmin());
+
+    $names = Volt::test('admin.events.index')->instance()->tournaments->pluck('name')->all();
+
+    expect($names)->toBe(['Later Cup', 'Sooner Cup']);
+});
+
+test('the published tab excludes drafts and concluded tournaments', function () {
+    eventsIndexTournament(['name' => 'Draft Tournament', 'status' => 'draft']);
+    eventsIndexTournament(['name' => 'Published Tournament', 'status' => 'published']);
+    eventsIndexTournament(['name' => 'Concluded Tournament', 'status' => 'published', 'date_end' => '2026-01-01']);
+    eventsIndexTournament(['name' => 'Manually Concluded', 'status' => 'published', 'concluded_at' => now()]);
+
+    $this->actingAs(eventsIndexAdmin());
+
+    Volt::test('admin.events.index')
+        ->set('tab', 'published')
+        ->assertSee('Published Tournament')
+        ->assertDontSee('Draft Tournament')
+        ->assertDontSee('Concluded Tournament')
+        ->assertDontSee('Manually Concluded');
+});
+
+test('the events list is paginated', function () {
+    $this->actingAs(User::factory()->create(['role' => 'admin']));
+
+    foreach (range(1, 12) as $number) {
+        eventsIndexTournament(['name' => "Event {$number}"]);
+    }
+
+    $component = Volt::test('admin.events.index');
+
+    expect($component->instance()->tournaments)->toHaveCount(10)
+        ->and($component->instance()->tournaments->total())->toBe(12);
 });

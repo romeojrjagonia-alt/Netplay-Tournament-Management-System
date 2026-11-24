@@ -27,7 +27,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
     }
 
     /**
-     * Validate this step and persist it as a draft, then move on to step 2.
+     * Validate this step and persist it as a draft, then move on to the confirmation step.
      */
     public function next(): void
     {
@@ -35,7 +35,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
         $this->saveDetails($this->validateDetails());
 
-        $this->redirect(route('admin.events.wizard.categories', $this->tournament), navigate: true);
+        $this->redirect(route('admin.events.wizard.review', $this->tournament), navigate: true);
     }
 }; ?>
 
@@ -44,7 +44,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Create New Events'])] clas
 
     @include('livewire.admin.events.wizard._details-fields')
 
-    <div class="flex w-[814px] justify-end gap-6">
+    <div class="flex w-full max-w-[1100px] justify-end gap-6">
         <a href="{{ route('admin.events.index') }}" wire:navigate class="flex w-[126px] items-center justify-center rounded-[5px] border border-[#a3a3a3] bg-white px-[30px] py-[10px] text-xs font-medium text-[#a3a3a3]">
             Cancel
         </a>

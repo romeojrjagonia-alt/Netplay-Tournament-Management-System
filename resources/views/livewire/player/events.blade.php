@@ -1,10 +1,17 @@
 <?php
 
+use App\Rules\PhoneNumber;
+use App\Actions\Applications\CancelApplication;
 use App\Models\ApplicationPlayer;
+use App\Models\Category;
+use App\Models\PaymentDetail;
 use App\Models\Player;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use App\Models\TournamentCategory;
+use App\Support\Applications\IdDocumentTypes;
+use App\Support\Forms\ClearsResolvedErrors;
+use App\Support\Officials\OfficialConflicts;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -13,9 +20,14 @@ use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
 use Livewire\WithFileUploads;
+use Livewire\WithPagination;
 
 new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends Component {
+    use ClearsResolvedErrors;
     use WithFileUploads;
+    use WithPagination;
+
+    public const PER_PAGE = 8;
 
     public string $tab = 'accepting';
 
@@ -24,6 +36,16 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public ?int $viewingTournamentId = null;
 
     public ?int $viewingApplicationId = null;
+
+    public bool $confirmingDelete = false;
+
+    public bool $confirmingCancel = false;
+
+    public string $paymentReferenceNumber = '';
+
+    public string $paymentDatePaid = '';
+
+    public $paymentProof = null;
 
     // Registration wizard state.
     public int $regStep = 1;
@@ -66,35 +88,191 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     public string $ownDocumentType = '';
     public $ownDocument = null;
     public string $pairDocumentType = '';
+
+    public string $ownDocumentOther = '';
+
+    public string $pairDocumentOther = '';
     public $pairDocument = null;
+
+    /** The data-privacy dialog is showing and waiting for an answer. */
+    public bool $showConsent = false;
+
+    #[ivewireattributesocked]
+    public bool $consented = false;
 
     /**
      * @var array<string, string>
      */
-    private array $documentTypes = [
-        'national_id' => 'Philippine National ID',
-        'passport' => 'Passport',
-        'birth_certificate' => 'Birth Certificate',
-    ];
+    private array $documentTypes = IdDocumentTypes::TYPES;
+
+    /** Set when the page is opened from a dashboard card, to pop that tournament's details. */
+    public bool $openDetailsOnLoad = false;
+
+    /** Set when opened from a dashboard application row, to pop that application's details. */
+    public bool $openApplicationOnLoad = false;
 
     public function mount(): void
     {
         abort_unless(auth()->user()->isPlayer(), 403);
+
+        auth()->user()->ensurePlayer();
+
+        if (request()->query('tab') === 'applications') {
+            $this->tab = 'applications';
+        }
+
+        $applicationId = (int) request()->query('application');
+
+        if ($applicationId > 0 && auth()->user()->player?->playerApplications()->whereKey($applicationId)->exists()) {
+            $this->tab = 'applications';
+            $this->viewingApplicationId = $applicationId;
+            $this->openApplicationOnLoad = true;
+        }
+
+        $tournamentId = (int) request()->query('tournament');
+
+        if ($tournamentId > 0 && Tournament::acceptingRegistrations()->whereKey($tournamentId)->exists()) {
+            $this->viewingTournamentId = $tournamentId;
+            $this->openDetailsOnLoad = true;
+        }
     }
 
     public function selectTab(string $tab): void
     {
         $this->tab = $tab;
+        $this->resetPage('tournamentsPage');
+        $this->resetPage('applicationsPage');
+    }
+
+    public function updatedSearch(): void
+    {
+        $this->resetPage('tournamentsPage');
+        $this->resetPage('applicationsPage');
     }
 
     public function viewTournament(int $tournamentId): void
     {
-        $this->viewingTournamentId = $tournamentId;
+        // Concluded or closed events can't be opened (or registered for).
+        $this->viewingTournamentId = Tournament::acceptingRegistrations()->whereKey($tournamentId)->value('id');
     }
 
     public function viewApplication(int $applicationId): void
     {
         $this->viewingApplicationId = $applicationId;
+        $this->confirmingDelete = false;
+        $this->confirmingCancel = false;
+    }
+
+    /**
+     * Swap the application details modal for the payment modal.
+     */
+    public function openPayment(): void
+    {
+        abort_unless($this->canPayForViewingApplication, 403);
+
+        $this->reset('paymentReferenceNumber', 'paymentProof');
+        $this->paymentDatePaid = now()->format('Y-m-d');
+        $this->resetValidation();
+
+        $this->dispatch('modal-close', name: 'application-details');
+        $this->dispatch('modal-show', name: 'application-payment');
+    }
+
+    /**
+     * Store a GCash payment proof for the viewed application, mirroring the
+     * public payment page (NETPLAY.md 4.8: one new row per proof).
+     */
+    public function submitPayment(): void
+    {
+        abort_unless($this->canPayForViewingApplication, 403);
+
+        $this->validate([
+            'paymentReferenceNumber' => ['required', 'string', 'max:255'],
+            'paymentDatePaid' => ['required', 'date', 'before_or_equal:today'],
+            'paymentProof' => ['required', 'image', 'max:4096'],
+        ], [
+            'paymentProof.required' => 'Upload a screenshot of your GCash payment.',
+        ]);
+
+        PaymentDetail::create([
+            'application_id' => $this->viewingApplication->id,
+            'date_of_payment_made' => $this->paymentDatePaid,
+            'reference_number' => $this->paymentReferenceNumber,
+            'payment_status' => 'pending',
+            'proof_of_payment' => $this->paymentProof->store('payment-proofs', 'public'),
+        ]);
+
+        $this->reset('paymentReferenceNumber', 'paymentProof');
+
+        $this->dispatch('modal-close', name: 'application-payment');
+    }
+
+    /**
+     * Whether the viewed application was rejected before any payment proof
+     * was uploaded — the only case a player may delete it.
+     */
+    #[Computed]
+    public function canDeleteViewingApplication(): bool
+    {
+        $application = $this->viewingApplication;
+
+        return $application
+            && $application->status === 'rejected'
+            && $application->paymentDetails->isEmpty();
+    }
+
+    /**
+     * Whether the viewed application is still pending with no payment made,
+     * so the player may withdraw it.
+     */
+    #[Computed]
+    public function canCancelViewingApplication(): bool
+    {
+        return (bool) $this->viewingApplication?->canBeCancelled();
+    }
+
+    public function cancelViewingApplication(): void
+    {
+        abort_unless($this->canCancelViewingApplication, 403);
+
+        try {
+            app(CancelApplication::class)->handle($this->viewingApplication, auth()->user()->player);
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch('system-message', title: 'Could not cancel application', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->viewingApplicationId = null;
+        $this->confirmingCancel = false;
+        unset($this->viewingApplication, $this->myApplications, $this->canCancelViewingApplication);
+
+        $this->dispatch('modal-close', name: 'application-details');
+        $this->dispatch('system-message', title: 'Application cancelled', message: 'You can apply again if you change your mind.', variant: 'success');
+    }
+
+    /**
+     * Whether this player already has a pending application in the tournament
+     * being viewed, which blocks a second one until it is rejected or cancelled.
+     */
+    #[Computed]
+    public function hasPendingApplicationInViewingTournament(): bool
+    {
+        return (bool) ($this->viewingTournamentId
+            && auth()->user()->player?->hasPendingApplicationIn($this->viewingTournamentId));
+    }
+
+    public function deleteViewingApplication(): void
+    {
+        abort_unless($this->canDeleteViewingApplication, 403);
+
+        $this->viewingApplication->delete();
+
+        $this->viewingApplicationId = null;
+        $this->confirmingDelete = false;
+        unset($this->viewingApplication, $this->myApplications);
+
+        $this->dispatch('modal-close', name: 'application-details');
     }
 
     /**
@@ -103,6 +281,29 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      * their player record when one already exists.
      */
     public function startRegistration(): void
+    {
+        abort_unless($this->viewingTournament && Tournament::acceptingRegistrations()->whereKey($this->viewingTournamentId)->exists(), 404);
+
+        if ($this->hasPendingApplicationInViewingTournament) {
+            $this->dispatch('system-message', title: 'Cannot register yet', message: 'You already have a pending application for this tournament.', variant: 'danger');
+
+            return;
+        }
+
+        if (OfficialConflicts::officiatesIn(auth()->user(), $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->resetRegistrationForm();
+
+        $this->dispatch('modal-close', name: 'tournament-details');
+        $this->dispatch('modal-show', name: 'tournament-registration');
+        $this->dispatch('modal-show', name: 'data-consent');
+    }
+
+    private function resetRegistrationForm(): void
     {
         $this->resetValidation();
 
@@ -127,9 +328,15 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         $this->pairPhoto = null;
 
         $this->ownDocumentType = '';
+        $this->ownDocumentOther = '';
         $this->ownDocument = null;
         $this->pairDocumentType = '';
+        $this->pairDocumentOther = '';
         $this->pairDocument = null;
+
+        // Consent comes first, before any personal detail is shown or typed.
+        $this->showConsent = true;
+        $this->consented = false;
 
         $player = auth()->user()->player;
 
@@ -138,9 +345,9 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             $this->regBirthDate = $player->birth_date?->format('Y-m-d') ?? '';
             $this->regGender = $player->gender ?? '';
             $this->regAddress = $player->address ?? '';
-            $this->regSkillLevel = $player->level ?? '';
+            $this->regSkillLevel = in_array($player->level, Category::PLAYER_LEVELS, true) ? $player->level : '';
             $this->regClub = $player->club ?? '';
-            $this->regEmail = $player->email ?? auth()->user()->email;
+            $this->regEmail = auth()->user()->email;
             $this->regPhoneNumber = $player->phone_number ?? '';
         } else {
             $this->regFirstName = '';
@@ -154,9 +361,6 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             $this->regEmail = auth()->user()->email;
             $this->regPhoneNumber = '';
         }
-
-        $this->dispatch('modal-close', name: 'tournament-details');
-        $this->dispatch('modal-show', name: 'tournament-registration');
     }
 
     public function cancelRegistration(): void
@@ -179,6 +383,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
     public function selectPairPlayer(int $playerId): void
     {
+        $partnerUser = Player::query()->with('user')->find($playerId)?->user;
+
+        if ($partnerUser && OfficialConflicts::officiatesIn($partnerUser, $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot pick this partner', message: OfficialConflicts::partnerOfficiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
         $this->pairPlayerId = $playerId;
     }
 
@@ -194,11 +406,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         }
 
         $this->regStep = min($this->regStep + 1, $this->totalRegistrationSteps);
+
+        // isPairStep was read above, before the step changed; drop the cached
+        // value so this render shows the new step's content, not the old one.
+        unset($this->isPairStep);
     }
 
     public function registrationPreviousStep(): void
     {
         $this->regStep = max($this->regStep - 1, 1);
+
+        unset($this->isPairStep);
     }
 
     /**
@@ -206,73 +424,147 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
      */
     public function submitRegistration(): void
     {
-        $rules = [
-            'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
-            'ownDocument' => ['required', 'image', 'max:4096'],
-        ];
+        if (OfficialConflicts::officiatesIn(auth()->user(), $this->viewingTournamentId)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
 
-        if ($this->isDoublesRegistration) {
-            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
-            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
+            return;
         }
 
-        $this->validate($rules);
+        if ($documentRules = $this->documentRules()) {
+            $this->validate($documentRules);
+        }
+
+        // Nothing is stored until the registrant agrees to the data notice.
+        if (! $this->consented) {
+            $this->showConsent = true;
+            $this->dispatch('modal-show', name: 'data-consent');
+
+            return;
+        }
 
         $tournamentCategoryId = $this->regTournamentCategoryId;
 
         try {
             DB::transaction(function () use ($tournamentCategoryId): void {
+                TournamentCategory::lockAndAssertOpenSlot($tournamentCategoryId);
+
                 $applicant = $this->resolveApplicantPlayer();
 
+                $this->assertNoPendingApplication($applicant, $tournamentCategoryId, 'You already have a pending application for this tournament.');
                 $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
 
                 $partner = null;
 
                 if ($this->isDoublesRegistration) {
                     $partner = $this->resolvePartnerPlayer();
+                    $this->assertNoPendingApplication($partner, $tournamentCategoryId, 'Your partner already has a pending application for this tournament.');
                     $this->assertNotAlreadyEntered($partner, $tournamentCategoryId);
                 }
 
                 $application = PlayerApplication::create([
                     'tournament_category_id' => $tournamentCategoryId,
                     'status' => 'pending_verification',
+                    'data_consent_at' => now(),
                 ]);
 
                 ApplicationPlayer::create([
                     'application_id' => $application->id,
                     'player_id' => $applicant->id,
                     'level_at_apply' => $this->regSkillLevel,
-                    'id_document_type' => $this->ownDocumentType,
-                    'id_document_path' => $this->ownDocument->store('id-documents', 'public'),
-                ]);
+                ] + $this->resolveIdDocument($applicant, $this->ownDocument, $this->ownDocumentType, $this->ownDocumentOther));
 
                 if ($partner) {
                     ApplicationPlayer::create([
                         'application_id' => $application->id,
                         'player_id' => $partner->id,
                         'level_at_apply' => $this->pairViaSearch ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
-                        'id_document_type' => $this->pairDocumentType,
-                        'id_document_path' => $this->pairDocument->store('id-documents', 'public'),
-                    ]);
+                    ] + $this->resolveIdDocument($partner, $this->pairDocument, $this->pairDocumentType, $this->pairDocumentOther));
                 }
             });
         } catch (\RuntimeException $e) {
             $this->addError('registration', $e->getMessage());
+            $this->dispatch('system-message', title: 'Could not submit application', message: $e->getMessage(), variant: 'danger');
 
             return;
         }
 
         $this->viewingTournamentId = null;
         $this->dispatch('modal-close', name: 'tournament-registration');
-        $this->dispatch('registration-toast', message: 'Application submitted! Waiting for organizer verification.', variant: 'success');
+        $this->dispatch('system-message', title: 'Application submitted', message: 'Waiting for organizer verification.', variant: 'success');
 
         unset($this->tournaments, $this->myApplications);
     }
 
     /**
+     * The registrant agreed to the data-collection notice: they can now fill in the form.
+     */
+    public function acceptRegistrationConsent(): void
+    {
+        $this->consented = true;
+        $this->showConsent = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+    }
+
+    /**
+     * The registrant refused: nothing was saved, so close the form.
+     */
+    public function declineRegistrationConsent(): void
+    {
+        $this->showConsent = false;
+        $this->consented = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+        $this->dispatch('modal-close', name: 'tournament-registration');
+        $this->dispatch('system-message', title: 'Registration cancelled', message: 'You did not consent to the collection of your data, so no application was submitted.', variant: 'danger');
+    }
+
+    /**
+     * The ID kept on the player's record is the one used: it is asked for
+     * once and never replaced. Only a player with none on file has the
+     * uploaded one stored (and saved to their record for next time).
+     *
+     * @return array{id_document_type: ?string, id_document_other: ?string, id_document_path: ?string}
+     */
+    private function resolveIdDocument(Player $player, mixed $file, string $type, string $other): array
+    {
+        if (! $player->hasIdOnFile()) {
+            if ($file === null) {
+                throw new \RuntimeException('A valid ID is required for every player in the entry.');
+            }
+
+            $player->update([
+                'id_document_type' => $type,
+                'id_document_other' => $type === IdDocumentTypes::OTHERS ? trim($other) : null,
+                'id_document_path' => $file->store('id-documents', 'public'),
+            ]);
+        }
+
+        return [
+            'id_document_type' => $player->id_document_type,
+            'id_document_other' => $player->id_document_other,
+            'id_document_path' => $player->id_document_path,
+        ];
+    }
+
+    #[Computed]
+    public function ownHasIdOnFile(): bool
+    {
+        return (bool) auth()->user()->player?->hasIdOnFile();
+    }
+
+    #[Computed]
+    public function pairHasIdOnFile(): bool
+    {
+        return $this->pairViaSearch
+            && $this->pairPlayerId !== null
+            && (bool) Player::query()->find($this->pairPlayerId)?->hasIdOnFile();
+    }
+
+    /**
      * Tournaments currently open for registration, optionally filtered by name.
      *
-     * @return \Illuminate\Support\Collection<int, Tournament>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, Tournament>
      */
     #[Computed]
     public function tournaments()
@@ -281,7 +573,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->acceptingRegistrations()
             ->when($this->search !== '', fn ($query) => $query->where('name', 'like', '%'.$this->search.'%'))
             ->orderBy('registration_end')
-            ->get();
+            ->paginate(self::PER_PAGE, pageName: 'tournamentsPage');
     }
 
     #[Computed]
@@ -299,7 +591,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     /**
      * This player's tournament applications, optionally filtered by tournament name.
      *
-     * @return \Illuminate\Support\Collection<int, PlayerApplication>
+     * @return \Illuminate\Pagination\LengthAwarePaginator<int, PlayerApplication>
      */
     #[Computed]
     public function myApplications()
@@ -315,7 +607,21 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 )
             )
             ->latest()
-            ->get();
+            ->paginate(self::PER_PAGE, pageName: 'applicationsPage');
+    }
+
+    /**
+     * Whether the viewed application has been verified and is waiting for
+     * a (new) payment proof — i.e. the payment page will accept one.
+     */
+    #[Computed]
+    public function canPayForViewingApplication(): bool
+    {
+        $application = $this->viewingApplication;
+
+        return $application
+            && $application->status === 'payment_pending'
+            && $application->paymentDetails->where('payment_status', 'pending')->isEmpty();
     }
 
     /**
@@ -360,6 +666,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->with('category')
             ->eligibleFor($this->regGender !== '' ? $this->regGender : null, $this->regAge)
             ->get();
+    }
+
+    /**
+     * Ids of the eligible categories that have no entry slot left.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    #[Computed]
+    public function fullCategoryIds()
+    {
+        return $this->eligibleCategories->filter->isFull()->pluck('id');
     }
 
     #[Computed]
@@ -452,6 +769,53 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     /**
      * @return array<string, array<int, mixed>>
      */
+    private function documentRules(): array
+    {
+        $rules = [];
+
+        if (! $this->ownHasIdOnFile) {
+            $rules = [
+                'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+                'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
+                'ownDocument' => ['required', 'image', 'max:4096'],
+            ];
+        }
+
+        if ($this->isDoublesRegistration && ! $this->pairHasIdOnFile) {
+            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
+            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->profileStepRules() + $this->pairStepRules() + $this->documentRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'regGender' => ['regTournamentCategoryId'],
+            'regBirthDate' => ['regTournamentCategoryId'],
+            'ownDocumentType' => ['ownDocumentOther'],
+            'ownDocumentOther' => ['ownDocumentType'],
+            'pairDocumentType' => ['pairDocumentOther'],
+            'pairDocumentOther' => ['pairDocumentType'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
     private function profileStepRules(): array
     {
         $rules = [
@@ -460,12 +824,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'regLastName' => ['required', 'string', 'max:255'],
             'regMiddleInitial' => ['nullable', 'string', 'max:5'],
             'regBirthDate' => ['required', 'date', 'before:today'],
-            'regGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'regGender' => ['required', 'in:male,female'],
             'regAddress' => ['required', 'string', 'max:255'],
-            'regSkillLevel' => ['required', 'string', 'max:255'],
+            'regSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'regClub' => ['nullable', 'string', 'max:255'],
             'regEmail' => ['nullable', 'email', 'max:255'],
-            'regPhoneNumber' => ['nullable', 'string', 'max:255'],
+            'regPhoneNumber' => ['nullable', 'string', new PhoneNumber],
         ];
 
         if ($this->isDoublesRegistration) {
@@ -495,12 +859,12 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             'pairLastName' => ['required', 'string', 'max:255'],
             'pairMiddleInitial' => ['nullable', 'string', 'max:5'],
             'pairBirthDate' => ['required', 'date', 'before:today'],
-            'pairGender' => ['required', 'in:male,female,prefer_not_to_say'],
+            'pairGender' => ['required', 'in:male,female'],
             'pairAddress' => ['required', 'string', 'max:255'],
-            'pairSkillLevel' => ['required', 'string', 'max:255'],
+            'pairSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
             'pairClub' => ['nullable', 'string', 'max:255'],
             'pairEmail' => ['nullable', 'email', 'max:255'],
-            'pairPhoneNumber' => ['nullable', 'string', 'max:255'],
+            'pairPhoneNumber' => ['nullable', 'string', new PhoneNumber],
             'pairPhoto' => ['nullable', 'image', 'max:4096'],
         ];
     }
@@ -553,6 +917,19 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
     }
 
     /**
+     * A player with a pending application can't apply again anywhere in the
+     * same tournament until it is rejected or cancelled.
+     */
+    private function assertNoPendingApplication(Player $player, int $tournamentCategoryId, string $message): void
+    {
+        $tournamentId = TournamentCategory::query()->whereKey($tournamentCategoryId)->value('tournament_id');
+
+        if ($player->hasPendingApplicationIn($tournamentId)) {
+            throw new \RuntimeException($message);
+        }
+    }
+
+    /**
      * A player can't have more than one non-rejected application in the same
      * draw — a previously rejected application doesn't block re-applying.
      */
@@ -566,7 +943,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             ->exists();
 
         if ($alreadyEntered) {
-            throw new \RuntimeException("{$player->name} already has an active application for this category.");
+            throw new \RuntimeException('A player in this entry already has an active application for this category.');
         }
     }
 
@@ -601,11 +978,19 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 }; ?>
 
 <div class="flex flex-col gap-5">
+    @if ($openDetailsOnLoad)
+        <div x-data x-init="$nextTick(() => $dispatch('modal-show', { name: 'tournament-details' }))"></div>
+    @endif
+
+    @if ($openApplicationOnLoad)
+        <div x-data x-init="$nextTick(() => $dispatch('modal-show', { name: 'application-details' }))"></div>
+    @endif
+
     <div class="flex flex-wrap items-center justify-between gap-4">
-        <div class="flex h-10 items-center gap-4 rounded-full bg-white px-2.5 py-1.5">
+        <div class="flex h-10 min-w-0 max-w-full flex-1 items-center gap-2 overflow-x-auto sm:flex-none rounded-full bg-white px-2.5 py-1.5 [scrollbar-width:none] sm:gap-4">
             <button type="button" wire:click="selectTab('accepting')"
                     @class([
-                        'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                         'bg-[#0b4742] text-white' => $tab === 'accepting',
                         'cursor-pointer text-[#0b4742]' => $tab !== 'accepting',
                     ])>
@@ -613,7 +998,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             </button>
             <button type="button" wire:click="selectTab('applications')"
                     @class([
-                        'flex h-full items-center justify-center rounded-full px-4 text-xs',
+                        'flex h-full shrink-0 items-center justify-center rounded-full px-4 text-xs whitespace-nowrap',
                         'bg-[#0b4742] text-white' => $tab === 'applications',
                         'cursor-pointer text-[#0b4742]' => $tab !== 'applications',
                     ])>
@@ -621,11 +1006,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             </button>
         </div>
 
-        <div class="flex w-[265px] items-center gap-2.5 rounded-[10px] bg-white px-5 py-2.5">
-            <flux:icon.magnifying-glass class="size-[17px] shrink-0 text-black/50" />
-            <input type="search" wire:model.live.debounce.300ms="search" placeholder="Search"
-                   class="w-full bg-transparent text-xs text-black placeholder:text-black/50 focus:outline-none">
-        </div>
+        <x-collapsible-search wire:model.live.debounce.300ms="search" />
     </div>
 
     @if ($tab === 'accepting')
@@ -645,6 +1026,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             @empty
                 <p class="py-10 text-center text-sm text-white">No tournaments are currently accepting registrations.</p>
             @endforelse
+
+            @if ($this->tournaments->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->tournaments->links(data: ['scrollTo' => false]) }}</div>
+            @endif
         </div>
     @else
         <div class="flex flex-col gap-[15px] rounded-[5px] bg-[#77b9b3]/60 p-5">
@@ -660,6 +1045,10 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
             @empty
                 <p class="py-10 text-center text-sm text-white">You have no tournament applications yet.</p>
             @endforelse
+
+            @if ($this->myApplications->hasPages())
+                <div class="rounded-[5px] bg-white px-4 py-3">{{ $this->myApplications->links(data: ['scrollTo' => false]) }}</div>
+            @endif
         </div>
     @endif
 
@@ -677,6 +1066,14 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                     </div>
 
                     <div class="grid grid-cols-2 gap-[15px]">
+                        <div>
+                            <p class="text-[8px] text-[#3f3f3f]">Sport</p>
+                            <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->sport ?: 'Badminton' }}</p>
+                        </div>
+                        <div>
+                            <p class="text-[8px] text-[#3f3f3f]">Venue</p>
+                            <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->location ?: '—' }}</p>
+                        </div>
                         <div>
                             <p class="text-[8px] text-[#3f3f3f]">Time</p>
                             <p class="text-[12px] font-bold text-black">{{ $this->viewingTournament->time ?? '—' }}</p>
@@ -717,10 +1114,16 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                 </div>
 
                 <div class="px-[20px] pb-[20px]">
-                    <button type="button" wire:click="startRegistration"
-                            class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
-                        Register
-                    </button>
+                    @if ($this->hasPendingApplicationInViewingTournament)
+                        <p class="rounded-[5px] bg-[#ffe48b] px-[15px] py-[10px] text-center text-[12px] text-[#9a7a12]">
+                            You already have a pending application for this tournament.
+                        </p>
+                    @else
+                        <button type="button" wire:click="startRegistration"
+                                class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
+                            Register
+                        </button>
+                    @endif
                 </div>
             </div>
         @endif
@@ -752,12 +1155,114 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         <p class="text-black/70">{{ $this->viewingApplication->paymentDetails->last()?->payment_status ?? 'No payment submitted yet' }}</p>
                     </div>
                 </div>
+
+                @if ($this->canPayForViewingApplication)
+                    <button type="button" wire:click="openPayment"
+                            class="w-full cursor-pointer rounded-[5px] bg-[#3e948d] px-[30px] py-[10px] text-center text-[12px] text-white transition hover:bg-[#0d5750]">
+                        {{ $this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected' ? 'Resubmit payment' : 'Proceed to payment' }}
+                    </button>
+                @endif
+
+                @if ($this->canCancelViewingApplication)
+                    @if ($confirmingCancel)
+                        <div class="flex flex-col gap-3 rounded-[5px] bg-[#f6d1d2] p-4">
+                            <p class="text-xs text-[#8a3b3c]">Cancel this application? It will be removed and your slot released. This can't be undone.</p>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" wire:click="$set('confirmingCancel', false)"
+                                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-1.5 text-xs text-black">Keep it</button>
+                                <button type="button" wire:click="cancelViewingApplication"
+                                        class="cursor-pointer rounded-[5px] bg-[#bd3b3c] px-4 py-1.5 text-xs text-white">Cancel application</button>
+                            </div>
+                        </div>
+                    @else
+                        <button type="button" wire:click="$set('confirmingCancel', true)"
+                                class="w-full cursor-pointer rounded-[5px] border border-[#bd3b3c] px-[30px] py-[10px] text-center text-[12px] text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                            Cancel application
+                        </button>
+                    @endif
+                @endif
+
+                @if ($this->canDeleteViewingApplication)
+                    @if ($confirmingDelete)
+                        <div class="flex flex-col gap-3 rounded-[5px] bg-[#f6d1d2] p-4">
+                            <p class="text-xs text-[#8a3b3c]">Delete this rejected application? This can't be undone.</p>
+                            <div class="flex justify-end gap-3">
+                                <button type="button" wire:click="$set('confirmingDelete', false)"
+                                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-4 py-1.5 text-xs text-black">Cancel</button>
+                                <button type="button" wire:click="deleteViewingApplication"
+                                        class="cursor-pointer rounded-[5px] bg-[#bd3b3c] px-4 py-1.5 text-xs text-white">Delete</button>
+                            </div>
+                        </div>
+                    @else
+                        <button type="button" wire:click="$set('confirmingDelete', true)"
+                                class="w-full cursor-pointer rounded-[5px] border border-[#bd3b3c] px-[30px] py-[10px] text-center text-[12px] text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                            Delete application
+                        </button>
+                    @endif
+                @endif
             </div>
         @endif
     </flux:modal>
 
-    <flux:modal name="tournament-registration" class="w-full max-w-xl dark:bg-white! dark:ring-black/5!">
-        <div class="flex flex-col gap-[20px] p-[5px]">
+    <flux:modal name="application-payment" class="w-full max-w-md dark:bg-white! dark:ring-black/5!">
+        @if ($this->viewingApplication)
+            <form wire:submit="submitPayment" class="flex flex-col gap-4">
+                <div>
+                    <p class="text-sm text-teal-800">Registration Payment</p>
+                    <h2 class="text-xl font-bold text-black">{{ $this->viewingApplication->tournamentCategory->tournament->name }}</h2>
+                    <p class="text-xs text-black/70">{{ $this->viewingApplication->tournamentCategory->category->name }} &middot; {{ $this->viewingApplication->reference_code }}</p>
+                </div>
+
+                <div class="flex items-center justify-between rounded-[5px] bg-[#eaf4f3] px-[15px] py-[12px] text-sm text-black">
+                    <span>Registration fee</span>
+                    <span class="text-lg font-bold">₱{{ number_format((float) $this->viewingApplication->tournamentCategory->registration_fee, 2) }}</span>
+                </div>
+
+                @if ($this->viewingApplication->paymentDetails->last()?->payment_status === 'rejected')
+                    <p class="rounded-[5px] bg-[#f6d1d2] px-[15px] py-[10px] text-xs text-[#bd6b6c]">
+                        Your previous proof of payment was rejected. Please upload a new, clear screenshot.
+                    </p>
+                @endif
+
+                <p class="text-xs text-black/70">
+                    Pay the registration fee through GCash, then upload a screenshot of the payment and enter its reference number.
+                </p>
+
+                <div class="flex flex-col items-center gap-2">
+                    <img src="{{ asset('images/payment/gcash-qr.png') }}" alt="GCash payment QR code" class="size-44 rounded-[5px] border border-[#d3d3d3] bg-white p-2">
+                    <span class="text-[11px] text-black/60">Scan to pay with GCash</span>
+                </div>
+
+                <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-2">
+                    <x-player.registration-field label="GCash Reference Number" model="paymentReferenceNumber" placeholder="e.g. 1234 567 890123" />
+                    <x-player.registration-field label="Date Paid" model="paymentDatePaid" type="date" max="{{ now()->toDateString() }}" />
+                </div>
+
+                <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                    <label class="text-[12px] text-black">Screenshot of payment</label>
+                    <label for="paymentProof"
+                           class="flex h-[100px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                        <span x-text="fileName || 'Upload screenshot (image, up to 4 MB)'"></span>
+                    </label>
+                    <input id="paymentProof" type="file" wire:model="paymentProof" accept="image/*" class="hidden"
+                           x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                    @error('paymentProof')
+                        <p class="text-[10px] text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
+                <button type="submit" wire:loading.attr="disabled" wire:target="submitPayment,paymentProof"
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-60">
+                    <span wire:loading.remove wire:target="submitPayment">Submit Payment Proof</span>
+                    <span wire:loading wire:target="submitPayment">Submitting…</span>
+                </button>
+            </form>
+        @endif
+    </flux:modal>
+
+    <flux:modal name="tournament-registration" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
+        <div class="relative flex flex-col gap-[20px] p-[5px] pr-10" x-data="exitGuard('tournament-registration')" x-on:input="touch()" x-on:change="touch()" x-on:modal-show.window="reset($event)">
+            <x-exit-guard />
             <div>
                 <p class="text-[15px] text-black">Tournament Registraion</p>
                 <p class="text-[20px] font-bold text-black">{{ $this->viewingTournament?->name }}</p>
@@ -765,7 +1270,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
             <div>
                 <div class="flex items-center justify-between rounded-t-[5px] bg-[#138177] px-[15px] py-[10px] text-white">
-                    <span class="text-[10px] font-bold">
+                    <span class="text-xs font-bold">
                         @if ($this->isDocumentsStep)
                             Valid Government Documents
                         @elseif ($this->isPairStep)
@@ -774,23 +1279,24 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             Player Profile
                         @endif
                     </span>
-                    <span class="text-[10px] italic">Step {{ $regStep }} of {{ $this->totalRegistrationSteps }}</span>
+                    <span class="text-xs italic">Step {{ $regStep }} of {{ $this->totalRegistrationSteps }}</span>
                 </div>
 
                 <div class="flex max-h-[420px] flex-col gap-[15px] overflow-y-auto rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
                     @if ($regStep === 1)
+                        <div wire:key="reg-step-profile" class="contents">
                         <div class="flex gap-[9px]">
                             <x-player.registration-field label="First Name" model="regFirstName" placeholder="e.g. Juan" class="flex-1" />
                             <x-player.registration-field label="Last Name" model="regLastName" placeholder="e.g. Cruz" class="flex-1" />
                             <x-player.registration-field label="M.I" model="regMiddleInitial" placeholder="e.g. D" class="flex-1" />
                         </div>
                         <div class="flex gap-[9px]">
-                            <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" :live="true" class="flex-1" />
-                            <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" class="flex-1" />
+                            <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" :live="true" class="flex-1" />
+                            <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                             <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                         </div>
                         <div class="flex gap-[5px]">
-                            <x-player.registration-field label="Skill Level" model="regSkillLevel" placeholder="e.g. Beginner" class="flex-1" />
+                            <x-player.registration-select label="Skill Level" model="regSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" class="flex-1" />
                             <x-player.registration-field label="Club" model="regClub" placeholder="e.g. OBC Badminton Club" class="flex-1" />
                         </div>
                         <div class="flex gap-[5px]">
@@ -801,16 +1307,17 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                         <x-player.registration-select
                             label="Category"
                             model="regTournamentCategoryId"
-                            placeholder="Select Category"
+                            placeholder="Select category"
                             :live="true"
-                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '')])"
+                            :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category->name.($tc->category->level ? ' - '.$tc->category->level : '').($this->fullCategoryIds->contains($tc->id) ? ' (Full)' : '')])"
+                            :disabled-options="$this->fullCategoryIds->all()"
                         />
 
                         @if ($this->isDoublesRegistration)
                             <x-player.registration-select
                                 label="Does player pair have an account?"
                                 model="pairHasAccount"
-                                placeholder="Yes/ No"
+                                placeholder="Select"
                                 :live="true"
                                 :options="['yes' => 'Yes', 'no' => 'No']"
                             />
@@ -819,18 +1326,21 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 <x-player.registration-select
                                     label="Has your pair played a tournament hosted by this organization before?"
                                     model="pairPlayedBefore"
-                                    placeholder="Yes/ No"
+                                    placeholder="Select"
                                     :live="true"
                                     :options="['yes' => 'Yes', 'no' => 'No']"
                                 />
                             @endif
                         @endif
+                        </div>
                     @elseif ($this->isPairStep)
+                        <div wire:key="reg-step-pair" class="contents">
                         @if ($this->pairViaSearch)
+                            <div wire:key="reg-pair-search" class="contents">
                             <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
                                 <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name or email"
-                                       class="flex-1 bg-transparent text-[12px] text-black placeholder:text-black/40 focus:outline-none">
-                                <div class="flex h-[30px] w-[36px] items-center justify-center">
+                                       class="flex-1 bg-transparent text-sm text-black placeholder:text-black/40 focus:outline-none">
+                                <div class="flex h-11 w-[36px] items-center justify-center">
                                     <flux:icon.magnifying-glass class="size-[17px] text-black/50" />
                                 </div>
                             </div>
@@ -843,13 +1353,13 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                                 'border-[#138177] bg-[#eaf4f3]' => $pairPlayerId === $player->id,
                                                 'border-[#d3d3d3] bg-white' => $pairPlayerId !== $player->id,
                                             ])>
-                                        <span class="flex size-[24px] shrink-0 items-center justify-center rounded-full bg-[#525591] text-[12px] font-bold text-white">
+                                        <span class="flex size-[24px] shrink-0 items-center justify-center rounded-full bg-[#525591] text-sm font-bold text-white">
                                             {{ $player->initials() }}
                                         </span>
                                         <span class="flex-1">
                                             <span class="block text-[11px] font-bold text-black">{{ $player->name }}</span>
                                             <span class="flex gap-[10px] text-[8px] text-black">
-                                                <span>{{ $player->age ? $player->age.' yrs. old' : '—' }}</span>
+                                                <span>{{ $player->age_label }}</span>
                                                 <span>{{ $player->gender ? Str::headline($player->gender) : '—' }}</span>
                                             </span>
                                         </span>
@@ -869,19 +1379,21 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                             @error('pairPlayerId')
                                 <p class="text-[11px] text-red-600">{{ $message }}</p>
                             @enderror
+                            </div>
                         @else
+                            <div wire:key="reg-pair-manual" class="contents">
                             <div class="flex gap-[9px]">
                                 <x-player.registration-field label="First Name" model="pairFirstName" placeholder="e.g. Juan" class="flex-1" />
                                 <x-player.registration-field label="Last Name" model="pairLastName" placeholder="e.g. Cruz" class="flex-1" />
                                 <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" class="flex-1" />
                             </div>
                             <div class="flex gap-[9px]">
-                                <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" class="flex-1" />
-                                <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female', 'prefer_not_to_say' => 'Prefer not to say']" class="flex-1" />
+                                <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" class="flex-1" />
+                                <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" class="flex-1" />
                                 <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" class="flex-1" />
                             </div>
                             <div class="flex gap-[5px]">
-                                <x-player.registration-field label="Skill Level" model="pairSkillLevel" placeholder="e.g. Beginner" class="flex-1" />
+                                <x-player.registration-select label="Skill Level" model="pairSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" class="flex-1" />
                                 <x-player.registration-field label="Club" model="pairClub" placeholder="e.g. OBC Badminton Club" class="flex-1" />
                             </div>
                             <div class="flex gap-[5px]">
@@ -891,7 +1403,7 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
                                 <label for="pairPhoto"
-                                       class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] py-[20px] text-center text-[12px] text-black">
+                                       class="flex cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] py-[20px] text-center text-sm text-black">
                                     <span x-text="fileName || 'Upload photo of the player'"></span>
                                 </label>
                                 <input id="pairPhoto" type="file" wire:model="pairPhoto" accept="image/*" class="hidden"
@@ -900,16 +1412,27 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                     <p class="text-[11px] text-red-600">{{ $message }}</p>
                                 @enderror
                             </div>
+                            </div>
                         @endif
+                        </div>
                     @else
+                        <div wire:key="reg-step-documents" class="contents">
+                        @if ($this->ownHasIdOnFile)
+                            <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                                Your valid ID is already on file, so you don't need to upload it again.
+                            </p>
+                        @else
                         <div class="flex flex-col gap-[10px]">
-                            <p class="text-[12px] font-bold text-black">Your valid document</p>
-                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Philippine National ID/ Passport/ Birth Certificate" :options="$this->documentTypeOptions()" />
+                            <p class="text-sm font-bold text-black">Your valid document</p>
+                            <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                            @if ($ownDocumentType === 'others')
+                                <x-player.registration-field label="Specify the type of ID" model="ownDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                            @endif
 
                             <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
-                                <label class="text-[12px] text-black">Upload attach</label>
+                                <label class="text-sm text-black">Upload attach</label>
                                 <label for="ownDocument"
-                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                     <span x-text="fileName || 'Upload photo of the document'"></span>
                                 </label>
                                 <input id="ownDocument" type="file" wire:model="ownDocument" accept="image/*" class="hidden"
@@ -919,16 +1442,24 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 @enderror
                             </div>
                         </div>
+                        @endif
 
-                        @if ($this->isDoublesRegistration)
+                        @if ($this->isDoublesRegistration && $this->pairHasIdOnFile)
+                            <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                                Your partner's valid ID is already on file.
+                            </p>
+                        @elseif ($this->isDoublesRegistration)
                             <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
-                                <p class="text-[12px] font-bold text-black">Pair's valid document</p>
-                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Philippine National ID/ Passport/ Birth Certificate" :options="$this->documentTypeOptions()" />
+                                <p class="text-sm font-bold text-black">Pair's valid document</p>
+                                <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                                @if ($pairDocumentType === 'others')
+                                    <x-player.registration-field label="Specify the type of ID" model="pairDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                                @endif
 
                                 <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
-                                    <label class="text-[12px] text-black">Upload attach</label>
+                                    <label class="text-sm text-black">Upload attach</label>
                                     <label for="pairDocument"
-                                           class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-[12px] text-[#838988]">
+                                           class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
                                         <span x-text="fileName || 'Upload photo of the document'"></span>
                                     </label>
                                     <input id="pairDocument" type="file" wire:model="pairDocument" accept="image/*" class="hidden"
@@ -939,36 +1470,34 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
                                 </div>
                             </div>
                         @endif
+                        </div>
                     @endif
                 </div>
             </div>
 
-            @error('registration')
-                <p class="text-[11px] text-red-600">{{ $message }}</p>
-            @enderror
 
             <div class="grid grid-cols-2 gap-[20px]">
                 @if ($regStep === 1)
-                    <button type="button" wire:click="cancelRegistration"
-                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                    <button type="button" x-on:click="request()"
+                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                         Cancel
                     </button>
                 @else
                     <button type="button" wire:click="registrationPreviousStep"
-                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-[30px] py-[10px] text-center text-[12px] text-[#a3a3a3]">
+                            class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
                         Back
                     </button>
                 @endif
 
                 @if ($this->isDocumentsStep)
                     <button type="button" wire:click="submitRegistration" wire:loading.attr="disabled" wire:target="submitRegistration"
-                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white disabled:cursor-not-allowed disabled:opacity-60">
+                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white disabled:cursor-not-allowed disabled:opacity-60">
                         <span wire:loading.remove wire:target="submitRegistration">Submit Application</span>
                         <span wire:loading wire:target="submitRegistration">Submitting…</span>
                     </button>
                 @else
                     <button type="button" wire:click="registrationNextStep"
-                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-[30px] py-[10px] text-center text-[12px] text-white">
+                            class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
                         Next
                     </button>
                 @endif
@@ -976,13 +1505,9 @@ new #[Layout('components.layouts.player', ['title' => 'Events'])] class extends 
         </div>
     </flux:modal>
 
-    <flux:toast />
-
-    @script
-    <script>
-        this.$on('registration-toast', (event) => {
-            window.Flux.toast({ text: event.detail.message, variant: event.detail.variant });
-        });
-    </script>
-    @endscript
+<flux:modal name="data-consent" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
+    @if ($showConsent)
+        <x-consent-dialog accept="acceptRegistrationConsent" decline="declineRegistrationConsent" />
+    @endif
+</flux:modal>
 </div>

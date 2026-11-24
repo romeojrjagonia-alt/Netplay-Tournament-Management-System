@@ -6,13 +6,21 @@
     'days' => [],
     'badge' => null,
     'badgePlacement' => 'inline',
+    'posterUrl' => null,
+    'sport' => null,
+    'location' => null,
 ])
 
 {{-- Tournament banner. `badgePlacement` matches Figma's two arrangements:
      the wide hero keeps its status pill inline on the right, the narrower
      "open for registration" cards float it above the details. --}}
 <div {{ $attributes->class(['relative flex flex-col justify-end overflow-hidden rounded-[5px] p-5']) }}>
-    <div class="pointer-events-none absolute inset-0 rounded-[5px] bg-white mix-blend-soft-light"></div>
+    @if ($posterUrl)
+        <img src="{{ $posterUrl }}" alt="" class="pointer-events-none absolute inset-0 size-full object-cover">
+        <div class="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/75 via-black/30 to-black/10"></div>
+    @else
+        <div class="pointer-events-none absolute inset-0 rounded-[5px] bg-white mix-blend-soft-light"></div>
+    @endif
 
     @if ($badge && $badgePlacement === 'top')
         <div class="relative mb-auto flex justify-end">
@@ -22,7 +30,7 @@
 
     <div class="relative flex flex-col gap-[15px]">
         <div class="flex flex-col">
-            <span class="text-[8px] leading-5 text-white">{{ $label }}</span>
+            <span class="text-[8px] leading-5 text-white">{{ $label }}@if ($sport) &middot; {{ strtoupper($sport) }}@endif</span>
             <span class="text-lg leading-5 font-bold text-white">{{ $name }}</span>
         </div>
 
@@ -37,6 +45,13 @@
                     <flux:icon.clock class="size-[15px] shrink-0" />
                     {{ $time }}
                 </span>
+
+                @if ($location)
+                    <span class="flex items-center gap-2.5 text-xs text-white">
+                        <flux:icon.map-pin class="size-[15px] shrink-0" />
+                        {{ $location }}
+                    </span>
+                @endif
 
                 @if ($days)
                     <span class="flex items-center gap-1 p-[5px]">

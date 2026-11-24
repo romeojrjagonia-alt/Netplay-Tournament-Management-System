@@ -1,9 +1,13 @@
 <?php
 
+use App\Actions\Applications\CancelApplication;
+use App\Actions\Tournaments\DeleteTournament;
+use App\Models\Category;
 use App\Models\PaymentDetail;
 use App\Models\PlayerApplication;
 use App\Models\Tournament;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Validator;
 use Livewire\Attributes\Computed;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -11,13 +15,148 @@ use Livewire\Volt\Component;
 new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] class extends Component {
     public Tournament $tournament;
 
-    public ?string $publishError = null;
+    public bool $showCategoryModal = false;
+
+    public ?int $viewingCategoryId = null;
+
+    /** @var array<int, string> Fee inputs for categories not yet added, keyed by category id. */
+    public array $newFee = [];
+
+    /** @var array<int, string> Max-player inputs for categories not yet added, keyed by category id. */
+    public array $newSlots = [];
+
+    /** @var array<int, string> Fee inputs for added categories, keyed by tournament category id. */
+    public array $editFee = [];
+
+    /** @var array<int, string> Max-player inputs for added categories, keyed by tournament category id. */
+    public array $editSlots = [];
 
     public function mount(Tournament $tournament): void
     {
         abort_unless(auth()->user()->isAdmin(), 403);
 
         $this->tournament = $tournament;
+
+        if (! $tournament->is_published && request()->query('manage') === 'categories') {
+            $this->openCategoryModal();
+        }
+    }
+
+    public function openCategoryModal(): void
+    {
+        abort_if($this->tournament->is_published, 403);
+
+        $this->syncCategoryInputs();
+        $this->showCategoryModal = true;
+    }
+
+    /**
+     * Add a library category to this draft event with its fee and player cap.
+     */
+    public function addCategory(int $categoryId): void
+    {
+        abort_if($this->tournament->is_published, 403);
+
+        $this->resetValidation();
+
+        $validator = Validator::make(
+            ['fee' => $this->newFee[$categoryId] ?? '', 'slots' => $this->newSlots[$categoryId] ?? ''],
+            ['fee' => ['required', 'numeric', 'min:0'], 'slots' => ['required', 'integer', 'min:1']],
+        );
+
+        if ($validator->fails()) {
+            $this->addRowErrors('new', $categoryId, $validator);
+
+            return;
+        }
+
+        $data = $validator->validated();
+        $category = Category::findOrFail($categoryId);
+
+        $this->tournament->tournamentCategories()->firstOrCreate(
+            ['category_id' => $category->id],
+            ['registration_fee' => $data['fee'], 'max_slots' => $data['slots'], 'status' => 'open'],
+        );
+
+        unset($this->categories, $this->availableCategories);
+        $this->syncCategoryInputs();
+    }
+
+    /**
+     * Save the edited fee and player cap of an added category.
+     */
+    public function saveCategoryTerms(int $tournamentCategoryId): void
+    {
+        abort_if($this->tournament->is_published, 403);
+
+        $this->resetValidation();
+
+        $tournamentCategory = $this->tournament->tournamentCategories()->findOrFail($tournamentCategoryId);
+
+        $validator = Validator::make(
+            ['fee' => $this->editFee[$tournamentCategoryId] ?? '', 'slots' => $this->editSlots[$tournamentCategoryId] ?? ''],
+            ['fee' => ['required', 'numeric', 'min:0'], 'slots' => ['required', 'integer', 'min:1']],
+        );
+
+        if ($validator->fails()) {
+            $this->addRowErrors('edit', $tournamentCategoryId, $validator);
+
+            return;
+        }
+
+        $data = $validator->validated();
+
+        $tournamentCategory->update(['registration_fee' => $data['fee'], 'max_slots' => $data['slots']]);
+
+        unset($this->categories);
+    }
+
+    public function removeCategory(int $tournamentCategoryId): void
+    {
+        abort_if($this->tournament->is_published, 403);
+
+        $this->tournament->tournamentCategories()
+            ->whereDoesntHave('playerApplications')
+            ->where('id', $tournamentCategoryId)
+            ->delete();
+
+        unset($this->categories, $this->availableCategories);
+        $this->syncCategoryInputs();
+    }
+
+    /**
+     * Library categories not yet added to this event.
+     *
+     * @return Collection<int, Category>
+     */
+    #[Computed]
+    public function availableCategories(): Collection
+    {
+        return Category::query()
+            ->whereNotIn('id', $this->tournament->tournamentCategories()->select('category_id'))
+            ->orderBy('name')
+            ->orderBy('level')
+            ->get();
+    }
+
+    /**
+     * Seed the added-category inputs from the database, dropping stale keys.
+     */
+    private function syncCategoryInputs(): void
+    {
+        $added = $this->tournament->tournamentCategories()->get();
+
+        $this->editFee = $added->mapWithKeys(fn ($tc) => [$tc->id => (string) $tc->registration_fee])->all();
+        $this->editSlots = $added->mapWithKeys(fn ($tc) => [$tc->id => (string) $tc->max_slots])->all();
+        $this->newFee = array_intersect_key($this->newFee, $this->availableCategories->keyBy('id')->all());
+        $this->newSlots = array_intersect_key($this->newSlots, $this->availableCategories->keyBy('id')->all());
+    }
+
+    private function addRowErrors(string $prefix, int $id, \Illuminate\Validation\Validator $validator): void
+    {
+        foreach ($validator->errors()->messages() as $field => $messages) {
+            $this->addError($prefix.ucfirst($field).'.'.$id, $messages[0]);
+        }
     }
 
     /**
@@ -28,25 +167,119 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     public function togglePublish(): void
     {
         if (! $this->tournament->is_published && $this->tournament->tournamentCategories()->doesntExist()) {
-            $this->publishError = 'Add at least one category before publishing this event.';
+            $this->dispatch('system-message', title: 'Cannot publish yet', message: 'Add at least one category before publishing this event.', variant: 'danger');
 
             return;
         }
-
-        $this->publishError = null;
 
         $this->tournament->update(['status' => $this->tournament->is_published ? 'draft' : 'published']);
     }
 
     /**
+     * An admin concluding an event closes registration and unlocks its
+     * reports. Only published events can be concluded.
+     */
+    public function concludeEvent(): void
+    {
+        abort_unless($this->tournament->is_published, 403);
+
+        $this->tournament->update(['concluded_at' => now()]);
+        $this->tournament->refresh();
+
+        $this->dispatch('system-message', title: 'Event concluded', message: 'The event is now concluded. Its reports are available.', variant: 'success');
+    }
+
+    /**
+     * Undo a manual conclusion; not possible once the end date has passed.
+     */
+    public function reopenEvent(): void
+    {
+        abort_if($this->tournament->date_end->lt(today()), 403);
+
+        $this->tournament->update(['concluded_at' => null]);
+        $this->tournament->refresh();
+    }
+
+    /**
+     * Hard-deletes the event. Refused once it holds finalized entries or
+     * played matches, so player history is never lost.
+     */
+    public function deleteEvent(DeleteTournament $deleteTournament): void
+    {
+        abort_if($this->tournament->is_concluded, 403);
+
+        try {
+            $deleteTournament->handle($this->tournament);
+        } catch (\InvalidArgumentException $exception) {
+            $this->dispatch('system-message', title: 'Cannot delete event', message: $exception->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->redirectRoute('admin.events.index', navigate: true);
+    }
+
+    #[Computed]
+    public function hasFinalizedRecords(): bool
+    {
+        return $this->tournament->hasFinalizedRecords();
+    }
+
+    public function viewCategory(int $tournamentCategoryId): void
+    {
+        $this->viewingCategoryId = $this->tournament->tournamentCategories()->whereKey($tournamentCategoryId)->value('id');
+    }
+
+    public function closeCategory(): void
+    {
+        $this->viewingCategoryId = null;
+    }
+
+    /**
+     * Cancel a walk-in's (or anyone's) pending application on their behalf.
+     * Same rule as for players: nothing awaiting review or verified yet.
+     */
+    public function cancelApplication(int $applicationId): void
+    {
+        $application = PlayerApplication::query()
+            ->whereIn('tournament_category_id', $this->tournament->tournamentCategories()->select('id'))
+            ->findOrFail($applicationId);
+
+        try {
+            app(CancelApplication::class)->handle($application);
+        } catch (\InvalidArgumentException $e) {
+            $this->dispatch('system-message', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        unset($this->categories, $this->viewingCategory);
+
+        $this->dispatch('system-message', message: 'Application cancelled.', variant: 'success');
+    }
+
+    /**
+     * Every non-rejected application holds a slot, so these are the entries
+     * counted against a category's maximum.
+     *
      * @return Collection<int, \App\Models\TournamentCategory>
      */
     #[Computed]
     public function categories(): Collection
     {
         return $this->tournament->tournamentCategories()
-            ->with(['category', 'playerApplications' => fn ($query) => $query->where('status', 'approved')->with('applicationPlayers')])
+            ->with(['category', 'playerApplications' => fn ($query) => $query
+                ->where('status', '!=', 'rejected')
+                ->with(['applicationPlayers.player', 'paymentDetails'])])
             ->get();
+    }
+
+    #[Computed]
+    public function viewingCategory(): ?\App\Models\TournamentCategory
+    {
+        return $this->viewingCategoryId
+            ? $this->categories->firstWhere('id', $this->viewingCategoryId)
+            : null;
     }
 
     /**
@@ -65,7 +298,7 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
             'pendingPayments' => PaymentDetail::where('payment_status', 'pending')
                 ->whereHas('application', fn ($query) => $query->whereIn('tournament_category_id', $tournamentCategoryIds))
                 ->count(),
-            'registeredPlayers' => $this->categories->flatMap->playerApplications->flatMap->applicationPlayers->count(),
+            'registeredPlayers' => $this->categories->flatMap->playerApplications->where('status', 'approved')->flatMap->applicationPlayers->count(),
         ];
     }
 
@@ -81,23 +314,58 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
 
 <div class="flex flex-col gap-6">
     <div class="flex flex-col gap-4 border-b border-white/50 pb-4">
-        <div class="flex items-center gap-5">
-            <h2 class="flex-1 text-2xl font-bold text-white">{{ $tournament->name }}</h2>
+        <div class="flex flex-wrap items-center gap-3 sm:gap-5">
+            <h2 class="min-w-0 flex-1 basis-full text-2xl font-bold text-white sm:basis-0">{{ $tournament->name }}</h2>
 
             @unless ($tournament->is_published)
                 <a href="{{ route('admin.events.edit', $tournament) }}" wire:navigate class="rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
                     Edit Event
                 </a>
+
+                <button type="button" wire:click="openCategoryModal" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    {{ $this->categories->isEmpty() ? 'Add Categories' : 'Manage Categories' }}
+                </button>
             @endunless
 
-            <button type="button" wire:click="togglePublish" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
-                {{ $tournament->is_published ? 'Unpublish Event' : 'Publish Event' }}
-            </button>
+            @if ($tournament->is_published && ! $tournament->is_concluded && $tournament->registration_end->endOfDay()->isFuture())
+                <a href="{{ route('tournaments.register', $tournament) }}" class="rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    Register Walk-in
+                </a>
+            @endif
+
+            @if ($tournament->is_published && ! $tournament->is_concluded)
+                <button type="button"
+                        x-on:click="$dispatch('system-confirm', { title: 'Conclude this event?', message: 'Registration closes and players will no longer see it as open. You can reopen it until its end date passes.', confirmLabel: 'Conclude', confirm: () => $wire.concludeEvent() })"
+                        class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    Conclude Event
+                </button>
+            @elseif ($tournament->concluded_at && $tournament->date_end->gte(today()))
+                <button type="button" wire:click="reopenEvent" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    Reopen Event
+                </button>
+            @endif
+
+            @unless ($tournament->is_concluded)
+                <button type="button" wire:click="togglePublish" class="cursor-pointer rounded-full border border-[#138177] bg-white px-4 py-2 text-xs text-black">
+                    {{ $tournament->is_published ? 'Unpublish Event' : 'Publish Event' }}
+                </button>
+
+                @if ($this->hasFinalizedRecords)
+                    <button type="button"
+                            x-on:click="$dispatch('system-message', { title: 'Cannot delete event', message: 'This event has finalized entries (approved and paid) or played matches. Deleting it would erase player match history.', variant: 'danger' })"
+                            class="cursor-not-allowed rounded-full border border-[#bd6b6c] bg-white px-4 py-2 text-xs text-[#bd6b6c] opacity-50">
+                        Delete Event
+                    </button>
+                @else
+                    <button type="button"
+                            x-on:click="$dispatch('system-confirm', { title: 'Delete this event?', message: 'This permanently deletes the event, its categories, applications, and uploaded payment proofs. Applicants will be emailed. This can\'t be undone.', variant: 'danger', confirmLabel: 'Delete', confirm: () => $wire.deleteEvent() })"
+                            class="cursor-pointer rounded-full border border-[#bd6b6c] bg-white px-4 py-2 text-xs text-[#bd6b6c]">
+                        Delete Event
+                    </button>
+                @endif
+            @endunless
         </div>
 
-        @if ($publishError)
-            <p class="text-right text-xs font-medium text-red-300">{{ $publishError }}</p>
-        @endif
 
         <div class="flex flex-wrap items-center justify-between gap-4">
             <div class="flex flex-wrap items-center gap-8">
@@ -136,23 +404,23 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
         <x-admin.event-tabs :tournament="$tournament" active="dashboard" />
     </div>
 
-    <div class="flex flex-wrap items-center gap-[30px]">
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+    <div class="flex flex-wrap items-center gap-4 sm:gap-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">NO. OF CATEGORIES</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['categories'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">PENDING APPLICATIONS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['pendingApplications'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">PENDING PAYMENTS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['pendingPayments'] }}</span>
         </div>
-        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-[30px]">
+        <div class="relative flex h-[67px] items-center gap-1.5 overflow-hidden rounded-[10px] px-5 sm:px-[30px]">
             <div class="absolute inset-0 bg-white mix-blend-soft-light"></div>
             <span class="relative text-[10px] text-white">REGISTERED PLAYERS</span>
             <span class="relative text-[33px] font-bold text-white">{{ $this->totals['registeredPlayers'] }}</span>
@@ -162,43 +430,162 @@ new #[Layout('components.layouts.admin', ['title' => 'Event Tournaments'])] clas
     <div class="flex flex-col gap-[17px]">
         @forelse ($this->categories as $tournamentCategory)
             @php
-                $registered = $tournamentCategory->playerApplications->flatMap->applicationPlayers->count();
+                $entries = $tournamentCategory->playerApplications->count();
                 $capacity = max($tournamentCategory->max_slots, 1);
-                $percent = min(100, (int) round($registered / $capacity * 100));
+                $percent = min(100, (int) round($entries / $capacity * 100));
+                $isFull = $entries >= $tournamentCategory->max_slots;
             @endphp
-            <div class="flex items-center gap-[100px] rounded-[10px] bg-white px-[30px] py-2.5 shadow-[0px_6px_2px_rgba(0,0,0,0.25)]">
-                <span class="text-lg font-bold text-black">{{ $tournamentCategory->category->name }}</span>
+            <button type="button" wire:click="viewCategory({{ $tournamentCategory->id }})" wire:key="category-{{ $tournamentCategory->id }}"
+                    class="grid w-full cursor-pointer grid-cols-2 items-center gap-x-6 gap-y-3 rounded-[10px] bg-white px-5 py-3 text-left shadow-[0px_6px_2px_rgba(0,0,0,0.25)] transition hover:bg-[#f3faf9] sm:px-[30px] lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(200px,2fr)]">
+                <span class="col-span-2 truncate text-lg font-bold text-black lg:col-span-1">{{ $tournamentCategory->category->name }}</span>
 
                 <div class="flex flex-col gap-1">
                     <span class="text-xs text-black">LEVEL</span>
-                    <span class="text-xs font-bold text-black uppercase">{{ $tournamentCategory->category->level ?? '—' }}</span>
+                    <span class="text-xs font-bold text-black uppercase">{{ $tournamentCategory->category->level ?? 'Any' }}</span>
                 </div>
 
                 <div class="flex flex-col gap-1">
                     <span class="text-xs text-black">AGE RANGE</span>
-                    <span class="text-xs font-bold text-black">
-                        {{ $tournamentCategory->category->age_min ?? '—' }} - {{ $tournamentCategory->category->age_max ?? '—' }} YRS. OLD
-                    </span>
+                    <span class="text-xs font-bold text-black">{{ $tournamentCategory->category->age_label }}</span>
                 </div>
 
-                <div class="flex flex-1 flex-col gap-1">
-                    <span class="text-xs text-black">{{ $registered }}/{{ $tournamentCategory->max_slots }} PLAYERS REGISTERED</span>
+                <div class="col-span-2 flex flex-col gap-1 lg:col-span-1">
+                    <span class="text-xs text-black">{{ $entries }}/{{ $tournamentCategory->max_slots }} ENTRIES{{ $isFull ? ' · FULL' : '' }}</span>
                     <div class="h-[9px] w-full overflow-hidden rounded-full bg-[#d9d9d9]">
-                        <div class="h-full bg-[#9cee69]" style="width: {{ $percent }}%"></div>
+                        <div @class(['h-full', 'bg-[#9cee69]' => ! $isFull, 'bg-[#bd6b6c]' => $isFull]) style="width: {{ $percent }}%"></div>
                     </div>
                 </div>
-            </div>
+            </button>
         @empty
-            <div class="flex h-[481px] flex-col items-center justify-center gap-6 rounded-[10px] bg-white">
+            <div class="flex min-h-[320px] flex-col items-center justify-center gap-6 rounded-[10px] bg-white">
                 <p class="text-[22px] text-black/70 italic">No Categories Added Yet</p>
 
                 @unless ($tournament->is_published)
-                    <a href="{{ route('admin.events.wizard.categories', $tournament) }}" wire:navigate class="flex items-center gap-1.5 rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
+                    <button type="button" wire:click="openCategoryModal" class="flex cursor-pointer items-center gap-1.5 rounded-[10px] bg-[#3e948d] px-[30px] py-[10px] text-xs font-medium text-white">
                         <flux:icon.plus class="size-4" />
-                        Add Category
-                    </a>
+                        Add Categories
+                    </button>
                 @endunless
             </div>
         @endforelse
     </div>
+
+    @if ($this->viewingCategory)
+        <div class="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" wire:key="category-roster-modal"
+             x-data x-on:keydown.escape.window="$wire.closeCategory()">
+            <div class="absolute inset-0 bg-black/70" wire:click="closeCategory"></div>
+
+            <div class="relative flex max-h-[85vh] w-full max-w-3xl flex-col gap-4 overflow-hidden rounded-[20px] bg-white p-6 text-black shadow-xl">
+                <div class="flex items-start justify-between gap-4">
+                    <div>
+                        <h2 class="text-lg font-bold">{{ $this->viewingCategory->category_label }}</h2>
+                        <p class="text-xs text-black/70">
+                            {{ $this->viewingCategory->playerApplications->count() }}/{{ $this->viewingCategory->max_slots }} entries
+                            · ₱{{ number_format((float) $this->viewingCategory->registration_fee, 2) }} fee
+                        </p>
+                    </div>
+                    <button type="button" wire:click="closeCategory" class="cursor-pointer text-black/60" aria-label="Close">
+                        <flux:icon.x-mark class="size-5" />
+                    </button>
+                </div>
+
+                <div class="min-h-0 flex-1 overflow-y-auto">
+                    @forelse ($this->viewingCategory->playerApplications as $application)
+                        @php $latestPayment = $application->paymentDetails->sortBy('id')->last(); @endphp
+                        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-[#ddefed] py-3 last:border-b-0" wire:key="roster-{{ $application->id }}">
+                            <div class="flex min-w-0 flex-col gap-0.5">
+                                <span class="text-sm font-bold">{{ $application->applicationPlayers->map(fn ($ap) => $ap->player?->name)->filter()->implode(' / ') }}</span>
+                                <span class="text-[11px] text-black/60">
+                                    {{ $application->applicationPlayers->map(fn ($ap) => $ap->level_at_apply)->filter()->unique()->implode(', ') ?: 'No level' }}
+                                    · {{ $application->reference_code }}
+                                </span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 text-[10px] font-bold">
+                                <span class="rounded-full bg-[#eaf4f3] px-3 py-1 text-[#0b4742]">{{ $application->status_label }}</span>
+                                <span class="rounded-full bg-[#f1f1f1] px-3 py-1">Payment: {{ $latestPayment ? ucfirst($latestPayment->payment_status) : 'None' }}</span>
+                                @if ($application->canBeCancelled())
+                                    <button type="button"
+                                            x-on:click="$dispatch('system-confirm', { title: 'Cancel this application?', message: 'It will be removed and the slot released. This can\'t be undone.', variant: 'danger', confirmLabel: 'Cancel application', confirm: () => $wire.cancelApplication({{ $application->id }}) })"
+                                            class="cursor-pointer rounded-full border border-[#bd3b3c] px-3 py-1 text-[#bd3b3c] transition hover:bg-[#bd3b3c]/10">
+                                        Cancel
+                                    </button>
+                                @endif
+                            </div>
+                        </div>
+                    @empty
+                        <p class="py-10 text-center text-sm text-black/60 italic">No entries in this category yet.</p>
+                    @endforelse
+                </div>
+            </div>
+        </div>
+    @endif
+    @unless ($tournament->is_published)
+        <flux:modal wire:model.self="showCategoryModal" class="w-full md:w-[760px] max-w-[95vw] dark:bg-white! dark:ring-black/5!">
+            <div class="flex flex-col gap-5 text-black [color-scheme:light]">
+                <div class="flex flex-col gap-1">
+                    <h2 class="text-base font-bold text-black">Event Categories</h2>
+                    <p class="text-sm text-black/70">Add categories to "{{ $tournament->name }}" and set each one's registration fee and maximum players. Need a new category? <a href="{{ route('admin.categories.index') }}" wire:navigate class="font-medium underline">Create one here</a>.</p>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <span class="text-xs font-bold">Available categories ({{ $this->availableCategories->count() }})</span>
+                    <div class="max-h-60 overflow-y-auto rounded-[5px] bg-white border border-[#ddefed]">
+                        @forelse ($this->availableCategories as $category)
+                            <div class="flex flex-wrap items-start gap-2 border-b border-[#ddefed] p-2.5 last:border-b-0" wire:key="available-{{ $category->id }}">
+                                <div class="min-w-[160px] flex-1">
+                                    <p class="text-xs font-bold">{{ $category->name }}</p>
+                                    <p class="text-[11px] opacity-70">{{ $category->level ?? 'Any' }} · {{ $category->age_label }}</p>
+                                </div>
+                                <div class="flex flex-col gap-0.5">
+                                    <input type="number" step="0.01" min="0" wire:model="newFee.{{ $category->id }}" placeholder="Fee (PHP)" aria-label="Registration fee" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black placeholder:text-black/50">
+                                    @error('newFee.'.$category->id) <p class="text-[10px] text-red-600">{{ $message }}</p> @enderror
+                                </div>
+                                <div class="flex flex-col gap-0.5">
+                                    <input type="number" min="1" wire:model="newSlots.{{ $category->id }}" placeholder="Max entries" aria-label="Maximum entries" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black placeholder:text-black/50">
+                                    @error('newSlots.'.$category->id) <p class="text-[10px] text-red-600">{{ $message }}</p> @enderror
+                                </div>
+                                <button type="button" wire:click="addCategory({{ $category->id }})" class="flex h-[30px] cursor-pointer items-center gap-1 rounded-[5px] bg-[#3e948d] px-3 text-xs font-medium text-white">
+                                    <flux:icon.plus class="size-3.5" />
+                                    Add
+                                </button>
+                            </div>
+                        @empty
+                            <p class="p-4 text-center text-xs opacity-60">No more categories to add.</p>
+                        @endforelse
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-2">
+                    <span class="text-xs font-bold">Added to this event ({{ $this->categories->count() }})</span>
+                    <div class="max-h-60 overflow-y-auto rounded-[5px] bg-white border border-[#ddefed]">
+                        @forelse ($this->categories as $tournamentCategory)
+                            <div class="flex flex-wrap items-start gap-2 border-b border-[#ddefed] p-2.5 last:border-b-0" wire:key="added-{{ $tournamentCategory->id }}">
+                                <div class="min-w-[160px] flex-1">
+                                    <p class="text-xs font-bold">{{ $tournamentCategory->category->name }}</p>
+                                    <p class="text-[11px] opacity-70">{{ $tournamentCategory->category->level ?? 'Any' }} · {{ $tournamentCategory->category->age_label }}</p>
+                                </div>
+                                <div class="flex flex-col gap-0.5">
+                                    <input type="number" step="0.01" min="0" wire:model="editFee.{{ $tournamentCategory->id }}" wire:change="saveCategoryTerms({{ $tournamentCategory->id }})" aria-label="Registration fee" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black">
+                                    @error('editFee.'.$tournamentCategory->id) <p class="text-[10px] text-red-600">{{ $message }}</p> @enderror
+                                </div>
+                                <div class="flex flex-col gap-0.5">
+                                    <input type="number" min="1" wire:model="editSlots.{{ $tournamentCategory->id }}" wire:change="saveCategoryTerms({{ $tournamentCategory->id }})" aria-label="Maximum entries" class="h-[30px] w-28 rounded-[5px] bg-[#eaf4f3] px-2 text-xs text-black">
+                                    @error('editSlots.'.$tournamentCategory->id) <p class="text-[10px] text-red-600">{{ $message }}</p> @enderror
+                                </div>
+                                <button type="button" wire:click="removeCategory({{ $tournamentCategory->id }})" class="flex h-[30px] w-9 cursor-pointer items-center justify-center text-[#bd6b6c]" aria-label="Remove category">
+                                    <flux:icon.trash class="size-4" />
+                                </button>
+                            </div>
+                        @empty
+                            <p class="p-4 text-center text-xs opacity-60">No categories added yet.</p>
+                        @endforelse
+                    </div>
+                </div>
+
+                <div class="flex justify-end">
+                    <flux:button variant="primary" wire:click="$set('showCategoryModal', false)">Done</flux:button>
+                </div>
+            </div>
+        </flux:modal>
+    @endunless
 </div>

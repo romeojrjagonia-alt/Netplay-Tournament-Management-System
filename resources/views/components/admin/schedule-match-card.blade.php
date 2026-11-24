@@ -1,13 +1,23 @@
-@props(['match'])
+@props(['match', 'tournament' => null])
 
 @php
+    // Compared by calendar day, like the save-time warning on the schedule page.
+    $outsideDates = $tournament && $match->scheduled_at
+        && ($match->scheduled_at->copy()->startOfDay()->lt($tournament->date_start->copy()->startOfDay())
+            || $match->scheduled_at->copy()->startOfDay()->gt($tournament->date_end->copy()->startOfDay()));
+    $outsideDatesTip = $outsideDates
+        ? 'Scheduled outside the tournament dates ('.$tournament->date_start->format('M j').' to '.$tournament->date_end->format('M j, Y').')'
+        : null;
+
     // Expects games.rallies and matchApplications.application.applicationPlayers.player
     // eager-loaded by the caller, so a full draw doesn't N+1.
     $playerSideMap = $match->playerSideMap();
+    $singleSet = $match->usesSinglePointSystem();
+    $pickleball = $match->usesPickleballRules();
     $games = $match->games->sortBy('game_number')->values();
     $gameResults = $games->map(fn ($game) => [
         'scores' => $game->scores($playerSideMap),
-        'winner' => $game->winningSide($playerSideMap),
+        'winner' => $game->winningSide($playerSideMap, $singleSet, $pickleball),
     ]);
     $winnerSide = $match->status === 'completed' ? $match->winnerSide() : null;
 
@@ -19,12 +29,19 @@
 @endphp
 
 <div class="flex flex-col overflow-hidden rounded-[10px] bg-white shadow-[0px_6px_2px_rgba(0,0,0,0.25)]">
-    <div class="flex items-center justify-between gap-2 bg-[#051c1a] px-4 py-2.5">
+    <div @class([
+        'flex items-center justify-between gap-2 px-4 py-2.5',
+        'bg-[#051c1a]' => ! $outsideDates,
+        'bg-red-700' => $outsideDates,
+    ]) @if ($outsideDates) title="{{ $outsideDatesTip }}" @endif>
         @if ($match->court || $match->scheduled_at)
             <span class="text-[11px] font-bold text-white">
                 {{ $match->court ? 'Court '.$match->court : 'Court TBA' }}
                 @if ($match->scheduled_at)
                     · {{ $match->scheduled_at->format('M j') }} · {{ $match->scheduled_at->format('g:i A') }}
+                @endif
+                @if ($outsideDates)
+                    <span class="ml-1 rounded bg-white px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-red-700">OUTSIDE DATES</span>
                 @endif
             </span>
         @else
@@ -44,7 +61,7 @@
                 ])>{{ $loop->iteration }}</span>
 
                 <span @class(['flex-1 text-sm text-black', 'font-bold' => $winnerSide === $side])>
-                    {{ $match->sideLabel($side) ?: 'TBD' }}
+                    {{ $match->sideLabel($side) ?: ($match->status === 'completed' ? 'BYE' : 'TBD') }}
                 </span>
 
                 @foreach ($gameResults as $result)

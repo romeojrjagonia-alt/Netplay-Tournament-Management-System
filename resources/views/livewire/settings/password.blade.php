@@ -1,8 +1,8 @@
 <?php
 
+use App\Rules\AccountPassword;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 use Livewire\Volt\Component;
 
@@ -19,7 +19,7 @@ new class extends Component {
         try {
             $validated = $this->validate([
                 'current_password' => ['required', 'string', 'current_password'],
-                'password' => ['required', 'string', Password::defaults(), 'confirmed'],
+                'password' => ['required', 'string', new AccountPassword, 'confirmed'],
             ]);
         } catch (ValidationException $e) {
             $this->reset('current_password', 'password', 'password_confirmation');
@@ -34,6 +34,7 @@ new class extends Component {
         $this->reset('current_password', 'password', 'password_confirmation');
 
         $this->dispatch('password-updated');
+        $this->dispatch('system-message', title: 'Password updated', message: 'Your password was changed.', variant: 'success');
     }
 }; ?>
 
@@ -75,9 +76,6 @@ new class extends Component {
                     <flux:button variant="primary" type="submit" class="w-full">{{ __('Save') }}</flux:button>
                 </div>
 
-                <x-action-message class="me-3" on="password-updated">
-                    {{ __('Saved.') }}
-                </x-action-message>
             </div>
         </form>
     </x-settings.layout>

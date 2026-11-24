@@ -33,7 +33,8 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Off so it doesn't claim the /storage/{path} route used by the "public" disk.
+            'serve' => false,
             'throw' => false,
         ],
 
@@ -43,7 +44,11 @@ return [
             // In production, point this at a persistent volume's mount path
             // (e.g. a Railway volume) so uploads survive redeploys.
             'root' => env('PUBLIC_STORAGE_PATH', storage_path('app/public')),
-            'url' => env('APP_URL').'/storage',
+            // Relative, so URLs work on any host/scheme (APP_URL no longer matters).
+            'url' => '/storage',
+            // Fallback route that serves files when the public/storage symlink
+            // is missing (e.g. a fresh Railway deploy without `storage:link`).
+            'serve' => true,
             'visibility' => 'public',
             'throw' => false,
         ],

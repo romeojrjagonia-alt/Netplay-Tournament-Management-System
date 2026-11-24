@@ -1,14 +1,24 @@
 <?php
 
+use App\Rules\PhoneNumber;
+use App\Livewire\Actions\SendVerificationEmail;
 use App\Models\Player;
+use App\Support\Profile\ChangesPassword;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Computed;
 use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
 
 new class extends Component {
+    use ChangesPassword;
+    use WithFileUploads;
+
     public bool $editing = false;
+
+    public $photo = null;
 
     public string $name = '';
 
@@ -18,9 +28,13 @@ new class extends Component {
 
     public string $phoneNumber = '';
 
+    public ?string $verificationStatus = null;
+
     #[Computed]
     public function player(): Player
     {
+        auth()->user()->ensurePlayer();
+
         return auth()->user()->player()->with('statistic')->firstOrFail();
     }
 
@@ -51,8 +65,17 @@ new class extends Component {
 
     public function cancelEditing(): void
     {
+        $this->photo = null;
         $this->resetValidation();
         $this->editing = false;
+    }
+
+    /**
+     * Send a verification link to the player's current email address.
+     */
+    public function sendVerification(SendVerificationEmail $send): void
+    {
+        $this->verificationStatus = $send(Auth::user());
     }
 
     /**
@@ -65,7 +88,8 @@ new class extends Component {
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')->ignore(Auth::id())],
             'address' => ['required', 'string', 'max:255'],
-            'phoneNumber' => ['nullable', 'string', 'max:255'],
+            'phoneNumber' => ['nullable', 'string', new PhoneNumber],
+            'photo' => ['nullable', 'image', 'max:2048'],
         ]);
 
         $user = Auth::user();
@@ -74,15 +98,29 @@ new class extends Component {
 
         if ($user->isDirty('email')) {
             $user->email_verified_at = null;
+            $this->verificationStatus = null;
         }
 
         $user->save();
 
-        $this->player->update([
+        $attributes = [
             'name' => $validated['name'],
             'address' => $validated['address'],
             'phone_number' => $validated['phoneNumber'],
-        ]);
+        ];
+
+        if ($this->photo) {
+            $previousPhoto = $this->player->photo_path;
+            $attributes['photo_path'] = $this->photo->store('player-photos', 'public');
+
+            if ($previousPhoto) {
+                Storage::disk('public')->delete($previousPhoto);
+            }
+        }
+
+        $this->player->update($attributes);
+        $this->photo = null;
+        unset($this->player);
 
         $this->editing = false;
 
@@ -92,13 +130,33 @@ new class extends Component {
 
 <div>
     <flux:modal name="player-profile" class="w-full max-w-2xl dark:bg-white! dark:ring-black/5!">
-        <div class="flex flex-col gap-6">
+        @if ($securityView)
+            <x-profile.security-form :has-password="$this->hasPassword" :password-step="$passwordStep" :new-password="$newPassword" />
+        @else
+        <div wire:key="profile-main" class="flex flex-col gap-6">
             <div class="flex items-start gap-5">
-                <x-portal.avatar
-                    :photo-url="$this->player->photo_url"
-                    :initials="auth()->user()->initials()"
-                    class="size-28 text-3xl ring-2 ring-[#178279]"
-                />
+                @if ($editing)
+                    <label for="profile-photo" class="group relative block size-28 shrink-0 cursor-pointer">
+                        <x-portal.avatar
+                            :photo-url="$photo ? $photo->temporaryUrl() : $this->player->photo_url"
+                            :initials="auth()->user()->initials()"
+                            class="size-28 text-3xl ring-2 ring-[#178279]"
+                        />
+                        <span class="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 p-3 text-center text-[11px] font-bold text-white opacity-0 transition group-hover:opacity-100">
+                            Click to change profile
+                        </span>
+                    </label>
+                    <input id="profile-photo" type="file" wire:model="photo" accept="image/*" class="hidden">
+                    @error('photo')
+                        <p class="text-[11px] text-red-600">{{ $message }}</p>
+                    @enderror
+                @else
+                    <x-portal.avatar
+                        :photo-url="$this->player->photo_url"
+                        :initials="auth()->user()->initials()"
+                        class="size-28 text-3xl ring-2 ring-[#178279]"
+                    />
+                @endif
 
                 <div class="flex flex-col gap-3 pt-1">
                     @if ($editing)
@@ -119,6 +177,23 @@ new class extends Component {
                         <div>
                             <h2 class="text-xl font-bold text-black uppercase">{{ $this->player->name }}</h2>
                             <p class="text-sm text-black/70">{{ auth()->user()->email }}</p>
+                        </div>
+                    @endif
+
+                    @if (! $editing && ! auth()->user()->hasVerifiedEmail())
+                        <div class="flex flex-col items-start gap-1">
+                            @if ($verificationStatus === 'sent')
+                                <p class="text-xs text-[#0d5750]">Verification link sent. Check your inbox.</p>
+                            @else
+                                <button type="button" wire:click="sendVerification" wire:loading.attr="disabled" wire:target="sendVerification"
+                                        class="cursor-pointer rounded-[5px] bg-[#0d5750] px-4 py-1.5 text-xs font-bold text-white transition hover:bg-[#0b4742] disabled:cursor-not-allowed disabled:opacity-60">
+                                    <span wire:loading.remove wire:target="sendVerification">Verify account</span>
+                                    <span wire:loading wire:target="sendVerification">Sending…</span>
+                                </button>
+                                @if ($verificationStatus === 'throttled')
+                                    <p class="text-[11px] text-red-600">Please wait a minute before requesting another link.</p>
+                                @endif
+                            @endif
                         </div>
                     @endif
 
@@ -155,7 +230,7 @@ new class extends Component {
                 </div>
                 <div>
                     <p class="text-xs font-bold text-black">Age</p>
-                    <p class="text-sm text-black/70">{{ $this->player->age ? "{$this->player->age} yrs. old" : '—' }}</p>
+                    <p class="text-sm text-black/70">{{ $this->player->age_label }}</p>
                 </div>
                 <div>
                     <p class="text-xs font-bold text-black">Gender</p>
@@ -183,7 +258,7 @@ new class extends Component {
             <div>
                 <p class="text-xs font-bold text-black">Contact Number</p>
                 @if ($editing)
-                    <input type="text" wire:model="phoneNumber" placeholder="Contact Number"
+                    <input type="tel" wire:model="phoneNumber" placeholder="e.g. 09123456789" inputmode="numeric" maxlength="11" autocomplete="tel" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 11)"
                            class="mt-1 w-full rounded-[5px] bg-[#11776e]/15 px-2.5 py-2 text-sm text-black focus:outline-none">
                     @error('phoneNumber')
                         <p class="text-[11px] text-red-600">{{ $message }}</p>
@@ -209,11 +284,13 @@ new class extends Component {
                             class="cursor-pointer rounded-[5px] border border-[#178279] px-6 py-2 text-sm text-[#178279] transition hover:bg-[#178279]/10">
                         Edit
                     </button>
-                    <button type="button" disabled class="cursor-not-allowed rounded-[5px] border border-[#d3d3d3] px-6 py-2 text-sm text-black/40">
+                    <button type="button" wire:click="openSecurity"
+                            class="cursor-pointer rounded-[5px] border border-[#178279] px-6 py-2 text-sm text-[#178279] transition hover:bg-[#178279]/10">
                         Security Details
                     </button>
                 @endif
             </div>
         </div>
+        @endif
     </flux:modal>
 </div>

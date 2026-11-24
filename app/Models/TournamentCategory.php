@@ -49,7 +49,7 @@ class TournamentCategory extends Model
     /**
      * Restrict to categories a player of the given gender and age is allowed
      * to register for. A "mixed" category gender always qualifies; any other
-     * player gender (including null/"prefer_not_to_say") only qualifies for
+     * player gender (including null) only qualifies for
      * "mixed" categories. Null age bounds on the category are unrestricted.
      */
     public function scopeEligibleFor(Builder $query, ?string $gender, ?int $age): Builder
@@ -74,6 +74,59 @@ class TournamentCategory extends Model
     public function hasGeneratedDraw(): bool
     {
         return $this->matches()->exists();
+    }
+
+    /**
+     * Whether any real match has begun or finished (a BYE auto-completes at
+     * generation, so it doesn't count). Once true, the draw can't be
+     * regenerated without destroying results.
+     */
+    public function hasStartedMatches(): bool
+    {
+        return $this->matches()
+            ->where(fn (Builder $query) => $query
+                ->whereHas('games')
+                ->orWhere(fn (Builder $started) => $started
+                    ->where('status', '!=', 'scheduled')
+                    ->has('matchApplications', '>=', 2)))
+            ->exists();
+    }
+
+    /**
+     * How the approved entries differ from the entries the generated draw was
+     * built from: `added` have no match yet (newly approved or rerouted in),
+     * `removed` still sit in the draw but are no longer approved here
+     * (withdrawn, rejected or rerouted out).
+     *
+     * @return array{added: int, removed: int}
+     */
+    public function drawEntryChanges(): array
+    {
+        $drawn = MatchApplication::query()
+            ->whereIn('match_id', $this->matches()->select('id'))
+            ->pluck('application_id')
+            ->unique();
+
+        $approved = $this->playerApplications()->where('status', 'approved')->pluck('id');
+
+        return [
+            'added' => $approved->diff($drawn)->count(),
+            'removed' => $drawn->diff($approved)->count(),
+        ];
+    }
+
+    /**
+     * A draw exists but the category's entries have changed since.
+     */
+    public function isDrawOutOfDate(): bool
+    {
+        if (! $this->hasGeneratedDraw()) {
+            return false;
+        }
+
+        $changes = $this->drawEntryChanges();
+
+        return $changes['added'] > 0 || $changes['removed'] > 0;
     }
 
     /**
@@ -116,6 +169,36 @@ class TournamentCategory extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(Category::class);
+    }
+
+    /**
+     * Entries holding a slot: every application that hasn't been rejected,
+     * so a category can't be oversold while applications are still pending.
+     */
+    public function activeEntriesCount(): int
+    {
+        return $this->playerApplications()->where('status', '!=', 'rejected')->count();
+    }
+
+    public function isFull(): bool
+    {
+        return $this->activeEntriesCount() >= $this->max_slots;
+    }
+
+    /**
+     * Lock the category row and refuse a new application when it is full.
+     * Call inside the transaction that creates the application, so two
+     * simultaneous registrations can't both take the last slot.
+     *
+     * @throws \RuntimeException when no slot is left
+     */
+    public static function lockAndAssertOpenSlot(int $tournamentCategoryId): void
+    {
+        $tournamentCategory = static::query()->whereKey($tournamentCategoryId)->lockForUpdate()->firstOrFail();
+
+        if ($tournamentCategory->isFull()) {
+            throw new \RuntimeException('This category is full — all '.$tournamentCategory->max_slots.' slots are taken.');
+        }
     }
 
     public function playerApplications(): HasMany

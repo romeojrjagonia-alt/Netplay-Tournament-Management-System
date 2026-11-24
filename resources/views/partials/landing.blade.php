@@ -1,0 +1,444 @@
+{{-- The public landing page body, shared by the home route and the login / sign-up modals. --}}
+
+        @php
+            $openTournaments = \App\Models\Tournament::query()
+                ->acceptingRegistrations()
+                ->with('tournamentCategories.category')
+                ->orderBy('registration_end')
+                ->get();
+
+            // The landing page shows the three closing soonest; "Explore More" lists them all.
+            $activeTournaments = $openTournaments->take(3);
+
+            // Annual tournaments are a fixed, client-curated list (held every year by OBC),
+            // not driven by tournament records. Posters live in public/images/annual.
+            $annualTournaments = [
+                [
+                    'name' => '4th Inato Badminton Cup',
+                    'blurb' => 'July 10-12, 2026 in Ozamiz.',
+                    'image' => asset('images/annual/inato-tournament.jpg'),
+                ],
+                [
+                    'name' => 'XSmash Badminton Cup',
+                    'blurb' => '2025 Edition. December 5-7 at JAL Badminton Court.',
+                    'image' => asset('images/annual/xsmash-badminton-cup.jpg'),
+                ],
+            ];
+        @endphp
+
+        {{-- ============ NAVBAR ============ --}}
+        <nav id="site-nav" class="fixed inset-x-0 top-0 z-50 transition-colors duration-300">
+            <div class="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 sm:px-10">
+            <a href="{{ route('home') }}" wire:navigate aria-label="NetPlay" class="flex items-center"><img src="{{ asset('images/logo-light.webp') }}" alt="NetPlay" class="h-9 w-auto sm:h-11"></a>
+
+            <ul class="hidden items-center gap-10 text-sm text-white md:flex">
+                <li><a href="{{ route('home') }}" wire:navigate class="transition hover:text-lime-300">Home Page</a></li>
+                <li><a href="#tournaments" data-scroll-center class="transition hover:text-lime-300">Tournaments</a></li>
+                <li><a href="#check-application" data-scroll-center class="transition hover:text-lime-300">Check Applications</a></li>
+            </ul>
+
+            <div class="flex items-center gap-3 sm:gap-5">
+                @auth
+                    <form method="POST" action="{{ route('logout') }}">
+                        @csrf
+                        <button type="submit"
+                                class="flex h-9 cursor-pointer items-center justify-center rounded-[36px] px-3 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
+                            Sign Out
+                        </button>
+                    </form>
+                    <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] bg-white px-4 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
+                        Go to Dashboard
+                    </a>
+                @else
+                    <a href="{{ route('login') }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] px-3 text-sm font-bold text-white transition hover:bg-white/10 sm:px-9">
+                        Sign In
+                    </a>
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="flex h-9 items-center justify-center rounded-[36px] bg-white px-4 text-sm font-bold text-emerald-600 transition hover:bg-slate-100 sm:px-9">
+                        Sign Up
+                    </a>
+                @endauth
+            </div>
+        </div>
+        </nav>
+
+        {{-- Full-width page: backgrounds span the screen; each section keeps its content aligned in a centered max-w-6xl column --}}
+        <div class="w-full overflow-hidden">
+
+        {{-- ============ HERO ============ --}}
+        <section class="relative w-full overflow-hidden bg-gradient-to-b from-green-950 to-emerald-950">
+            <img src="{{ asset('images/welcome/hero-bg-vector.svg') }}" alt=""
+                 class="pointer-events-none absolute top-0 left-1/2 w-[1603px] max-w-none -translate-x-1/2 opacity-30"
+                 aria-hidden="true">
+
+            <div class="relative mx-auto flex max-w-6xl flex-col items-start gap-3.5 px-6 pt-32 pb-20 sm:px-10 sm:pt-44 sm:pb-28">
+                <h1
+                    class="bg-clip-text text-[2.15rem] leading-tight font-bold text-transparent sm:text-7xl sm:leading-[72px]"
+                    style="background-image: linear-gradient(81deg, #459085 15.2%, #71bf77 40%, #9cee69 100%)"
+                >
+                    Play.Compete.Excel
+                </h1>
+                <p class="max-w-[607px] text-base leading-7 text-white sm:text-lg sm:leading-9">
+                    Want to compete among the best players in a tournament? Register now!
+                </p>
+                @auth
+                    <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                       class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
+                        GO TO DASHBOARD
+                    </a>
+                @else
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="flex h-14 w-56 items-center justify-center rounded-3xl bg-white text-lg font-bold text-teal-700 transition hover:bg-slate-100">
+                        REGISTER NOW!
+                    </a>
+                @endauth
+            </div>
+        </section>
+
+        {{-- ============ ANNUAL TOURNAMENTS (carousel) ============ --}}
+        <section class="w-full bg-emerald-950 pb-20">
+            <div class="flex h-12 w-full items-center justify-center bg-white">
+                <h2 class="text-sm font-bold tracking-wide text-emerald-900 uppercase">Annual Tournaments</h2>
+            </div>
+
+            {{-- Continuous marquee: the card set renders twice and the track slides left by exactly one set. --}}
+            <div class="mt-10 overflow-hidden [mask-image:linear-gradient(to_right,transparent,black_4%,black_96%,transparent)]">
+                <div class="flex w-max animate-marquee hover:[animation-play-state:paused] motion-reduce:animate-none">
+                    @foreach ([false, true] as $isDuplicate)
+                        <div class="flex shrink-0 gap-5 pr-5" @if ($isDuplicate) aria-hidden="true" @endif>
+                            @foreach (array_merge($annualTournaments, $annualTournaments) as $tournament)
+                                <article class="flex w-[300px] shrink-0 flex-col gap-4 rounded-lg border border-emerald-700/60 bg-emerald-950 p-4 sm:w-[380px]">
+                                    @if ($tournament['image'])
+                                        <img src="{{ $tournament['image'] }}" alt="{{ $isDuplicate ? '' : $tournament['name'] }}"
+                                             class="aspect-[2/1] w-full rounded object-cover">
+                                    @else
+                                        <div class="aspect-[2/1] w-full rounded bg-emerald-900"></div>
+                                    @endif
+                                    <div class="flex min-w-0 flex-1 flex-col gap-2">
+                                        <h3 class="text-base font-bold text-white">{{ $tournament['name'] }}</h3>
+                                        <p class="text-xs leading-5 text-white/80">{{ $tournament['blurb'] }}</p>
+                                    </div>
+                                </article>
+                            @endforeach
+                        </div>
+                    @endforeach
+                </div>
+            </div>
+        </section>
+
+        {{-- ============ ACTIVE TOURNAMENTS ============ --}}
+        <section id="tournaments" class="w-full bg-[#031b17] px-6 pt-8 pb-20 sm:px-10">
+            <div data-center-target class="mx-auto flex max-w-6xl flex-col gap-8"
+                 x-data="{
+                    exploreOpen: false,
+                    search: '',
+                    names: @js($openTournaments->pluck('name')->map(fn ($name) => mb_strtolower($name))->values()),
+                    matches(index) { return ! this.search.trim() || this.names[index].includes(this.search.trim().toLowerCase()) },
+                    get noMatches() { return this.names.length > 0 && ! this.names.some((_, index) => this.matches(index)) },
+                 }"
+                 x-effect="document.body.classList.toggle('overflow-hidden', exploreOpen)"
+                 x-on:keydown.escape.window="exploreOpen = false">
+                <div class="flex items-end justify-between">
+                    <div>
+                        <p class="text-sm text-lime-300">Tournament List</p>
+                        <h2 class="text-2xl font-bold text-white uppercase">Active Tournaments</h2>
+                    </div>
+                    <button type="button" x-on:click="exploreOpen = true; search = ''"
+                            class="cursor-pointer border-b border-lime-300 text-sm text-lime-300">Explore More</button>
+                </div>
+
+                {{-- Every tournament open for registration, not only the three cards below. --}}
+                <template x-teleport="body">
+                    <div x-show="exploreOpen" x-cloak x-transition.opacity
+                         class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+                         x-on:click.self="exploreOpen = false" role="dialog" aria-modal="true" aria-label="Tournaments open for registration">
+                        <div class="relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-white text-black shadow-2xl">
+                            <button type="button" x-on:click="exploreOpen = false" aria-label="Close"
+                                    class="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/10 text-lg text-black hover:bg-black/20">&times;</button>
+
+                            <div class="flex flex-col gap-3 border-b border-black/10 p-5 pr-14">
+                                <div>
+                                    <h3 class="text-xl font-bold">Open for registration</h3>
+                                    <p class="text-xs text-black/60">{{ $openTournaments->count() }} {{ \Illuminate\Support\Str::plural('tournament', $openTournaments->count()) }} accepting registrations right now.</p>
+                                </div>
+
+                                @if ($openTournaments->count() > 4)
+                                    <input type="search" x-model="search" placeholder="Search tournaments"
+                                           class="w-full rounded-[5px] bg-[#11776e]/10 px-3 py-2 text-sm text-black placeholder:text-black/50 focus:outline-none">
+                                @endif
+                            </div>
+
+                            <div class="flex flex-col gap-3 overflow-y-auto p-5">
+                                @forelse ($openTournaments as $open)
+                                    <div x-show="matches({{ $loop->index }})"
+                                         class="flex gap-4 rounded-lg border border-black/10 p-3">
+                                        @if ($open->poster_url)
+                                            <img src="{{ $open->poster_url }}" alt="" class="size-20 shrink-0 rounded object-cover">
+                                        @else
+                                            <div class="flex size-20 shrink-0 items-center justify-center rounded bg-slate-100 text-[10px] text-slate-400">No poster</div>
+                                        @endif
+
+                                        <div class="flex min-w-0 flex-1 flex-col gap-1">
+                                            <p class="truncate text-sm font-bold">{{ $open->name }}</p>
+                                            <p class="text-[11px] text-black/60">
+                                                {{ ucfirst((string) $open->sport) }}@if ($open->format) &middot; {{ ucwords(str_replace('_', ' ', $open->format)) }}@endif
+                                            </p>
+                                            <p class="text-[11px]">{{ $open->date_range_label }}@if ($open->location) &middot; {{ $open->location }}@endif</p>
+                                            <p class="text-[11px] text-black/60">
+                                                Register by {{ $open->registration_end->format('F j, Y') }}
+                                                @if ($open->tournamentCategories->isNotEmpty())
+                                                    &middot; {{ $open->tournamentCategories->count() }} {{ \Illuminate\Support\Str::plural('category', $open->tournamentCategories->count()) }}
+                                                @endif
+                                            </p>
+                                        </div>
+
+                                        <button type="button"
+                                                x-on:click="exploreOpen = false; $dispatch('open-guest-registration', { tournamentId: {{ $open->id }} })"
+                                                class="my-auto shrink-0 cursor-pointer rounded-full bg-emerald-900 px-5 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                                            Register
+                                        </button>
+                                    </div>
+                                @empty
+                                    <p class="py-8 text-center text-sm font-bold text-black/60">Coming Soon! Stay Tuned!</p>
+                                @endforelse
+
+                                <p x-show="noMatches" x-cloak class="py-8 text-center text-sm text-black/60">No tournaments match your search.</p>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                @if ($activeTournaments->isEmpty())
+                    <p class="w-full text-center text-lg font-bold text-white">Coming Soon! Stay Tuned!</p>
+                @else
+                    <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                        @foreach ($activeTournaments as $tournament)
+                            <div x-data="{ open: false }" class="contents"
+                                 x-effect="document.body.classList.toggle('overflow-hidden', open)"
+                                 x-on:keydown.escape.window="open = false">
+                            <article role="button" tabindex="0" x-on:click="open = true" x-on:keydown.enter="open = true"
+                                     aria-label="View details of {{ $tournament->name }}"
+                                     class="flex cursor-pointer flex-col gap-2 rounded-lg bg-white p-3 shadow-[0px_4px_10px_0px_rgba(0,0,0,0.25)] transition hover:-translate-y-0.5 hover:shadow-[0px_8px_16px_0px_rgba(0,0,0,0.35)]">
+                                @if ($tournament->poster_url)
+                                    <img src="{{ $tournament->poster_url }}" alt="{{ $tournament->name }}"
+                                         class="h-32 w-full rounded object-cover">
+                                @else
+                                    <div class="flex h-32 w-full items-center justify-center rounded bg-slate-100 text-xs text-slate-400">No poster</div>
+                                @endif
+
+                                <h3 class="text-sm font-bold text-black">{{ $tournament->name }}</h3>
+                                <p class="text-[10px] leading-4 text-black/70">
+                                    {{ ucfirst((string) $tournament->sport) }}@if ($tournament->format) &middot; {{ ucwords(str_replace('_', ' ', $tournament->format)) }}@endif
+                                </p>
+
+                                <div class="grid grid-cols-2 gap-x-2 gap-y-1.5 text-[10px] text-black">
+                                    <span class="inline-flex items-center gap-1.5">
+                                        <img src="{{ asset('images/welcome/calendar-icon.svg') }}" alt="" class="size-4">
+                                        {{ $tournament->date_range_label }}
+                                    </span>
+                                    @if ($tournament->specific_days)
+                                        <span>{{ $tournament->specific_days }}</span>
+                                    @endif
+                                    @if ($tournament->location)
+                                        <span class="inline-flex items-center gap-1.5">&#9906; {{ $tournament->location }}</span>
+                                    @endif
+                                    @if ($tournament->time)
+                                        <span class="inline-flex items-center gap-1.5">
+                                            <img src="{{ asset('images/welcome/clock-icon.svg') }}" alt="" class="size-4">
+                                            {{ $tournament->time }}
+                                        </span>
+                                    @endif
+                                </div>
+
+                                <div class="mt-2 flex items-center justify-between gap-3">
+                                    <span class="text-[10px] font-bold text-emerald-900 underline">View details</span>
+                                    <button type="button" x-on:click.stop="$dispatch('open-guest-registration', { tournamentId: {{ $tournament->id }} })"
+                                       class="cursor-pointer rounded-full bg-emerald-900 px-8 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                                        Register
+                                    </button>
+                                </div>
+                            </article>
+
+                            <template x-teleport="body">
+                                <div x-show="open" x-cloak x-transition.opacity
+                                     class="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4"
+                                     x-on:click.self="open = false" role="dialog" aria-modal="true" aria-label="{{ $tournament->name }} details">
+                                    <div class="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-xl bg-white text-black shadow-2xl">
+                                        <button type="button" x-on:click="open = false" aria-label="Close"
+                                                class="absolute top-3 right-3 z-10 flex size-8 cursor-pointer items-center justify-center rounded-full bg-black/50 text-lg text-white hover:bg-black/70">&times;</button>
+
+                                        <div class="overflow-y-auto">
+                                            @if ($tournament->poster_url)
+                                                <img src="{{ $tournament->poster_url }}" alt="{{ $tournament->name }}" class="h-48 w-full object-cover">
+                                            @endif
+
+                                            <div class="flex flex-col gap-4 p-5">
+                                                <div>
+                                                    <p class="text-xs font-bold tracking-wide text-emerald-800 uppercase">{{ $tournament->sport ?: 'Badminton' }} Tournament</p>
+                                                    <h3 class="text-xl font-bold">{{ $tournament->name }}</h3>
+                                                </div>
+
+                                                <dl class="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+                                                    <div><dt class="text-black/50">Event date</dt><dd class="font-bold">{{ $tournament->date_range_label }}</dd></div>
+                                                    <div><dt class="text-black/50">Time</dt><dd class="font-bold">{{ $tournament->time ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Venue</dt><dd class="font-bold">{{ $tournament->location ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Days</dt><dd class="font-bold">{{ $tournament->specific_days ?: '—' }}</dd></div>
+                                                    <div><dt class="text-black/50">Format</dt><dd class="font-bold">{{ ucwords(str_replace('_', ' ', (string) $tournament->format)) }}</dd></div>
+                                                    <div><dt class="text-black/50">Pointing system</dt><dd class="font-bold">{{ $tournament->scoring_system ?: '—' }}</dd></div>
+                                                    <div class="col-span-2">
+                                                        <dt class="text-black/50">Registration</dt>
+                                                        <dd class="font-bold">{{ $tournament->registration_start->format('F j') }} &ndash; {{ $tournament->registration_end->format('F j, Y') }}</dd>
+                                                    </div>
+                                                </dl>
+
+                                                @if ($tournament->tournamentCategories->isNotEmpty())
+                                                    <div class="flex flex-col gap-1.5 text-xs">
+                                                        <div class="flex justify-between border-b border-black/10 pb-1 font-bold">
+                                                            <span>Categories</span><span>Registration fee</span>
+                                                        </div>
+                                                        @foreach ($tournament->tournamentCategories as $tournamentCategory)
+                                                            <div class="flex justify-between gap-3">
+                                                                <span>{{ $tournamentCategory->category_label }}</span>
+                                                                <span class="shrink-0">₱{{ number_format((float) $tournamentCategory->registration_fee, 2) }}</span>
+                                                            </div>
+                                                        @endforeach
+                                                    </div>
+                                                @endif
+
+                                                <button type="button" x-on:click="open = false; $dispatch('open-guest-registration', { tournamentId: {{ $tournament->id }} })"
+                                                   class="cursor-pointer rounded-full bg-emerald-900 px-8 py-2.5 text-center text-sm font-bold text-white transition hover:bg-emerald-800">
+                                                    Register now
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                            </div>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
+        </section>
+
+        {{-- ============ MATCH ID PROGRESS CHECKER ============ --}}
+        <section id="check-application" class="w-full bg-[#031b17] px-6 py-[50px] sm:px-10 xl:px-[183px]">
+            <div data-center-target class="flex flex-col items-start justify-between gap-10 bg-[#031b17] p-6 sm:p-10 lg:flex-row lg:items-center lg:gap-[155px]">
+                <div class="flex max-w-md flex-col gap-3">
+                    <h2 class="text-3xl leading-tight font-bold text-white sm:text-4xl">
+                        Check Tournament Application Progress
+                    </h2>
+                    <p class="max-w-xs text-xs leading-4 text-white/80">
+                        Enter the reference code you received when you registered to see your application status and pay your fee.
+                    </p>
+                </div>
+
+                <div class="w-full lg:w-auto">
+                    <livewire:applications.lookup />
+                </div>
+            </div>
+        </section>
+
+        {{-- ============ UMPIRE RECRUITMENT ============ --}}
+        <section class="w-full bg-[#031b17] px-6 py-8">
+            <div class="mx-auto flex max-w-3xl flex-col items-center gap-6 sm:flex-row sm:gap-10">
+                <div class="relative h-24 w-28 shrink-0">
+                    <img src="{{ asset('images/welcome/racket-2.svg') }}" alt=""
+                         class="absolute top-0 left-0 h-16 w-16 rotate-[19.31deg]" aria-hidden="true">
+                    <img src="{{ asset('images/welcome/racket-1.svg') }}" alt=""
+                         class="absolute right-0 bottom-0 h-12 w-20 rotate-[159.1deg]" aria-hidden="true">
+                </div>
+
+                <div class="flex-1 text-center sm:text-left">
+                    <h2 class="text-base font-bold text-white">Apply as an Umpire</h2>
+                    <p class="mt-1 text-xs text-white">Simply register through creating new account!</p>
+                </div>
+
+                @guest
+                    <a href="{{ route('register') }}" wire:navigate
+                       class="shrink-0 rounded-full bg-emerald-900 px-8 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-800">
+                        Register Now!
+                    </a>
+                @endguest
+            </div>
+        </section>
+
+        {{-- ============ FOOTER ============ --}}
+        <footer class="w-full bg-teal-950 px-6 py-16 sm:px-10">
+            <div class="mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-16">
+                <div class="flex max-w-sm flex-col gap-1.5">
+                    <p class="text-5xl font-bold text-white">NetPlay</p>
+                    <p class="mt-2 text-base leading-6 text-white">
+                        Badminton tournament management, simplified. From registration to real-time scoring.
+                    </p>
+                </div>
+
+                <div class="flex flex-col gap-6">
+                    <h4 class="text-3xl font-bold text-white">Contact</h4>
+                    <address class="text-base leading-6 text-white not-italic">
+                        Ozamiz City, Philippines<br>
+                        netplay@gmail.com
+                    </address>
+                </div>
+            </div>
+
+            <div class="mx-auto mt-16 max-w-5xl border-t border-white/70 pt-8">
+                <p class="text-center text-base text-white">
+                    &copy;2026 NETPLAY. Capstone Project by Gwen D. Aninao, Romeo S. Jagonia Jr., and Jhon Rico C. Tolosa.
+                    Adviser: Mr. Honimar C. Panganiban, MSIT.
+                </p>
+            </div>
+        </footer>
+        </div>
+
+
+        <script>
+            (() => {
+                const nav = document.getElementById('site-nav');
+                const syncNav = () => nav.classList.toggle('bg-emerald-950/95', window.scrollY > 24);
+                syncNav();
+                window.addEventListener('scroll', syncNav, { passive: true });
+
+                // Bring a section's content to the middle of the viewport (below the fixed
+                // navbar) instead of jamming its top edge against the screen.
+                const scrollToCentered = (hash, behavior = 'smooth') => {
+                    const section = hash ? document.querySelector(hash) : null;
+
+                    if (!section) {
+                        return false;
+                    }
+
+                    const target = section.matches('[data-center-target]')
+                        ? section
+                        : (section.querySelector('[data-center-target]') ?? section);
+                    const rect = target.getBoundingClientRect();
+                    const navHeight = nav.offsetHeight;
+                    const available = window.innerHeight - navHeight;
+                    const top = rect.height >= available
+                        ? rect.top + window.scrollY - navHeight - 16
+                        : rect.top + window.scrollY - navHeight - (available - rect.height) / 2;
+
+                    window.scrollTo({ top: Math.max(top, 0), behavior });
+
+                    return true;
+                };
+
+                document.querySelectorAll('a[data-scroll-center]').forEach((link) => {
+                    link.addEventListener('click', (event) => {
+                        if (scrollToCentered(link.getAttribute('href'))) {
+                            event.preventDefault();
+                            history.replaceState(null, '', link.getAttribute('href'));
+                        }
+                    });
+                });
+
+                // Arriving with a hash (e.g. from the application form's "check progress" link).
+                if (['#tournaments', '#check-application'].includes(location.hash)) {
+                    const jump = () => scrollToCentered(location.hash, 'auto');
+
+                    document.readyState === 'complete' ? jump() : window.addEventListener('load', jump, { once: true });
+                }
+            })();
+        </script>

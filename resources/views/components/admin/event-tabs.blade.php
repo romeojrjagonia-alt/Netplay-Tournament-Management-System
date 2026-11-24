@@ -1,11 +1,13 @@
 @props(['tournament', 'active' => 'dashboard'])
 
 @php
-    $activeClasses = 'bg-white/50 text-[#9cee69] mix-blend-soft-light';
+    // No blend mode here: `mix-blend-soft-light` on the tab itself blends its
+    // own label into the background and makes the active tab unreadable.
+    $activeClasses = 'bg-white/20 text-[#9cee69] font-bold';
     $linkClasses = 'text-white';
 @endphp
 
-<div class="flex items-center justify-center gap-5">
+<div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-1">
     <a href="{{ route('admin.events.show', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'dashboard', $linkClasses => $active !== 'dashboard'])>
         <flux:icon.squares-2x2 class="size-5 shrink-0" />
         Dashboard
@@ -16,13 +18,15 @@
         Schedule Matches
     </a>
 
-    <span title="Per-event applications are coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
-        <flux:icon.folder class="size-5 shrink-0" />
-        Applications
-    </span>
-
-    <span title="Officials management is coming soon" class="flex h-10 cursor-not-allowed items-center gap-2 px-2.5 text-sm text-white/40">
+    <a href="{{ route('admin.events.officials', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'officials', $linkClasses => $active !== 'officials'])>
         <flux:icon.users class="size-5 shrink-0" />
         Officials
-    </span>
+    </a>
+
+    @if ($tournament->is_concluded)
+        <a href="{{ route('admin.events.reports', $tournament) }}" wire:navigate @class(['flex h-10 items-center gap-2 overflow-hidden rounded-[3px] px-2.5 text-sm', $activeClasses => $active === 'reports', $linkClasses => $active !== 'reports'])>
+            <flux:icon.document-chart-bar class="size-5 shrink-0" />
+            Reports
+        </a>
+    @endif
 </div>

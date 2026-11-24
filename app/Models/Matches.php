@@ -12,6 +12,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 #[ObservedBy([MatchObserver::class])]
 class Matches extends Model
 {
+    /** Rally columns on the printed score sheet. */
+    public const SCORESHEET_RALLIES = 31;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -25,8 +28,12 @@ class Matches extends Model
         'winner_application_id',
         'status',
         'scheduled_at',
+        'schedule_notified_at',
         'court',
         'assigned_umpire_id',
+        'team_a_ready_at',
+        'team_b_ready_at',
+        'result_type',
         'line_judge_1_name',
         'line_judge_2_name',
     ];
@@ -40,7 +47,18 @@ class Matches extends Model
     {
         return [
             'scheduled_at' => 'datetime',
+            'schedule_notified_at' => 'datetime',
+            'team_a_ready_at' => 'datetime',
+            'team_b_ready_at' => 'datetime',
         ];
+    }
+
+    /**
+     * Decided because a team did not show up, with no points played.
+     */
+    public function isWalkover(): bool
+    {
+        return $this->result_type === 'walkover';
     }
 
     public function tournamentCategory(): BelongsTo
@@ -58,9 +76,30 @@ class Matches extends Model
         return $this->belongsTo(User::class, 'assigned_umpire_id');
     }
 
+    /**
+     * Whether this match is scored as a 31-point single set (first to 31
+     * wins, no 2-point lead) rather than best of 3 to 21.
+     */
+    public function usesSinglePointSystem(): bool
+    {
+        $this->loadMissing('tournamentCategory.tournament');
+
+        return GameRules::isSingleSet($this->tournamentCategory?->tournament?->scoring_system);
+    }
+
+    /**
+     * Whether this match is scored with pickleball rules (to 11, win by 2).
+     */
+    public function usesPickleballRules(): bool
+    {
+        $this->loadMissing('tournamentCategory.tournament');
+
+        return GameRules::isPickleball($this->tournamentCategory?->tournament?->scoring_system);
+    }
+
     public function matchApplications(): HasMany
     {
-        return $this->hasMany(MatchApplication::class, 'match_id');
+        return $this->hasMany(MatchApplication::class, 'match_id')->orderBy('slot')->orderBy('id');
     }
 
     public function games(): HasMany
@@ -84,7 +123,7 @@ class Matches extends Model
         $map = [];
 
         foreach ($this->matchApplications as $index => $matchApplication) {
-            $side = $index === 0 ? 'A' : 'B';
+            $side = $this->sideOf($matchApplication, $index);
 
             foreach ($matchApplication->application?->applicationPlayers ?? [] as $applicationPlayer) {
                 $map[$applicationPlayer->player_id] = $side;
@@ -109,56 +148,105 @@ class Matches extends Model
     }
 
     /**
-     * The sets to lay out on the score sheet: each side's final point total
-     * and the side that won it. Always at least $minimumSets entries, so the
-     * printed form keeps blank sets to fill in by hand.
+     * The players on the given side, in entry order, one score sheet row each.
      *
-     * @return list<array{number: int, scores: array{A: int, B: int}, winner: 'A'|'B'|null}>
+     * @return list<array{id: int, name: string}>
      */
-    public function scoresheetSets(int $minimumSets = 2): array
+    public function sidePlayers(string $side): array
     {
-        $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
+        $this->loadMissing('matchApplications.application.applicationPlayers.player');
 
-        $playerSideMap = $this->playerSideMap();
-        $games = $this->games->sortBy('game_number')->values();
-        $sets = [];
-
-        foreach (range(1, max($minimumSets, $games->count())) as $number) {
-            $game = $games->firstWhere('game_number', $number);
-
-            $sets[] = [
-                'number' => $number,
-                'scores' => $game?->scores($playerSideMap) ?? ['A' => 0, 'B' => 0],
-                'winner' => $game?->winningSide($playerSideMap),
-            ];
-        }
-
-        return $sets;
+        return $this->applicationForSide($side)
+            ?->applicationPlayers
+            ->map(fn ($applicationPlayer) => ['id' => $applicationPlayer->player_id, 'name' => $applicationPlayer->player?->name ?? ''])
+            ->values()
+            ->all() ?? [];
     }
 
     /**
-     * The side that won the match: the recorded winner once it's confirmed,
-     * otherwise whichever side has already taken 2 sets.
+     * One entry per set to print on the score sheet, each its own sheet.
+     * Like the paper form, each team's block is numbered by that TEAM'S running
+     * score: `scorers['A'][n]` is the player who won Team 1's n-th point (and
+     * `['B']` Team 2's), which is what the black cells show. The side that
+     * reaches the target has its last cell filled, so the sheet reads as the
+     * result. Numbering by overall rally would hide the end of any game longer
+     * than 31 rallies (a 31-30 game is 61). The form has 31 point columns.
+     * Always at least one set, so an unplayed match still prints a blank sheet.
      *
-     * @return 'A'|'B'|null
+     * @return list<array{number: int, winner: 'A'|'B'|null, scorers: array{A: array<int, int>, B: array<int, int>}}>
      */
-    public function winnerSide(): ?string
+    public function scoresheetSets(): array
     {
         $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
 
-        if ($this->winner_application_id) {
-            foreach (['A', 'B'] as $side) {
-                if ($this->applicationForSide($side)?->id === $this->winner_application_id) {
-                    return $side;
-                }
-            }
+        $playerSideMap = $this->playerSideMap();
+        $singleSet = $this->usesSinglePointSystem();
+        $pickleball = $this->usesPickleballRules();
+        $games = $this->games->sortBy('game_number')->values();
+
+        if ($games->isEmpty()) {
+            return [['number' => 1, 'winner' => null, 'scorers' => ['A' => [], 'B' => []]]];
         }
 
-        $playerSideMap = $this->playerSideMap();
+        return $games->map(function (MatchGame $game) use ($playerSideMap, $singleSet, $pickleball): array {
+            $points = ['A' => 0, 'B' => 0];
+            $scorers = ['A' => [], 'B' => []];
 
-        return GameRules::matchWinner(
-            $this->games->map(fn (MatchGame $game) => $game->winningSide($playerSideMap))->filter()->values()->all()
-        );
+            foreach ($game->rallies->sortBy('rally_number') as $rally) {
+                $side = $playerSideMap[$rally->scoring_player_id] ?? null;
+
+                if ($side === null) {
+                    continue;
+                }
+
+                $points[$side]++;
+
+                if ($points[$side] <= self::SCORESHEET_RALLIES) {
+                    $scorers[$side][$points[$side]] = $rally->scoring_player_id;
+                }
+            }
+
+            return [
+                'number' => $game->game_number,
+                'winner' => $game->winningSide($playerSideMap, $singleSet, $pickleball),
+                'scorers' => $scorers,
+            ];
+        })->all();
+    }
+
+    /**
+     * Each game's point score and winning side, in play order. A decided
+     * game takes its stored winner; one with no stored winner falls back to
+     * what its rally log says, and stays null while still being played.
+     *
+     * @return list<array{number: int, A: int, B: int, winner: 'A'|'B'|null}>
+     */
+    public function gameScores(): array
+    {
+        $this->loadMissing(['games.rallies', 'matchApplications.application.applicationPlayers']);
+
+        $playerSideMap = $this->playerSideMap();
+        $applicationIdA = $this->applicationForSide('A')?->id;
+        $applicationIdB = $this->applicationForSide('B')?->id;
+        $singleSet = $this->usesSinglePointSystem();
+        $pickleball = $this->usesPickleballRules();
+
+        return $this->games
+            ->sortBy('game_number')
+            ->values()
+            ->map(function (MatchGame $game) use ($playerSideMap, $applicationIdA, $applicationIdB, $singleSet, $pickleball): array {
+                $scores = $game->scores($playerSideMap);
+
+                $winner = match (true) {
+                    $game->winner_application_id === null => $game->winningSide($playerSideMap, $singleSet, $pickleball),
+                    $game->winner_application_id === $applicationIdA => 'A',
+                    $game->winner_application_id === $applicationIdB => 'B',
+                    default => null,
+                };
+
+                return ['number' => $game->game_number, 'A' => $scores['A'], 'B' => $scores['B'], 'winner' => $winner];
+            })
+            ->all();
     }
 
     /**
@@ -166,8 +254,49 @@ class Matches extends Model
      */
     public function applicationForSide(string $side): ?PlayerApplication
     {
-        $index = $side === 'A' ? 0 : 1;
+        $this->loadMissing('matchApplications.application');
 
-        return $this->matchApplications->get($index)?->application;
+        // Bracket matches pin each entry to a slot, so a half-filled match
+        // keeps its lone entry on its own side.
+        foreach ($this->matchApplications as $index => $matchApplication) {
+            if ($this->sideOf($matchApplication, $index) === $side) {
+                return $matchApplication->application;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The side ('A' or 'B') of the entry that won this match, or null while
+     * it has no winner.
+     *
+     * @return 'A'|'B'|null
+     */
+    public function winnerSide(): ?string
+    {
+        if ($this->winner_application_id === null) {
+            return null;
+        }
+
+        foreach (['A', 'B'] as $side) {
+            if ($this->applicationForSide($side)?->id === $this->winner_application_id) {
+                return $side;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return 'A'|'B'
+     */
+    private function sideOf(MatchApplication $matchApplication, int $index): string
+    {
+        if ($matchApplication->slot !== null) {
+            return $matchApplication->slot === 1 ? 'A' : 'B';
+        }
+
+        return $index === 0 ? 'A' : 'B';
     }
 }

@@ -17,10 +17,10 @@ function eventsShowTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-09-01',
-        'date_end' => '2026-09-30',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -137,13 +137,13 @@ test('publishing a draft with no categories is rejected', function () {
 
     Volt::test('admin.events.show', ['tournament' => $tournament])
         ->call('togglePublish')
-        ->assertSee('Add at least one category before publishing this event.')
+        ->assertDispatched('system-message', variant: 'danger')
         ->assertSee('Publish Event');
 
     expect($tournament->fresh()->status)->toBe('draft');
 });
 
-test('a draft with no categories shows an Add Category button, a published event does not', function () {
+test('a draft with no categories shows an Add Categories button, a published event does not', function () {
     $draft = eventsShowTournament(['name' => 'Draft Event', 'status' => 'draft']);
     $published = eventsShowTournament(['name' => 'Published Event', 'status' => 'published']);
 
@@ -151,11 +151,11 @@ test('a draft with no categories shows an Add Category button, a published event
 
     Volt::test('admin.events.show', ['tournament' => $draft])
         ->assertSee('No Categories Added Yet')
-        ->assertSeeHtml(route('admin.events.wizard.categories', $draft));
+        ->assertSeeHtml('wire:click="openCategoryModal"');
 
     Volt::test('admin.events.show', ['tournament' => $published])
         ->assertSee('No Categories Added Yet')
-        ->assertDontSeeHtml(route('admin.events.wizard.categories', $published));
+        ->assertDontSeeHtml('wire:click="openCategoryModal"');
 });
 
 test('the Edit Event button only shows for a draft event', function () {

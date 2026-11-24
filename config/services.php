@@ -25,7 +25,14 @@ return [
     ],
 
     'resend' => [
-        'key' => env('RESEND_KEY'),
+        // Resend's own docs name this RESEND_API_KEY; accept either.
+        'key' => env('RESEND_KEY', env('RESEND_API_KEY')),
+    ],
+
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+        'redirect' => env('GOOGLE_REDIRECT_URI', '/auth/google/callback'),
     ],
 
     'slack' => [

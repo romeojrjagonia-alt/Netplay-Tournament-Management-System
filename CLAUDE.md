@@ -58,6 +58,7 @@ This application is a Laravel application and its main Laravel ecosystems packag
 - php - 8.2
 - laravel/framework (LARAVEL) - v12
 - laravel/prompts (PROMPTS) - v0
+- laravel/socialite (SOCIALITE) - v5
 - livewire/flux (FLUXUI_FREE) - v2
 - livewire/livewire (LIVEWIRE) - v4
 - livewire/volt (VOLT) - v1
@@ -242,6 +243,5 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - The `{name}` argument should not include the test suite directory. Use `php artisan make:test --pest SomeFeatureTest` instead of `php artisan make:test --pest Feature/SomeFeatureTest`.
 - Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
 - Do NOT delete tests without approval.
-
 
 </laravel-boost-guidelines>

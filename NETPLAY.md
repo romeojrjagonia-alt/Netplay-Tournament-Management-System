@@ -148,6 +148,15 @@ next_position = ceil(position / 2)
 A BYE is a round-1 match with a null second competitor: mark it complete
 immediately and advance the lone competitor using the same formula.
 
+**4.7a — Pairings are arranged before generation, then locked.**
+For single elimination, the admin can drag (or click-to-swap) entries
+between round-1 slots on the schedule page before generating. The
+arrangement is stored in `player_applications.draw_position` (1-based
+round-1 slot; null = not placed, filled in seed order). Generation reads
+it via `SingleEliminationScheduler::arrangement()`. Once matches exist the
+bracket is read-only. Moving an entry to another category clears its
+`draw_position`.
+
 **4.8 — Payment is manual, by design.**
 Players upload a GCash screenshot; staff verifies it. There is no payment
 gateway integration (it would require a registered business account).

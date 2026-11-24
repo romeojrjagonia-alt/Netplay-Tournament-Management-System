@@ -6,7 +6,13 @@
     :role-name="auth()->user()->name"
     role-label="UMPIRE"
     suffix="NetPlay Umpire"
+    :profile-photo-url="auth()->user()->profilePhotoUrl()"
+    profile-modal-name="staff-profile"
 >
+    <x-slot:profileModal>
+        <livewire:staff.profile-modal />
+    </x-slot:profileModal>
+
     <x-slot:nav>
         <x-portal.sidebar-link icon="layout-grid" :href="route('umpire.dashboard')" :active="request()->routeIs('umpire.dashboard')" wire:navigate>
             Dashboard

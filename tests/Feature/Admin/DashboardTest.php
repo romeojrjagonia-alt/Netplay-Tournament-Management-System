@@ -17,10 +17,10 @@ function dashboardTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-07-01',
-        'date_end' => '2026-07-31',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -188,7 +188,7 @@ test('approving an application moves it to payment pending', function () {
         ->call('approveApplication', $application->id)
         ->assertSet('totals.pendingApprovals', 0)
         ->assertDispatched('modal-close', name: 'application-details')
-        ->assertDispatched('admin-toast', variant: 'success');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($application->fresh()->status)->toBe('payment_pending');
 });
@@ -203,9 +203,25 @@ test('rejecting an application marks it rejected', function () {
     Volt::test('admin.dashboard')
         ->call('rejectApplication', $application->id)
         ->assertDispatched('modal-close', name: 'application-details')
-        ->assertDispatched('admin-toast', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($application->fresh()->status)->toBe('rejected');
+});
+
+test('rejecting an application stores the optional reason for the applicant', function () {
+    $tournament = dashboardTournament();
+    $tournamentCategory = dashboardTournamentCategory($tournament);
+    $application = dashboardApplication($tournamentCategory, [dashboardPlayer()], 'pending_verification');
+
+    $this->actingAs(dashboardAdmin());
+
+    Volt::test('admin.dashboard')
+        ->set('rejectionReason', 'Age is outside the category range')
+        ->call('rejectApplication', $application->id);
+
+    expect($application->fresh())
+        ->status->toBe('rejected')
+        ->rejection_reason->toBe('Age is outside the category range');
 });
 
 test('approving a payment verifies it and approves the application', function () {
@@ -227,7 +243,7 @@ test('approving a payment verifies it and approves the application', function ()
         ->call('approvePayment', $payment->id)
         ->assertSet('totals.pendingPayments', 0)
         ->assertDispatched('modal-close', name: 'payment-details')
-        ->assertDispatched('admin-toast', variant: 'success');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($payment->fresh()->payment_status)->toBe('verified');
     expect($application->fresh()->status)->toBe('approved');
@@ -251,7 +267,7 @@ test('rejecting a payment keeps the application in payment pending', function ()
         ->set('activeTab', 'payments')
         ->call('rejectPayment', $payment->id)
         ->assertDispatched('modal-close', name: 'payment-details')
-        ->assertDispatched('admin-toast', variant: 'danger');
+        ->assertDispatched('system-message', variant: 'success');
 
     expect($payment->fresh()->payment_status)->toBe('rejected');
     expect($application->fresh()->status)->toBe('payment_pending');
@@ -269,4 +285,24 @@ test('search filters rows by player name', function () {
         ->set('search', 'Marcus')
         ->assertSee('Marcus Villanueva')
         ->assertDontSee('Ramon Dela Cruz');
+});
+
+test('the application modal links to the uploaded ID document, or says none was uploaded', function () {
+    $tournamentCategory = dashboardTournamentCategory(dashboardTournament());
+
+    $withDocument = dashboardApplication($tournamentCategory, [dashboardPlayer(['name' => 'Doc Dan'])], 'pending_verification');
+    $withDocument->applicationPlayers()->update(['id_document_type' => 'passport', 'id_document_path' => 'id-documents/dan.jpg']);
+
+    $withoutDocument = dashboardApplication($tournamentCategory, [dashboardPlayer(['name' => 'No Doc Nick'])], 'pending_verification');
+
+    $this->actingAs(dashboardAdmin());
+
+    Volt::test('admin.dashboard')
+        ->call('viewApplication', $withDocument->id)
+        ->assertSee('View document')
+        ->assertSee('Passport')
+        ->assertSeeHtml('id-documents/dan.jpg')
+        ->call('viewApplication', $withoutDocument->id)
+        ->assertSee('No document uploaded')
+        ->assertDontSee('View document');
 });

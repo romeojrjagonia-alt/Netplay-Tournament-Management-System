@@ -1,0 +1,1120 @@
+<?php
+
+use App\Rules\PhoneNumber;
+use App\Mail\ApplicationReceived;
+use App\Models\ApplicationPlayer;
+use App\Models\Category;
+use App\Models\Player;
+use App\Models\PlayerApplication;
+use App\Models\Tournament;
+use App\Models\TournamentCategory;
+use App\Support\Applications\IdDocumentTypes;
+use App\Support\Forms\ClearsResolvedErrors;
+use App\Support\Officials\OfficialConflicts;
+use App\Support\Players\NameMatcher;
+use Carbon\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Validation\Rule;
+use Livewire\Attributes\Computed;
+use Livewire\Attributes\On;
+use Livewire\Volt\Component;
+use Livewire\WithFileUploads;
+
+new class extends Component {
+    use ClearsResolvedErrors;
+    use WithFileUploads;
+
+    /**
+     * The tournament being registered for. Null until the modal is opened
+     * from a tournament card (see open()).
+     */
+    public ?Tournament $tournament = null;
+
+    public int $regStep = 1;
+
+    public ?int $regTournamentCategoryId = null;
+
+    public string $regFirstName = '';
+    public string $regLastName = '';
+    public string $regMiddleInitial = '';
+    public string $regBirthDate = '';
+    public string $regGender = '';
+    public string $regAddress = '';
+    public string $regSkillLevel = '';
+    public string $regClub = '';
+    public string $regEmail = '';
+    public string $regPhoneNumber = '';
+
+    /** 'search' picks an existing player by name; 'manual' enters a new partner by hand. */
+    public string $pairMode = 'search';
+
+    public string $pairSearch = '';
+
+    public ?int $pairPlayerId = null;
+
+    public string $pairFirstName = '';
+    public string $pairLastName = '';
+    public string $pairMiddleInitial = '';
+    public string $pairBirthDate = '';
+    public string $pairGender = '';
+    public string $pairAddress = '';
+    public string $pairSkillLevel = '';
+    public string $pairClub = '';
+    public string $pairEmail = '';
+    public string $pairPhoneNumber = '';
+
+    public string $ownDocumentType = '';
+
+    public string $ownDocumentOther = '';
+
+    public string $pairDocumentOther = '';
+    public $ownDocument = null;
+    public string $pairDocumentType = '';
+    public $pairDocument = null;
+
+    public ?string $submittedReferenceCode = null;
+
+    /** The data-privacy dialog is showing and waiting for an answer. */
+    public bool $showConsent = false;
+
+    #[\Livewire\Attributes\Locked]
+    public bool $consented = false;
+
+    /**
+     * @var array<string, string>
+     */
+    private array $documentTypes = IdDocumentTypes::TYPES;
+
+    /**
+     * Normally mounted empty (the modal sits on the landing page); a tournament
+     * may be passed to start with it already chosen. The parameter is untyped
+     * on purpose: a typed model would make Livewire look one up from the route.
+     */
+    public function mount($tournament = null): void
+    {
+        if ($tournament instanceof Tournament) {
+            abort_unless(
+                Tournament::acceptingRegistrations()->whereKey($tournament->id)->exists(),
+                404,
+            );
+
+            $this->tournament = $tournament;
+            $this->prefillFromAccount();
+            $this->showConsent = true;
+        }
+    }
+
+    /**
+     * Open the registration modal for a tournament. Called when a tournament
+     * card's Register button is pressed; the form starts empty each time, so
+     * nothing from a previously viewed tournament carries over.
+     */
+    #[On('open-guest-registration')]
+    public function open(int $tournamentId): void
+    {
+        $tournament = Tournament::acceptingRegistrations()->find($tournamentId);
+
+        if (! $tournament) {
+            $this->dispatch('system-message', title: 'Registration closed', message: 'This tournament is not accepting registrations.', variant: 'danger');
+
+            return;
+        }
+
+        // Someone who officiates in this tournament can't also enter it.
+        if (($user = $this->applicantUser()) && OfficialConflicts::officiatesIn($user, $tournament)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->reset();
+        $this->resetValidation();
+        unset($this->isPairStep, $this->isReviewStep);
+
+        $this->tournament = $tournament;
+        $this->prefillFromAccount();
+        $this->showConsent = true;
+
+        $this->dispatch('modal-show', name: 'guest-registration');
+        $this->dispatch('modal-show', name: 'data-consent');
+    }
+
+    /**
+     * Someone with an account is sent to sign in and, once they have, lands on
+     * the Events page of their dashboard with this tournament's modal open.
+     */
+    public function signIn(): void
+    {
+        session()->put('url.intended', route('player.events', ['tournament' => $this->tournament->id]));
+
+        $this->redirect(route('login'), navigate: true);
+    }
+
+    /**
+     * A signed-in player's own details are filled in for them.
+     */
+    private function prefillFromAccount(): void
+    {
+        $user = $this->applicantUser();
+        $player = $user?->player;
+
+        if ($user) {
+            $this->regEmail = $user->email;
+        }
+
+        if ($player) {
+            [$this->regFirstName, $this->regLastName, $this->regMiddleInitial] = $this->splitName($player->name);
+            $this->regBirthDate = $player->birth_date?->format('Y-m-d') ?? '';
+            $this->regGender = $player->gender ?? '';
+            $this->regAddress = $player->address ?? '';
+            $this->regSkillLevel = in_array($player->level, Category::PLAYER_LEVELS, true) ? $player->level : '';
+            $this->regClub = $player->club ?? '';
+            $this->regPhoneNumber = $player->phone_number ?? '';
+        }
+    }
+
+    /**
+     * Validate the current step and advance the wizard.
+     */
+    public function nextStep(): void
+    {
+        if ($this->regStep === 1) {
+            $this->validate($this->profileStepRules());
+        } elseif ($this->isPairStep) {
+            $this->validate($this->pairStepRules());
+        }
+
+        $this->regStep = min($this->regStep + 1, $this->totalSteps);
+
+        // isPairStep was read above, before the step changed; drop the cached
+        // value so this render shows the new step's content, not the old one.
+        unset($this->isPairStep, $this->isReviewStep);
+    }
+
+    public function selectPairPlayer(int $playerId): void
+    {
+        $partnerUser = Player::query()->with('user')->find($playerId)?->user;
+
+        if ($partnerUser && OfficialConflicts::officiatesIn($partnerUser, $this->tournament)) {
+            $this->dispatch('system-message', title: 'Cannot pick this partner', message: OfficialConflicts::partnerOfficiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->pairPlayerId = Player::query()->whereKey($playerId)->value('id');
+    }
+
+    public function enterPairManually(): void
+    {
+        $this->pairMode = 'manual';
+        $this->pairPlayerId = null;
+        $this->resetValidation();
+    }
+
+    public function searchPairAgain(): void
+    {
+        $this->pairMode = 'search';
+        $this->resetValidation();
+    }
+
+    public function previousStep(): void
+    {
+        $this->regStep = max($this->regStep - 1, 1);
+
+        unset($this->isPairStep, $this->isReviewStep);
+    }
+
+    /**
+     * Create the application. Walk-ins have no account, so their player
+     * records are matched by phone/email instead of being created blindly
+     * (see NETPLAY.md 4.3) and are never overwritten by a stranger's input.
+     */
+    public function submit(): void
+    {
+        if (($user = $this->applicantUser()) && OfficialConflicts::officiatesIn($user, $this->tournament)) {
+            $this->dispatch('system-message', title: 'Cannot register', message: OfficialConflicts::officiatingMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->validate($this->profileStepRules());
+
+        if ($this->isDoublesRegistration) {
+            $this->validate($this->pairStepRules());
+        }
+
+        if ($documentRules = $this->documentRules()) {
+            $this->validate($documentRules);
+        }
+
+        // Nothing is stored until the registrant agrees to the data notice.
+        if (! $this->consented) {
+            $this->showConsent = true;
+            $this->dispatch('modal-show', name: 'data-consent');
+
+            return;
+        }
+
+        // Staff entering a field of walk-ins from one desk aren't throttled.
+        if (! auth()->user()?->isAdmin()) {
+            $throttleKey = 'tournament-register:'.request()->ip();
+
+            if (RateLimiter::tooManyAttempts($throttleKey, 10)) {
+                $this->addError('registration', 'Too many registrations from this device. Please try again later.');
+                $this->dispatch('system-message', title: 'Too many registrations', message: 'Too many registrations from this device. Please try again later.', variant: 'danger');
+
+                return;
+            }
+
+            RateLimiter::hit($throttleKey, 3600);
+        }
+
+        $tournamentCategoryId = $this->regTournamentCategoryId;
+
+        try {
+            $application = DB::transaction(function () use ($tournamentCategoryId): PlayerApplication {
+                TournamentCategory::lockAndAssertOpenSlot($tournamentCategoryId);
+
+                $applicant = $this->resolveApplicantPlayer();
+                $this->assertNoPendingApplication($applicant, 'You already have a pending application for this tournament.');
+                $this->assertNotAlreadyEntered($applicant, $tournamentCategoryId);
+
+                $partner = null;
+
+                if ($this->isDoublesRegistration) {
+                    $partner = $this->resolvePartnerPlayer();
+
+                    if ($partner->is($applicant)) {
+                        throw new \RuntimeException('Your partner must be a different player.');
+                    }
+
+                    $this->assertNoPendingApplication($partner, 'Your partner already has a pending application for this tournament.');
+                    $this->assertNotAlreadyEntered($partner, $tournamentCategoryId);
+                }
+
+                $application = PlayerApplication::create([
+                    'tournament_category_id' => $tournamentCategoryId,
+                    'status' => 'pending_verification',
+                    'data_consent_at' => now(),
+                ]);
+
+                ApplicationPlayer::create([
+                    'application_id' => $application->id,
+                    'player_id' => $applicant->id,
+                    'level_at_apply' => $this->regSkillLevel,
+                ] + $this->resolveIdDocument($applicant, $this->ownDocument, $this->ownDocumentType, $this->ownDocumentOther));
+
+                if ($partner) {
+                    ApplicationPlayer::create([
+                        'application_id' => $application->id,
+                        'player_id' => $partner->id,
+                        'level_at_apply' => $this->pairMode === 'search' ? ($partner->level ?? 'Unranked') : $this->pairSkillLevel,
+                    ] + $this->resolveIdDocument($partner, $this->pairDocument, $this->pairDocumentType, $this->pairDocumentOther));
+                }
+
+                return $application;
+            });
+        } catch (\RuntimeException $e) {
+            $this->addError('registration', $e->getMessage());
+            $this->dispatch('system-message', title: 'Could not submit application', message: $e->getMessage(), variant: 'danger');
+
+            return;
+        }
+
+        $this->sendReferenceCodeEmail($application);
+
+        $this->submittedReferenceCode = $application->reference_code;
+    }
+
+    /**
+     * The registrant agreed to the data-collection notice: they can now fill in the form.
+     */
+    public function acceptConsent(): void
+    {
+        $this->consented = true;
+        $this->showConsent = false;
+
+        $this->dispatch('modal-close', name: 'data-consent');
+    }
+
+    /**
+     * The registrant refused: nothing was saved, so close and clear the form.
+     */
+    public function declineConsent(): void
+    {
+        $this->reset();
+        $this->resetValidation();
+
+        $this->dispatch('modal-close', name: 'data-consent');
+        $this->dispatch('modal-close', name: 'guest-registration');
+        $this->dispatch('system-message', title: 'Registration cancelled', message: 'You did not consent to the collection of your data, so no application was submitted.', variant: 'danger');
+    }
+
+    /**
+     * The ID kept on the player's record is the one used: it is asked for
+     * once and never replaced. Only a player with none on file has the
+     * uploaded one stored (and saved to their record for next time).
+     *
+     * @return array{id_document_type: ?string, id_document_other: ?string, id_document_path: ?string}
+     */
+    private function resolveIdDocument(Player $player, mixed $file, string $type, string $other): array
+    {
+        if (! $player->hasIdOnFile()) {
+            if ($file === null) {
+                throw new \RuntimeException('A valid ID is required for every player in the entry.');
+            }
+
+            $player->update([
+                'id_document_type' => $type,
+                'id_document_other' => $type === IdDocumentTypes::OTHERS ? trim($other) : null,
+                'id_document_path' => $file->store('id-documents', 'public'),
+            ]);
+        }
+
+        return [
+            'id_document_type' => $player->id_document_type,
+            'id_document_other' => $player->id_document_other,
+            'id_document_path' => $player->id_document_path,
+        ];
+    }
+
+    /**
+     * Whether the signed-in applicant's valid ID is already on file.
+     */
+    #[Computed]
+    public function ownHasIdOnFile(): bool
+    {
+        return (bool) $this->applicantUser()?->player?->hasIdOnFile();
+    }
+
+    /**
+     * Whether the partner picked from the search already has a valid ID on file.
+     */
+    #[Computed]
+    public function pairHasIdOnFile(): bool
+    {
+        return $this->pairMode === 'search'
+            && $this->pairPlayerId !== null
+            && (bool) Player::query()->find($this->pairPlayerId)?->hasIdOnFile();
+    }
+
+    /**
+     * Existing players matching the partner search. Only ids and names are
+     * loaded, so nothing else about a player is exposed on the public form.
+     *
+     * @return \Illuminate\Support\Collection<int, Player>
+     */
+    #[Computed]
+    public function pairSearchResults()
+    {
+        if (mb_strlen(trim($this->pairSearch)) < 2) {
+            return collect();
+        }
+
+        return Player::query()
+            ->select(['id', 'name'])
+            ->where('name', 'like', '%'.trim($this->pairSearch).'%')
+            ->when($this->applicantUser()?->player, fn ($query, $player) => $query->where('id', '!=', $player->id))
+            ->orderBy('name')
+            ->limit(10)
+            ->get();
+    }
+
+    #[Computed]
+    public function selectedPairPlayer(): ?Player
+    {
+        return $this->pairPlayerId
+            ? Player::query()->select(['id', 'name'])->find($this->pairPlayerId)
+            : null;
+    }
+
+    #[Computed]
+    public function regAge(): ?int
+    {
+        return $this->regBirthDate !== '' ? Carbon::parse($this->regBirthDate)->age : null;
+    }
+
+    /**
+     * Categories in this tournament the applicant, based on the gender and
+     * birth date entered, is eligible to register for.
+     *
+     * @return \Illuminate\Support\Collection<int, TournamentCategory>
+     */
+    #[Computed]
+    public function eligibleCategories()
+    {
+        return TournamentCategory::query()
+            ->where('tournament_id', $this->tournament->id)
+            ->with('category')
+            ->eligibleFor($this->regGender !== '' ? $this->regGender : null, $this->regAge)
+            ->get();
+    }
+
+    /**
+     * Ids of the eligible categories that have no entry slot left.
+     *
+     * @return \Illuminate\Support\Collection<int, int>
+     */
+    #[Computed]
+    public function fullCategoryIds()
+    {
+        return $this->eligibleCategories->filter->isFull()->pluck('id');
+    }
+
+    #[Computed]
+    public function selectedTournamentCategory(): ?TournamentCategory
+    {
+        if (! $this->regTournamentCategoryId) {
+            return null;
+        }
+
+        return TournamentCategory::with('category')->find($this->regTournamentCategoryId);
+    }
+
+    #[Computed]
+    public function isDoublesRegistration(): bool
+    {
+        return (int) ($this->selectedTournamentCategory?->category?->team_size ?? 1) === 2;
+    }
+
+    #[Computed]
+    public function totalSteps(): int
+    {
+        return $this->isDoublesRegistration ? 3 : 2;
+    }
+
+    #[Computed]
+    public function isPairStep(): bool
+    {
+        return $this->isDoublesRegistration && $this->regStep === 2;
+    }
+
+    #[Computed]
+    public function isReviewStep(): bool
+    {
+        return $this->regStep === $this->totalSteps;
+    }
+
+    public function formatDateRange(): string
+    {
+        if ($this->tournament->date_start->isSameMonth($this->tournament->date_end)) {
+            return $this->tournament->date_start->format('F j').' - '.$this->tournament->date_end->format('j, Y');
+        }
+
+        return $this->tournament->date_start->format('F j, Y').' - '.$this->tournament->date_end->format('F j, Y');
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->profileStepRules() + $this->pairStepRules() + $this->documentRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'regGender' => ['regTournamentCategoryId'],
+            'regBirthDate' => ['regTournamentCategoryId'],
+            'regEmail' => ['regPhoneNumber'],
+            'regPhoneNumber' => ['regEmail'],
+            'ownDocumentType' => ['ownDocumentOther'],
+            'ownDocumentOther' => ['ownDocumentType'],
+            'pairDocumentType' => ['pairDocumentOther'],
+            'pairDocumentOther' => ['pairDocumentType'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function profileStepRules(): array
+    {
+        return [
+            'regTournamentCategoryId' => ['required', Rule::in($this->eligibleCategories->pluck('id'))],
+            'regFirstName' => ['required', 'string', 'max:255'],
+            'regLastName' => ['required', 'string', 'max:255'],
+            'regMiddleInitial' => ['nullable', 'string', 'max:5'],
+            'regBirthDate' => ['required', 'date', 'before:today'],
+            'regGender' => ['required', 'in:male,female'],
+            'regAddress' => ['required', 'string', 'max:255'],
+            'regSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
+            'regClub' => ['nullable', 'string', 'max:255'],
+            'regEmail' => ['nullable', 'email', 'max:255', 'required_without:regPhoneNumber'],
+            'regPhoneNumber' => ['nullable', 'string', new PhoneNumber, 'required_without:regEmail'],
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function documentTypeOptions(): array
+    {
+        return $this->documentTypes;
+    }
+
+    /**
+     * A valid ID photo is needed for each player so organizers can verify
+     * eligibility (age/gender) before approving.
+     *
+     * @return array<string, array<int, mixed>>
+     */
+    private function documentRules(): array
+    {
+        $rules = [];
+
+        if (! $this->ownHasIdOnFile) {
+            $rules = [
+                'ownDocumentType' => ['required', Rule::in(array_keys($this->documentTypes))],
+                'ownDocumentOther' => ['nullable', 'required_if:ownDocumentType,others', 'string', 'max:100'],
+                'ownDocument' => ['required', 'image', 'max:4096'],
+            ];
+        }
+
+        if ($this->isDoublesRegistration && ! $this->pairHasIdOnFile) {
+            $rules['pairDocumentType'] = ['required', Rule::in(array_keys($this->documentTypes))];
+            $rules['pairDocumentOther'] = ['nullable', 'required_if:pairDocumentType,others', 'string', 'max:100'];
+            $rules['pairDocument'] = ['required', 'image', 'max:4096'];
+        }
+
+        return $rules;
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    private function pairStepRules(): array
+    {
+        if ($this->pairMode === 'search') {
+            return [
+                'pairPlayerId' => ['required', 'integer', 'exists:players,id'],
+            ];
+        }
+
+        return [
+            'pairFirstName' => ['required', 'string', 'max:255'],
+            'pairLastName' => ['required', 'string', 'max:255'],
+            'pairMiddleInitial' => ['nullable', 'string', 'max:5'],
+            'pairBirthDate' => ['required', 'date', 'before:today'],
+            'pairGender' => ['required', 'in:male,female'],
+            'pairAddress' => ['required', 'string', 'max:255'],
+            'pairSkillLevel' => ['required', Rule::in(Category::PLAYER_LEVELS)],
+            'pairClub' => ['nullable', 'string', 'max:255'],
+            // The partner's contact details are optional; only the registrant's are required.
+            'pairEmail' => ['nullable', 'email', 'max:255'],
+            'pairPhoneNumber' => ['nullable', 'string', new PhoneNumber],
+        ];
+    }
+
+    /**
+     * The signed-in player this registration is for. An admin registering a
+     * walk-in is staff acting for someone else, so their own account is
+     * never prefilled into, or linked to, the walk-in's player record.
+     */
+    private function applicantUser(): ?\App\Models\User
+    {
+        $user = auth()->user();
+
+        return $user && ! $user->isAdmin() ? $user : null;
+    }
+
+    /**
+     * A signed-in player's own record is kept in sync with what they enter;
+     * a guest is matched to (or added as) a player record without touching
+     * anyone else's details.
+     */
+    private function resolveApplicantPlayer(): Player
+    {
+        $attributes = [
+            'name' => $this->combineName($this->regFirstName, $this->regMiddleInitial, $this->regLastName),
+            'birth_date' => $this->regBirthDate,
+            'gender' => $this->regGender,
+            'address' => $this->regAddress,
+            'club' => $this->regClub !== '' ? $this->regClub : null,
+            'level' => $this->regSkillLevel,
+            'email' => $this->regEmail !== '' ? $this->regEmail : null,
+            'phone_number' => $this->normalizePhone($this->regPhoneNumber),
+        ];
+
+        $ownPlayer = $this->applicantUser()?->player;
+
+        if ($ownPlayer) {
+            $ownPlayer->update($attributes);
+
+            return $ownPlayer;
+        }
+
+        $player = $this->findOrCreatePlayer($attributes);
+
+        if ($this->applicantUser() && $player->user_id === null) {
+            $player->update(['user_id' => $this->applicantUser()->id]);
+        }
+
+        return $player;
+    }
+
+    /**
+     * The partner is either an existing player picked from the name search,
+     * or a new player entered by hand (still matched by phone/email).
+     */
+    private function resolvePartnerPlayer(): Player
+    {
+        if ($this->pairMode === 'search') {
+            return Player::query()->findOrFail($this->pairPlayerId);
+        }
+
+        return $this->findOrCreatePlayer([
+            'name' => $this->combineName($this->pairFirstName, $this->pairMiddleInitial, $this->pairLastName),
+            'birth_date' => $this->pairBirthDate,
+            'gender' => $this->pairGender,
+            'address' => $this->pairAddress,
+            'club' => $this->pairClub !== '' ? $this->pairClub : null,
+            'level' => $this->pairSkillLevel,
+            'email' => $this->pairEmail !== '' ? $this->pairEmail : null,
+            'phone_number' => $this->normalizePhone($this->pairPhoneNumber),
+        ]);
+    }
+
+    /**
+     * Reuse the player who already has this phone number (or email) AND the
+     * same name, so match history and skill level stay in one place. A phone
+     * is shared by families and teammates, so a number on its own doesn't
+     * identify a person: a different name under the same number is a new
+     * player. Only blank fields on a reused record are filled in.
+     *
+     * @param  array<string, mixed>  $attributes
+     */
+    private function findOrCreatePlayer(array $attributes): Player
+    {
+        $existing = null;
+
+        if ($attributes['phone_number']) {
+            $existing = Player::query()
+                ->where('phone_number', $attributes['phone_number'])
+                ->get()
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
+        }
+
+        if (! $existing && $attributes['email']) {
+            $email = mb_strtolower($attributes['email']);
+
+            // Account holders keep their email on the user, so check it too.
+            $existing = Player::query()
+                ->where(fn ($query) => $query
+                    ->whereRaw('lower(email) = ?', [$email])
+                    ->orWhereHas('user', fn ($user) => $user->whereRaw('lower(email) = ?', [$email])))
+                ->get()
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
+        }
+
+        // A person who changed phone or email is still the same person.
+        if (! $existing && $attributes['birth_date']) {
+            $existing = Player::query()
+                ->whereDate('birth_date', $attributes['birth_date'])
+                ->get()
+                ->first(fn (Player $candidate) => NameMatcher::same($candidate->name, $attributes['name']));
+        }
+
+        if (! $existing) {
+            return Player::create($attributes);
+        }
+
+        $existing->fill(collect($attributes)
+            ->filter(fn ($value, $key) => $value !== null && $existing->{$key} === null)
+            ->all())->save();
+
+        return $existing;
+    }
+
+    /**
+     * A player with a pending application can't apply again anywhere in the
+     * same tournament until it is rejected or cancelled.
+     */
+    private function assertNoPendingApplication(Player $player, string $message): void
+    {
+        if ($player->hasPendingApplicationIn($this->tournament->id)) {
+            throw new \RuntimeException($message);
+        }
+    }
+
+    /**
+     * A player can't have more than one non-rejected application in the same
+     * draw — a previously rejected application doesn't block re-applying.
+     */
+    private function assertNotAlreadyEntered(Player $player, int $tournamentCategoryId): void
+    {
+        $alreadyEntered = ApplicationPlayer::query()
+            ->where('player_id', $player->id)
+            ->whereHas('application', fn ($query) => $query
+                ->where('tournament_category_id', $tournamentCategoryId)
+                ->where('status', '!=', 'rejected'))
+            ->exists();
+
+        if ($alreadyEntered) {
+            throw new \RuntimeException('A player in this entry already has an active application for this category.');
+        }
+    }
+
+    private function sendReferenceCodeEmail(PlayerApplication $application): void
+    {
+        if ($this->regEmail === '') {
+            return;
+        }
+
+        try {
+            Mail::to($this->regEmail)->send(new ApplicationReceived($application));
+        } catch (\Throwable $e) {
+            // The on-screen code is the source of truth; a mail outage must not undo the registration.
+            Log::warning('Could not email application reference code.', ['application' => $application->id, 'error' => $e->getMessage()]);
+        }
+    }
+
+    private function normalizePhone(string $phone): ?string
+    {
+        $digits = preg_replace('/[^\d+]/', '', $phone);
+
+        if (str_starts_with($digits, '+63')) {
+            $digits = '0'.substr($digits, 3);
+        }
+
+        return $digits !== '' ? $digits : null;
+    }
+
+    private function combineName(string $first, string $middleInitial, string $last): string
+    {
+        return collect([$first, $middleInitial !== '' ? rtrim($middleInitial, '.').'.' : null, $last])
+            ->filter()
+            ->implode(' ');
+    }
+
+    /**
+     * Best-effort split of a combined "First M. Last" name back into its
+     * parts, for pre-filling the form from a signed-in player's record.
+     *
+     * @return array{0: string, 1: string, 2: string} [first, last, middleInitial]
+     */
+    private function splitName(string $name): array
+    {
+        $parts = explode(' ', trim($name));
+
+        if (count($parts) >= 3 && str_ends_with($parts[1], '.') && mb_strlen($parts[1]) <= 3) {
+            return [$parts[0], implode(' ', array_slice($parts, 2)), rtrim($parts[1], '.')];
+        }
+
+        if (count($parts) >= 2) {
+            return [$parts[0], implode(' ', array_slice($parts, 1)), ''];
+        }
+
+        return [$parts[0] ?? '', '', ''];
+    }
+}; ?>
+
+<div>
+<flux:modal name="guest-registration" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-3xl dark:bg-white! dark:ring-black/5!">
+@if ($tournament)
+<div class="relative flex flex-col gap-5 pt-2 pr-10" x-data="exitGuard('guest-registration')" x-on:input="touch()" x-on:change="touch()" x-on:modal-show.window="reset($event)">
+<x-exit-guard />
+    <div>
+        <p class="text-sm text-teal-800">{{ $tournament->sport ?: 'Badminton' }} Tournament Registration</p>
+        <h2 class="text-2xl font-bold text-black">{{ $tournament->name }}</h2>
+        <p class="text-xs text-black/70">
+            {{ $this->formatDateRange() }}@if ($tournament->location) &middot; Venue: {{ $tournament->location }}@endif
+        </p>
+    </div>
+
+    @guest
+        @unless ($submittedReferenceCode)
+            <div class="flex flex-wrap items-center justify-between gap-2 rounded-[5px] border border-[#138177] bg-[#eaf4f3] px-4 py-3 text-xs text-black">
+                <span>Have an account? Sign in so your details are filled in and your records stay together.</span>
+                <button type="button" wire:click="signIn" class="cursor-pointer font-bold text-[#138177] underline">Sign in</button>
+            </div>
+        @endunless
+    @endguest
+
+    @if ($submittedReferenceCode)
+        <div class="flex flex-col items-center gap-4 rounded-[10px] border border-[#138177] bg-white p-6 text-center">
+            <p class="text-lg font-bold text-black">Application submitted!</p>
+            <p class="max-w-md text-sm text-black/70">
+                The organizers will review your application. Keep this reference code — you need it to check your
+                application progress and to pay once you're approved.
+            </p>
+
+            <div x-data="{ copied: false }" class="flex flex-col items-center gap-2">
+                <span class="rounded-[10px] bg-[#eaf4f3] px-6 py-3 text-3xl font-bold tracking-widest text-[#0b4742]">{{ $submittedReferenceCode }}</span>
+                <button type="button"
+                        x-on:click="navigator.clipboard?.writeText(@js($submittedReferenceCode)); copied = true"
+                        class="cursor-pointer text-xs text-[#138177] underline">
+                    <span x-show="!copied">Copy code</span>
+                    <span x-show="copied" style="display: none;">Copied!</span>
+                </button>
+            </div>
+
+            @if ($regEmail !== '')
+                <p class="text-xs text-black/60">We also sent the code to {{ $regEmail }}.</p>
+            @endif
+
+            @guest
+                <p class="max-w-md text-xs text-black/60">
+                    Have an account? <button type="button" wire:click="signIn" class="cursor-pointer font-bold text-[#138177] underline">Sign in</button>
+                    with the same email so this registration stays with your account.
+                </p>
+            @endguest
+
+            @auth
+                <a href="{{ route(auth()->user()->homeRouteName()) }}" wire:navigate
+                   class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
+                    Check application progress
+                </a>
+            @else
+                <a href="#check-application" x-on:click="$flux.modal('guest-registration').close()"
+                   class="rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
+                    Check application progress
+                </a>
+            @endauth
+        </div>
+    @else
+        <div>
+            <div class="flex items-center justify-between rounded-t-[5px] bg-[#138177] px-[15px] py-[10px] text-white">
+                <span class="text-xs font-bold">
+                    @if ($this->isReviewStep)
+                        Review &amp; Submit
+                    @elseif ($this->isPairStep)
+                        Paired Player
+                    @else
+                        Player Profile
+                    @endif
+                </span>
+                <span class="text-xs italic">Step {{ $regStep }} of {{ $this->totalSteps }}</span>
+            </div>
+
+            <div class="flex flex-col gap-[15px] rounded-b-[5px] border border-[#138177] bg-white p-[15px]">
+                @if ($regStep === 1)
+                    <div wire:key="reg-step-profile" class="contents">
+                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                        <x-player.registration-field label="First Name" model="regFirstName" placeholder="e.g. Juan" />
+                        <x-player.registration-field label="Last Name" model="regLastName" placeholder="e.g. Cruz" />
+                        <x-player.registration-field label="M.I" model="regMiddleInitial" placeholder="e.g. D" />
+                    </div>
+                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                        <x-player.registration-field label="Birthdate" model="regBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" :live="true" />
+                        <x-player.registration-select label="Gender" model="regGender" :live="true" :options="['male' => 'Male', 'female' => 'Female']" />
+                        <x-player.registration-field label="Address" model="regAddress" placeholder="e.g. Purok 5, Ozamiz City" />
+                    </div>
+                    <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                        <x-player.registration-select label="Skill Level" model="regSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" />
+                        <x-player.registration-field label="Club (optional)" model="regClub" placeholder="e.g. OBC Badminton Club" />
+                        <x-player.registration-field label="Phone Number" model="regPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
+                    </div>
+                    <div class="flex flex-col gap-[5px]">
+                        <x-player.registration-field label="Email" model="regEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+                        <p class="text-xs text-black/60">Give a phone number or an email (at least one). We'll send your reference code to the email.</p>
+                    </div>
+
+                    <x-player.registration-select
+                        label="Category"
+                        model="regTournamentCategoryId"
+                        placeholder="Select category"
+                        :live="true"
+                        :options="$this->eligibleCategories->mapWithKeys(fn ($tc) => [$tc->id => $tc->category_label.' — ₱'.number_format((float) $tc->registration_fee, 2).($this->fullCategoryIds->contains($tc->id) ? ' (Full)' : '')])"
+                        :disabled-options="$this->fullCategoryIds->all()"
+                    />
+                    </div>
+                @elseif ($this->isPairStep)
+                    <div wire:key="reg-step-pair" class="contents">
+                    @if ($pairMode === 'search')
+                        <p class="text-xs text-black/60">Search for your partner by name. Players who have joined before are already in our records.</p>
+
+                        <div class="flex h-[33px] items-center rounded-[8px] border border-[#bcbcbc] pl-[15px]">
+                            <input type="text" wire:model.live.debounce.300ms="pairSearch" placeholder="Search by name"
+                                   class="flex-1 bg-transparent text-sm text-black placeholder:text-black/40 focus:outline-none">
+                            <div class="flex h-11 w-[36px] items-center justify-center">
+                                <flux:icon.magnifying-glass class="size-[17px] text-black/50" />
+                            </div>
+                        </div>
+
+                        <div class="flex max-h-[260px] flex-col gap-[8px] overflow-y-auto">
+                            @forelse ($this->pairSearchResults as $player)
+                                <button type="button" wire:click="selectPairPlayer({{ $player->id }})" wire:key="pair-{{ $player->id }}"
+                                        @class([
+                                            'flex items-center justify-between gap-3 rounded-[10px] border px-[15px] py-[10px] text-left text-sm font-bold text-black cursor-pointer',
+                                            'border-[#138177] bg-[#eaf4f3]' => $pairPlayerId === $player->id,
+                                            'border-[#d3d3d3] bg-white' => $pairPlayerId !== $player->id,
+                                        ])>
+                                    <span>{{ $player->name }}</span>
+                                    <span @class([
+                                        'size-[12px] shrink-0 rounded-full',
+                                        'bg-[#138177]' => $pairPlayerId === $player->id,
+                                        'bg-[#eaf4f3]' => $pairPlayerId !== $player->id,
+                                    ])></span>
+                                </button>
+                            @empty
+                                <p class="py-4 text-center text-xs text-black/50">
+                                    {{ mb_strlen(trim($pairSearch)) < 2 ? 'Type at least 2 characters to search.' : 'No matching players found.' }}
+                                </p>
+                            @endforelse
+                        </div>
+
+                        @error('pairPlayerId')
+                            <p class="text-xs text-red-600">Pick your partner from the list, or enter their details.</p>
+                        @enderror
+
+                        <button type="button" wire:click="enterPairManually"
+                                class="cursor-pointer self-start text-sm text-[#138177] underline">
+                            My partner isn't listed — enter their details
+                        </button>
+                    @else
+                        <p class="text-xs text-black/60">
+                            Enter your partner's details. If they've played with us before, we'll match their phone number
+                            or email to their existing record.
+                        </p>
+
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-field label="First Name" model="pairFirstName" placeholder="e.g. Juan" />
+                            <x-player.registration-field label="Last Name" model="pairLastName" placeholder="e.g. Cruz" />
+                            <x-player.registration-field label="M.I" model="pairMiddleInitial" placeholder="e.g. D" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-field label="Birthdate" model="pairBirthDate" type="date" start="years" max="{{ now()->toDateString() }}" />
+                            <x-player.registration-select label="Gender" model="pairGender" :options="['male' => 'Male', 'female' => 'Female']" />
+                            <x-player.registration-field label="Address" model="pairAddress" placeholder="e.g. Purok 5, Ozamiz City" />
+                        </div>
+                        <div class="grid grid-cols-1 gap-[9px] sm:grid-cols-3">
+                            <x-player.registration-select label="Skill Level" model="pairSkillLevel" placeholder="Select skill level" :options="array_combine(Category::PLAYER_LEVELS, Category::PLAYER_LEVELS)" />
+                            <x-player.registration-field label="Club (optional)" model="pairClub" placeholder="e.g. OBC Badminton Club" />
+                            <x-player.registration-field label="Phone (optional)" model="pairPhoneNumber" placeholder="e.g. 09xxxxxxxxx" />
+                        </div>
+                        <x-player.registration-field label="Email (optional)" model="pairEmail" type="email" placeholder="e.g. juancruz@gmail.com" />
+
+                        <button type="button" wire:click="searchPairAgain"
+                                class="cursor-pointer self-start text-sm text-[#138177] underline">
+                            Search existing players instead
+                        </button>
+                    @endif
+                    </div>
+                @else
+                    <div wire:key="reg-step-documents" class="contents">
+                    <dl class="flex flex-col gap-2 text-xs text-black">
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-black/60">Category</dt>
+                            <dd class="text-right font-bold">{{ $this->selectedTournamentCategory?->category_label }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-black/60">Registration fee</dt>
+                            <dd class="font-bold">₱{{ number_format((float) $this->selectedTournamentCategory?->registration_fee, 2) }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-4">
+                            <dt class="text-black/60">Player</dt>
+                            <dd class="text-right font-bold">{{ $regFirstName }} {{ $regLastName }} · {{ $regPhoneNumber !== '' ? $regPhoneNumber : $regEmail }}</dd>
+                        </div>
+                        @if ($this->isDoublesRegistration)
+                            <div class="flex justify-between gap-4">
+                                <dt class="text-black/60">Partner</dt>
+                                <dd class="text-right font-bold">{{ $pairMode === 'search' ? $this->selectedPairPlayer?->name : trim($pairFirstName.' '.$pairLastName) }}</dd>
+                            </div>
+                        @endif
+                    </dl>
+
+                    @if ($this->ownHasIdOnFile)
+                        <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                            Your valid ID is already on file, so you don't need to upload it again.
+                        </p>
+                    @else
+                    <div class="flex flex-col gap-[10px]">
+                        <p class="text-sm font-bold text-black">{{ $this->isDoublesRegistration ? 'Your valid ID' : 'Valid ID' }}</p>
+                        <x-player.registration-select label="Type of Document" model="ownDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                        @if ($ownDocumentType === 'others')
+                            <x-player.registration-field label="Specify the type of ID" model="ownDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                        @endif
+
+                        <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                            <label for="ownDocument"
+                                   class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
+                                <span x-text="fileName || 'Upload photo of the document'"></span>
+                            </label>
+                            <input id="ownDocument" type="file" wire:model="ownDocument" accept="image/*" class="hidden"
+                                   x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                            @error('ownDocument')
+                                <p class="text-xs text-red-600">{{ $message }}</p>
+                            @enderror
+                        </div>
+                    </div>
+                    @endif
+
+                    @if ($this->isDoublesRegistration && $this->pairHasIdOnFile)
+                        <p class="rounded-[5px] bg-[#eaf4f3] px-3 py-2 text-xs text-black/70">
+                            Your partner's valid ID is already on file.
+                        </p>
+                    @elseif ($this->isDoublesRegistration)
+                        <div class="flex flex-col gap-[10px] border-t border-[#d3d3d3] pt-[15px]">
+                            <p class="text-sm font-bold text-black">Partner's valid ID</p>
+                            <x-player.registration-select label="Type of Document" model="pairDocumentType" placeholder="Select document type" :live="true" :options="$this->documentTypeOptions()" />
+                            @if ($pairDocumentType === 'others')
+                                <x-player.registration-field label="Specify the type of ID" model="pairDocumentOther" placeholder="e.g. Postal ID, Company ID" />
+                            @endif
+
+                            <div x-data="{ fileName: '' }" class="flex flex-col gap-[2px]">
+                                <label for="pairDocument"
+                                       class="flex h-[80px] cursor-pointer items-center justify-center rounded-[5px] border border-dashed border-[#777] px-[10px] text-center text-sm text-[#838988]">
+                                    <span x-text="fileName || 'Upload photo of the document'"></span>
+                                </label>
+                                <input id="pairDocument" type="file" wire:model="pairDocument" accept="image/*" class="hidden"
+                                       x-on:change="fileName = $event.target.files[0]?.name ?? ''">
+                                @error('pairDocument')
+                                    <p class="text-xs text-red-600">{{ $message }}</p>
+                                @enderror
+                            </div>
+                        </div>
+                    @endif
+
+                    <p class="text-xs text-black/60">
+                        After you submit, you'll get a reference code. Once the organizers approve your application, use that
+                        code on the home page to pay the registration fee.
+                    </p>
+                    </div>
+                @endif
+            </div>
+        </div>
+
+
+        <div class="grid grid-cols-2 gap-5">
+            @if ($regStep === 1)
+                <button type="button" x-on:click="request()"
+                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
+                    Cancel
+                </button>
+            @else
+                <button type="button" wire:click="previousStep"
+                        class="cursor-pointer rounded-[5px] border border-[#a3a3a3] px-8 py-3 text-center text-sm text-[#a3a3a3]">
+                    Back
+                </button>
+            @endif
+
+            @if ($this->isReviewStep)
+                <button type="button" wire:click="submit" wire:loading.attr="disabled" wire:target="submit"
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white disabled:cursor-not-allowed disabled:opacity-60">
+                    <span wire:loading.remove wire:target="submit">Submit Application</span>
+                    <span wire:loading wire:target="submit">Submitting…</span>
+                </button>
+            @else
+                <button type="button" wire:click="nextStep"
+                        class="cursor-pointer rounded-[5px] bg-[#00a89a] px-8 py-3 text-center text-sm text-white">
+                    Next
+                </button>
+            @endif
+        </div>
+    @endif
+</div>
+@endif
+</flux:modal>
+<flux:modal name="data-consent" :dismissible="false" :closable="false" x-on:cancel.prevent class="w-full max-w-lg dark:bg-white! dark:ring-black/5!">
+    @if ($showConsent)
+        <x-consent-dialog />
+    @endif
+</flux:modal></div>

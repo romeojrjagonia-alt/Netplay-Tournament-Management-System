@@ -30,3 +30,24 @@ test('a match is won by whichever side wins 2 games', function () {
     expect(GameRules::matchWinner(['A', 'A']))->toBe('A');
     expect(GameRules::matchWinner(['B', 'A', 'B']))->toBe('B');
 });
+
+test('a 31-point single set is won by the first side to reach 31 with no 2-point lead', function () {
+    expect(GameRules::gameWinner(30, 29, singleSet: true))->toBeNull();
+    expect(GameRules::gameWinner(31, 30, singleSet: true))->toBe('A');
+    expect(GameRules::gameWinner(29, 31, singleSet: true))->toBe('B');
+    expect(GameRules::gameWinner(21, 15, singleSet: true))->toBeNull();
+});
+
+test('a 31-point single set match is decided by its lone game', function () {
+    expect(GameRules::matchWinner([], singleSet: true))->toBeNull();
+    expect(GameRules::matchWinner(['B'], singleSet: true))->toBe('B');
+    expect(GameRules::maxGames(singleSet: true))->toBe(1);
+    expect(GameRules::maxGames())->toBe(3);
+});
+
+test('only the 31-point single set value is treated as single set', function () {
+    expect(GameRules::isSingleSet(GameRules::SYSTEM_SINGLE_SET))->toBeTrue();
+    expect(GameRules::isSingleSet('Best of 3 to 21'))->toBeFalse();
+    expect(GameRules::isSingleSet('rally'))->toBeFalse();
+    expect(GameRules::isSingleSet(null))->toBeFalse();
+});

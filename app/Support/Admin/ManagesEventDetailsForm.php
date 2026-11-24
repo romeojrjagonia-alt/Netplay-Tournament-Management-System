@@ -3,6 +3,8 @@
 namespace App\Support\Admin;
 
 use App\Models\Tournament;
+use App\Support\Badminton\GameRules;
+use App\Support\Forms\ClearsResolvedErrors;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -18,6 +20,7 @@ use Livewire\WithFileUploads;
  */
 trait ManagesEventDetailsForm
 {
+    use ClearsResolvedErrors;
     use WithFileUploads;
 
     public ?Tournament $tournament = null;
@@ -26,7 +29,11 @@ trait ManagesEventDetailsForm
 
     public string $format = '';
 
+    public string $sport = 'Badminton';
+
     public string $location = '';
+
+    public string $scoringSystem = '';
 
     public string $dateStart = '';
 
@@ -49,6 +56,48 @@ trait ManagesEventDetailsForm
 
     public $poster = null;
 
+    /**
+     * The sports a tournament can be held for. Keys equal labels; the value
+     * is stored in `tournaments.sport`.
+     *
+     * @var array<string, string>
+     */
+    public array $sports = [
+        'Badminton' => 'Badminton',
+        'Pickleball' => 'Pickleball',
+    ];
+
+    /**
+     * The pointing systems GameRules implements for the chosen sport — a
+     * dropdown rather than free text so every event scores one of the
+     * supported ways. Keys are the stored `scoring_system` values.
+     *
+     * @return array<string, string>
+     */
+    #[Computed]
+    public function scoringSystems(): array
+    {
+        if ($this->sport === 'Pickleball') {
+            return [
+                GameRules::SYSTEM_PICKLEBALL => '11-Point: Best of 3 (win by 2)',
+            ];
+        }
+
+        return [
+            GameRules::SYSTEM_BEST_OF_THREE => '21-Point: Best of 3',
+            GameRules::SYSTEM_SINGLE_SET => '31-Point: Single Set (first to 31)',
+        ];
+    }
+
+    /**
+     * Each sport has its own pointing systems, so switching sport resets
+     * the selection to that sport's first one.
+     */
+    public function updatedSport(): void
+    {
+        $this->scoringSystem = (string) array_key_first($this->scoringSystems);
+    }
+
     /** @var array<int, string> */
     public array $weekOrder = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -61,7 +110,9 @@ trait ManagesEventDetailsForm
         $this->tournament = $tournament;
         $this->name = $tournament->name;
         $this->format = $tournament->format;
+        $this->sport = $tournament->sport ?: 'Badminton';
         $this->location = $tournament->location ?? '';
+        $this->scoringSystem = $tournament->scoring_system;
         $this->dateStart = $tournament->date_start->format('Y-m-d');
         $this->dateEnd = $tournament->date_end->format('Y-m-d');
         $this->registrationStart = $tournament->registration_start->format('Y-m-d');
@@ -101,10 +152,44 @@ trait ManagesEventDetailsForm
      */
     protected function validateDetails(): array
     {
-        return $this->validate([
+        return $this->validate($this->detailRules());
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function liveRules(): array
+    {
+        return $this->detailRules();
+    }
+
+    /**
+     * @return array<string, list<string>>
+     */
+    protected function pairedFields(): array
+    {
+        return [
+            'dateStart' => ['dateEnd'],
+            'dateEnd' => ['dateStart'],
+            'registrationStart' => ['registrationEnd'],
+            'registrationEnd' => ['registrationStart'],
+            'timeStart' => ['timeEnd'],
+            'timeEnd' => ['timeStart'],
+            'tiebreakerFirst' => ['tiebreakerSecond'],
+        ];
+    }
+
+    /**
+     * @return array<string, array<int, mixed>>
+     */
+    protected function detailRules(): array
+    {
+        return [
             'name' => ['required', 'string', 'max:255'],
-            'format' => ['required', 'in:single_elimination,round_robin,double_elimination'],
+            'format' => ['required', 'in:single_elimination,round_robin'],
+            'sport' => ['required', Rule::in(array_keys($this->sports))],
             'location' => ['nullable', 'string', 'max:255'],
+            'scoringSystem' => ['required', Rule::in(array_keys($this->scoringSystems))],
             'dateStart' => ['required', 'date'],
             'dateEnd' => ['required', 'date', 'after_or_equal:dateStart'],
             'timeStart' => ['nullable', 'date_format:H:i', 'required_with:timeEnd'],
@@ -115,7 +200,7 @@ trait ManagesEventDetailsForm
             'tiebreakerFirst' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES))],
             'tiebreakerSecond' => ['nullable', Rule::in(array_keys(Tournament::TIEBREAKER_RULES)), 'different:tiebreakerFirst'],
             'poster' => ['nullable', 'image', 'max:5120'],
-        ]);
+        ];
     }
 
     /**
@@ -127,25 +212,7 @@ trait ManagesEventDetailsForm
      */
     protected function saveDetails(array $data): void
     {
-        $attributes = [
-            'name' => $data['name'],
-            'format' => $data['format'],
-            'sport' => 'Badminton',
-            'location' => $data['location'],
-            'scoring_system' => $this->tournament->scoring_system ?? '',
-            'date_start' => $data['dateStart'],
-            'date_end' => $data['dateEnd'],
-            'time' => $data['timeStart'] && $data['timeEnd']
-                ? Carbon::createFromFormat('H:i', $data['timeStart'])->format('g:i A').' - '.Carbon::createFromFormat('H:i', $data['timeEnd'])->format('g:i A')
-                : null,
-            'specific_days' => collect($this->weekOrder)->filter(fn ($day) => in_array($day, $data['selectedDays'], true))->implode(', '),
-            'registration_start' => $data['registrationStart'],
-            'registration_end' => $data['registrationEnd'],
-            // Only round robin uses tiebreakers; the second is meaningless without the first.
-            'tiebreaker_rules' => $data['format'] === 'round_robin'
-                ? (array_values(array_filter([$data['tiebreakerFirst'] ?? null, $data['tiebreakerSecond'] ?? null])) ?: null)
-                : null,
-        ];
+        $attributes = $this->detailAttributes($data);
 
         if ($this->poster) {
             // Replacing an existing cover — remove the old file so it
@@ -162,5 +229,55 @@ trait ManagesEventDetailsForm
         } else {
             $this->tournament = Tournament::create([...$attributes, 'status' => 'draft']);
         }
+    }
+
+    /**
+     * Whether saving `$data` would change anything a generated schedule
+     * depends on: the date range, daily time window, days of the week or
+     * format.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    protected function changesGeneratedSchedule(array $data): bool
+    {
+        if (! $this->tournament) {
+            return false;
+        }
+
+        $new = $this->detailAttributes($data);
+        $current = $this->tournament;
+
+        return $current->date_start->format('Y-m-d') !== Carbon::parse($new['date_start'])->format('Y-m-d')
+            || $current->date_end->format('Y-m-d') !== Carbon::parse($new['date_end'])->format('Y-m-d')
+            || $current->time !== $new['time']
+            || $current->specific_days !== $new['specific_days']
+            || $current->format !== $new['format'];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<string, mixed>
+     */
+    private function detailAttributes(array $data): array
+    {
+        return [
+            'name' => $data['name'],
+            'format' => $data['format'],
+            'sport' => $data['sport'],
+            'location' => $data['location'],
+            'scoring_system' => $data['scoringSystem'],
+            'date_start' => $data['dateStart'],
+            'date_end' => $data['dateEnd'],
+            'time' => $data['timeStart'] && $data['timeEnd']
+                ? Carbon::createFromFormat('H:i', $data['timeStart'])->format('g:i A').' - '.Carbon::createFromFormat('H:i', $data['timeEnd'])->format('g:i A')
+                : null,
+            'specific_days' => collect($this->weekOrder)->filter(fn ($day) => in_array($day, $data['selectedDays'], true))->implode(', '),
+            'registration_start' => $data['registrationStart'],
+            'registration_end' => $data['registrationEnd'],
+            // Only round robin uses tiebreakers; the second is meaningless without the first.
+            'tiebreaker_rules' => $data['format'] === 'round_robin'
+                ? (array_values(array_filter([$data['tiebreakerFirst'] ?? null, $data['tiebreakerSecond'] ?? null])) ?: null)
+                : null,
+        ];
     }
 }

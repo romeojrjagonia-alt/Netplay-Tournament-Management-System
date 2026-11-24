@@ -19,12 +19,12 @@ function registrationTournament(array $overrides = []): Tournament
         'format' => 'single_elimination',
         'sport' => 'Badminton',
         'scoring_system' => 'Best of 3 to 21',
-        'date_start' => '2026-07-01',
-        'date_end' => '2026-07-31',
+        'date_start' => now()->addDays(20)->toDateString(),
+        'date_end' => now()->addDays(21)->toDateString(),
         'time' => '9:00 AM - 5:00 PM',
         'specific_days' => 'SAT, SUN',
         'registration_start' => '2026-06-01',
-        'registration_end' => '2026-12-31',
+        'registration_end' => now()->addDays(10)->toDateString(),
         'status' => 'published',
     ], $overrides));
 }
@@ -121,7 +121,7 @@ test('a player can submit a singles application with one document', function () 
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->sole();
@@ -170,7 +170,7 @@ test('doubles registration with a pair found by search creates two application p
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('pairDocumentType', 'passport')
         ->set('pairDocument', UploadedFile::fake()->create('pair-id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $application = PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->sole();
@@ -216,7 +216,7 @@ test('doubles registration with a pair that has never played creates a new playe
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
         ->set('pairDocumentType', 'passport')
         ->set('pairDocument', UploadedFile::fake()->create('pair-id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     $newPlayer = Player::where('name', 'Mark Santos')->sole();
@@ -257,7 +257,7 @@ test('a player cannot re-apply to the same category while an application is stil
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasErrors(['registration']);
 
     expect(PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->count())->toBe(1);
@@ -294,8 +294,60 @@ test('a player can re-apply to the same category after a rejected application', 
 
     $component->set('ownDocumentType', 'national_id')
         ->set('ownDocument', UploadedFile::fake()->create('id.jpg', 100, 'image/jpeg'))
-        ->call('submitRegistration')
+        ->call('acceptRegistrationConsent')->call('submitRegistration')
         ->assertHasNoErrors();
 
     expect(PlayerApplication::where('tournament_category_id', $tournamentCategory->id)->count())->toBe(2);
+});
+
+test('registration modal errors clear as each field is corrected', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $tournament = registrationTournament();
+    $category = registrationCategory($tournament, ['name' => "Men's Singles", 'gender' => 'male']);
+
+    $this->actingAs($user);
+
+    Volt::test('player.events')
+        ->call('viewTournament', $tournament->id)
+        ->call('startRegistration')
+        ->call('registrationNextStep')
+        ->assertHasErrors(['regBirthDate', 'regAddress', 'regSkillLevel', 'regTournamentCategoryId'])
+        ->set('regAddress', 'Purok 5, Ozamiz City')
+        ->assertHasNoErrors('regAddress')
+        ->assertHasErrors('regSkillLevel')
+        ->set('regTournamentCategoryId', $category->id)
+        ->assertHasNoErrors('regTournamentCategoryId')
+        ->set('regBirthDate', now()->addYear()->toDateString())
+        ->assertHasErrors('regBirthDate')
+        ->set('regBirthDate', now()->subYears(25)->toDateString())
+        ->assertHasNoErrors('regBirthDate');
+});
+
+test('the dashboard registration modal does not close on an outside click or Escape', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $this->actingAs($user)
+        ->get(route('player.events'))
+        ->assertOk()
+        ->assertSee('data-modal="tournament-registration"', false)
+        ->assertSee('disable-click-outside', false)
+        ->assertSee('x-on:cancel.prevent', false);
+});
+
+test('closing the dashboard registration modal asks before discarding progress', function () {
+    $user = User::factory()->create(['role' => 'player']);
+    Player::create(['user_id' => $user->id, 'name' => $user->name, 'gender' => 'male']);
+
+    $response = $this->actingAs($user)
+        ->get(route('player.events'))
+        ->assertOk()
+        ->assertSee("exitGuard('tournament-registration')", false)
+        ->assertSee('Discard your registration?')
+        ->assertSee('Keep editing');
+
+    expect(substr_count($response->getContent(), 'x-on:click="request()"'))->toBeGreaterThanOrEqual(2)
+        ->and($response->getContent())->not->toContain('wire:click="cancelRegistration"');
 });

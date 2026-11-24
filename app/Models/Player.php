@@ -30,6 +30,10 @@ class Player extends Model
         'club',
         'photo_path',
         'level',
+        'id_document_type',
+        'id_document_other',
+        'id_document_path',
+        'data_consent_at',
     ];
 
     /**
@@ -41,7 +45,30 @@ class Player extends Model
     {
         return [
             'birth_date' => 'date',
+            'data_consent_at' => 'datetime',
         ];
+    }
+
+    /**
+     * The player's age in years, always worked out from the birth date so it
+     * never goes stale (the stored column is only refreshed on save).
+     */
+    protected function age(): Attribute
+    {
+        return Attribute::get(fn (?int $value): ?int => $this->birth_date?->age ?? $value);
+    }
+
+    /**
+     * The age as shown in profiles: "—" when unknown, "Under 1 yr. old" for
+     * infants (a plain 0 reads as missing), otherwise "N yrs. old".
+     */
+    protected function ageLabel(): Attribute
+    {
+        return Attribute::get(fn (): string => match (true) {
+            $this->age === null => '—',
+            $this->age < 1 => 'Under 1 yr. old',
+            default => $this->age.' yrs. old',
+        });
     }
 
     protected static function booted(): void
@@ -59,6 +86,15 @@ class Player extends Model
     protected function photoUrl(): Attribute
     {
         return Attribute::get(fn (): ?string => $this->photo_path ? Storage::disk('public')->url($this->photo_path) : null);
+    }
+
+    /**
+     * Whether a valid ID is already on file. It is asked for once, at
+     * sign-up or on the first tournament entry, and reused after that.
+     */
+    public function hasIdOnFile(): bool
+    {
+        return filled($this->id_document_type) && filled($this->id_document_path);
     }
 
     /**
@@ -82,6 +118,11 @@ class Player extends Model
         return $this->hasOne(PlayerStatistic::class);
     }
 
+    public function linkRequests(): HasMany
+    {
+        return $this->hasMany(PlayerLinkRequest::class);
+    }
+
     public function applicationPlayers(): HasMany
     {
         return $this->hasMany(ApplicationPlayer::class);
@@ -96,6 +137,19 @@ class Player extends Model
         return $this->belongsToMany(PlayerApplication::class, 'application_players', 'player_id', 'application_id')
             ->withPivot('level_at_apply')
             ->withTimestamps();
+    }
+
+    /**
+     * Whether this player is on a pending application in any category of
+     * the tournament. They can't apply again there until it is rejected or
+     * cancelled.
+     */
+    public function hasPendingApplicationIn(int $tournamentId): bool
+    {
+        return $this->playerApplications()
+            ->pending()
+            ->whereHas('tournamentCategory', fn ($query) => $query->where('tournament_id', $tournamentId))
+            ->exists();
     }
 
     public function rallies(): HasMany
